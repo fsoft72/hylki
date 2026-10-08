@@ -251,6 +251,24 @@ msgstr "Aucun carnet d'adresses disponible"
 msgid "Could not update contact: {e}"
 msgstr "Impossible de mettre à jour le contact : {e}"
 
+#, fuzzy
+msgid "Could not import contacts: {e}"
+msgstr "Impossible d'importer le compte : {e}"
+
+#, fuzzy
+msgid "Could not read: {files}"
+msgstr "Impossible de redémarrer Fichiers"
+
+#, fuzzy
+msgid "No contacts were found in the selected files"
+msgstr "Aucune clé n'a été trouvée dans ce fichier."
+
+msgid "Imported {added} new and {updated} updated contacts"
+msgstr ""
+
+msgid " ({skipped} skipped, {errors} damaged)"
+msgstr ""
+
 msgid "Hide Status Bar"
 msgstr "Masquer la barre d'état"
 
@@ -1042,6 +1060,9 @@ msgstr "Trouver"
 
 msgid "Print"
 msgstr "Imprimer"
+
+msgid "Hylki"
+msgstr "Hylki"
 
 msgid "On This Computer"
 msgstr "Sur cet ordinateur"
@@ -1993,9 +2014,6 @@ msgstr ""
 
 msgid "GOA"
 msgstr "GOA"
-
-msgid "Hylki"
-msgstr "Hylki"
 
 msgid "Imported GNOME Online Account"
 msgstr "Compte en ligne GNOME importé"
@@ -3132,6 +3150,10 @@ msgstr "Ouvrir Contacts GNOME"
 msgid "New contact"
 msgstr "Nouveau contact"
 
+#, fuzzy
+msgid "Import contacts…"
+msgstr "Trier les contacts"
+
 msgid "Loading Contacts…"
 msgstr "Chargement des contacts…"
 
@@ -3149,6 +3171,17 @@ msgstr "Prénom"
 
 msgid "Last name"
 msgstr "Nom"
+
+#, fuzzy
+msgid "Import Contacts"
+msgstr "Trier les contacts"
+
+#, fuzzy
+msgid "vCard files"
+msgstr "Fichiers volumineux"
+
+msgid "All files"
+msgstr "Tous les fichiers"
 
 msgid "Delete Contact?"
 msgstr "Supprimer le contact ?"
@@ -3941,9 +3974,6 @@ msgstr "Importer la clé"
 
 msgid "OpenPGP keys"
 msgstr "Clés OpenPGP"
-
-msgid "All files"
-msgstr "Tous les fichiers"
 
 msgid "Could not import: {e}"
 msgstr "Impossible d'importer: {e}"

@@ -237,6 +237,21 @@ msgstr ""
 msgid "Could not update contact: {e}"
 msgstr ""
 
+msgid "Could not import contacts: {e}"
+msgstr ""
+
+msgid "Could not read: {files}"
+msgstr ""
+
+msgid "No contacts were found in the selected files"
+msgstr ""
+
+msgid "Imported {added} new and {updated} updated contacts"
+msgstr ""
+
+msgid " ({skipped} skipped, {errors} damaged)"
+msgstr ""
+
 msgid "Hide Status Bar"
 msgstr ""
 
@@ -967,6 +982,9 @@ msgid "Find"
 msgstr ""
 
 msgid "Print"
+msgstr ""
+
+msgid "Hylki"
 msgstr ""
 
 msgid "On This Computer"
@@ -1799,9 +1817,6 @@ msgid "POP3 accounts have no server folders to save a copy in."
 msgstr ""
 
 msgid "GOA"
-msgstr ""
-
-msgid "Hylki"
 msgstr ""
 
 msgid "Imported GNOME Online Account"
@@ -2808,6 +2823,9 @@ msgstr ""
 msgid "New contact"
 msgstr ""
 
+msgid "Import contacts…"
+msgstr ""
+
 msgid "Loading Contacts…"
 msgstr ""
 
@@ -2824,6 +2842,15 @@ msgid "First name"
 msgstr ""
 
 msgid "Last name"
+msgstr ""
+
+msgid "Import Contacts"
+msgstr ""
+
+msgid "vCard files"
+msgstr ""
+
+msgid "All files"
 msgstr ""
 
 msgid "Delete Contact?"
@@ -3565,9 +3592,6 @@ msgid "Import Key"
 msgstr ""
 
 msgid "OpenPGP keys"
-msgstr ""
-
-msgid "All files"
 msgstr ""
 
 msgid "Could not import: {e}"

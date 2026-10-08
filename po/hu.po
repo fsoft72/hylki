@@ -251,6 +251,24 @@ msgstr "Nem érhető el címjegyzék"
 msgid "Could not update contact: {e}"
 msgstr "A névjegy nem frissíthető: {e}"
 
+#, fuzzy
+msgid "Could not import contacts: {e}"
+msgstr "A fiók nem importálható: {e}"
+
+#, fuzzy
+msgid "Could not read: {files}"
+msgstr "A alkalmazás újraindítása nem sikerült"
+
+#, fuzzy
+msgid "No contacts were found in the selected files"
+msgstr "A fájlban nem található kulcs."
+
+msgid "Imported {added} new and {updated} updated contacts"
+msgstr ""
+
+msgid " ({skipped} skipped, {errors} damaged)"
+msgstr ""
+
 msgid "Hide Status Bar"
 msgstr "Állapotsáv elrejtése"
 
@@ -1039,6 +1057,9 @@ msgstr "Keresés"
 
 msgid "Print"
 msgstr "Nyomtatás"
+
+msgid "Hylki"
+msgstr "Hylki"
 
 msgid "On This Computer"
 msgstr "Ezen a számítógépen"
@@ -1977,9 +1998,6 @@ msgstr ""
 
 msgid "GOA"
 msgstr "GOA"
-
-msgid "Hylki"
-msgstr "Hylki"
 
 msgid "Imported GNOME Online Account"
 msgstr "Importált GNOME Internetes Fiók"
@@ -3123,6 +3141,10 @@ msgstr "GNOME Névjegyek megnyitása"
 msgid "New contact"
 msgstr "Új névjegy"
 
+#, fuzzy
+msgid "Import contacts…"
+msgstr "Névjegyek rendezése"
+
 msgid "Loading Contacts…"
 msgstr "Névjegyek betöltése…"
 
@@ -3140,6 +3162,17 @@ msgstr "Keresztnév"
 
 msgid "Last name"
 msgstr "Vezetéknév"
+
+#, fuzzy
+msgid "Import Contacts"
+msgstr "Névjegyek rendezése"
+
+#, fuzzy
+msgid "vCard files"
+msgstr "Nagy fájlok"
+
+msgid "All files"
+msgstr "Minden fájl"
 
 msgid "Delete Contact?"
 msgstr "Törli a névjegyet?"
@@ -3946,9 +3979,6 @@ msgstr "Kulcs importálása"
 
 msgid "OpenPGP keys"
 msgstr "OpenPGP-kulcsok"
-
-msgid "All files"
-msgstr "Minden fájl"
 
 msgid "Could not import: {e}"
 msgstr "Nem importálható: {e}"

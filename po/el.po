@@ -252,6 +252,24 @@ msgstr "Δεν υπάρχει διαθέσιμο βιβλίο διευθύνσε
 msgid "Could not update contact: {e}"
 msgstr "Αδυναμία ενημέρωσης επαφής: {e}"
 
+#, fuzzy
+msgid "Could not import contacts: {e}"
+msgstr "Αδυναμία εισαγωγής λογαριασμού: {e}"
+
+#, fuzzy
+msgid "Could not read: {files}"
+msgstr "Δεν ήταν δυνατή η επανεκκίνηση των Αρχείων"
+
+#, fuzzy
+msgid "No contacts were found in the selected files"
+msgstr "Δεν βρέθηκε κλειδί σε αυτό το αρχείο."
+
+msgid "Imported {added} new and {updated} updated contacts"
+msgstr ""
+
+msgid " ({skipped} skipped, {errors} damaged)"
+msgstr ""
+
 msgid "Hide Status Bar"
 msgstr "Απόκρυψη γραμμής κατάστασης"
 
@@ -1040,6 +1058,9 @@ msgstr "Εύρεση"
 
 msgid "Print"
 msgstr "Εκτύπωση"
+
+msgid "Hylki"
+msgstr "Hylki"
 
 msgid "On This Computer"
 msgstr "Σε αυτόν τον υπολογιστή"
@@ -2000,9 +2021,6 @@ msgstr ""
 
 msgid "GOA"
 msgstr "GOA"
-
-msgid "Hylki"
-msgstr "Hylki"
 
 msgid "Imported GNOME Online Account"
 msgstr "Εισηγμένος διαδικτυακός λογαριασμός GNOME"
@@ -3140,6 +3158,10 @@ msgstr "Άνοιγμα Επαφών GNOME"
 msgid "New contact"
 msgstr "Νέα επαφή"
 
+#, fuzzy
+msgid "Import contacts…"
+msgstr "Ταξινόμηση επαφών"
+
 msgid "Loading Contacts…"
 msgstr "Φόρτωση επαφών..."
 
@@ -3157,6 +3179,17 @@ msgstr "Όνομα"
 
 msgid "Last name"
 msgstr "Επώνυμο"
+
+#, fuzzy
+msgid "Import Contacts"
+msgstr "Ταξινόμηση επαφών"
+
+#, fuzzy
+msgid "vCard files"
+msgstr "Μεγάλα αρχεία"
+
+msgid "All files"
+msgstr "Όλα τα αρχεία"
 
 msgid "Delete Contact?"
 msgstr "Διαγραφή επαφής;"
@@ -3947,9 +3980,6 @@ msgstr "Εισαγωγή κλειδιού"
 
 msgid "OpenPGP keys"
 msgstr "Κλειδιά OpenPGP"
-
-msgid "All files"
-msgstr "Όλα τα αρχεία"
 
 msgid "Could not import: {e}"
 msgstr "Δεν ήταν δυνατή η εισαγωγή: {e}"

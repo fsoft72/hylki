@@ -252,6 +252,24 @@ msgstr "Kein Adressbuch verfügbar"
 msgid "Could not update contact: {e}"
 msgstr "Kontakt konnte nicht aktualisiert werden: {e}"
 
+#, fuzzy
+msgid "Could not import contacts: {e}"
+msgstr "Konnte kein Konto importieren: {e}"
+
+#, fuzzy
+msgid "Could not read: {files}"
+msgstr "Es konnten keine Dateien neu gestartet werden"
+
+#, fuzzy
+msgid "No contacts were found in the selected files"
+msgstr "In dieser Datei wurde kein Schlüssel gefunden."
+
+msgid "Imported {added} new and {updated} updated contacts"
+msgstr ""
+
+msgid " ({skipped} skipped, {errors} damaged)"
+msgstr ""
+
 msgid "Hide Status Bar"
 msgstr "Statusleiste ausblenden"
 
@@ -1052,6 +1070,9 @@ msgstr "Suchen"
 
 msgid "Print"
 msgstr "Drucken"
+
+msgid "Hylki"
+msgstr "Hylki"
 
 msgid "On This Computer"
 msgstr "Auf diesem Computer"
@@ -2008,9 +2029,6 @@ msgstr "POP3-Konten haben keine Serverordner, um eine Kopie zu speichern."
 
 msgid "GOA"
 msgstr "GOA"
-
-msgid "Hylki"
-msgstr "Hylki"
 
 msgid "Imported GNOME Online Account"
 msgstr "Importiertes GNOME Online Konto"
@@ -3145,6 +3163,10 @@ msgstr "GNOME Kontakte öffnen"
 msgid "New contact"
 msgstr "Neuer Kontakt"
 
+#, fuzzy
+msgid "Import contacts…"
+msgstr "Kontakte sortieren"
+
 msgid "Loading Contacts…"
 msgstr "Kontakte werden geladen…"
 
@@ -3162,6 +3184,17 @@ msgstr "Vorname"
 
 msgid "Last name"
 msgstr "Nachname"
+
+#, fuzzy
+msgid "Import Contacts"
+msgstr "Kontakte sortieren"
+
+#, fuzzy
+msgid "vCard files"
+msgstr "Große Dateien"
+
+msgid "All files"
+msgstr "Alle Dateien"
 
 msgid "Delete Contact?"
 msgstr "Kontakt löschen?"
@@ -3970,9 +4003,6 @@ msgstr "Schlüssel importieren"
 
 msgid "OpenPGP keys"
 msgstr "OpenPGP-Schlüssel"
-
-msgid "All files"
-msgstr "Alle Dateien"
 
 msgid "Could not import: {e}"
 msgstr "Konnte nicht importieren: {e}"

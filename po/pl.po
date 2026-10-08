@@ -250,6 +250,24 @@ msgstr "Brak dostępnej książki adresowej"
 msgid "Could not update contact: {e}"
 msgstr "Nie udało się zaktualizować kontaktu: {e}"
 
+#, fuzzy
+msgid "Could not import contacts: {e}"
+msgstr "Nie udało się zaimportować konta: {e}"
+
+#, fuzzy
+msgid "Could not read: {files}"
+msgstr "Nie udało się ponownie uruchomić aplikacji Pliki"
+
+#, fuzzy
+msgid "No contacts were found in the selected files"
+msgstr "W tym pliku nie odnaleziono klucza."
+
+msgid "Imported {added} new and {updated} updated contacts"
+msgstr ""
+
+msgid " ({skipped} skipped, {errors} damaged)"
+msgstr ""
+
 msgid "Hide Status Bar"
 msgstr "Ukryj pasek stanu"
 
@@ -1066,6 +1084,9 @@ msgstr "Znajdź"
 
 msgid "Print"
 msgstr "Drukuj"
+
+msgid "Hylki"
+msgstr "Hylki"
 
 msgid "On This Computer"
 msgstr "Na tym komputerze"
@@ -2013,9 +2034,6 @@ msgstr ""
 
 msgid "GOA"
 msgstr "GOA"
-
-msgid "Hylki"
-msgstr "Hylki"
 
 msgid "Imported GNOME Online Account"
 msgstr "Zaimportowane konto online GNOME"
@@ -3156,6 +3174,10 @@ msgstr "Otwórz aplikację Kontakty"
 msgid "New contact"
 msgstr "Nowy kontakt"
 
+#, fuzzy
+msgid "Import contacts…"
+msgstr "Sortuj kontakty"
+
 msgid "Loading Contacts…"
 msgstr "Wczytywanie kontaktów…"
 
@@ -3173,6 +3195,17 @@ msgstr "Imię"
 
 msgid "Last name"
 msgstr "Nazwisko"
+
+#, fuzzy
+msgid "Import Contacts"
+msgstr "Sortuj kontakty"
+
+#, fuzzy
+msgid "vCard files"
+msgstr "Duże pliki"
+
+msgid "All files"
+msgstr "Wszystkie pliki"
 
 msgid "Delete Contact?"
 msgstr "Czy usunąć kontakt?"
@@ -3992,9 +4025,6 @@ msgstr "Importuj klucz"
 
 msgid "OpenPGP keys"
 msgstr "Klucze OpenPGP"
-
-msgid "All files"
-msgstr "Wszystkie pliki"
 
 msgid "Could not import: {e}"
 msgstr "Nie udało się zaimportować: {e}"

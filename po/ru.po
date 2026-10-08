@@ -247,6 +247,24 @@ msgstr "Адресная книга недоступна"
 msgid "Could not update contact: {e}"
 msgstr "Не удалось обновить контакт: {e}"
 
+#, fuzzy
+msgid "Could not import contacts: {e}"
+msgstr "Не удалось импортировать учетную запись: {e}"
+
+#, fuzzy
+msgid "Could not read: {files}"
+msgstr "Не удалось перезапустить «Файлы»"
+
+#, fuzzy
+msgid "No contacts were found in the selected files"
+msgstr "В этом файле не найдено ни одного ключа."
+
+msgid "Imported {added} new and {updated} updated contacts"
+msgstr ""
+
+msgid " ({skipped} skipped, {errors} damaged)"
+msgstr ""
+
 msgid "Hide Status Bar"
 msgstr "Скрыть строку состояния"
 
@@ -1050,6 +1068,9 @@ msgstr "Найти"
 
 msgid "Print"
 msgstr "Печать"
+
+msgid "Hylki"
+msgstr "Hylki"
 
 msgid "On This Computer"
 msgstr "На этом компьютере"
@@ -1978,9 +1999,6 @@ msgstr "У учётных записей POP3 нет папок на серве�
 
 msgid "GOA"
 msgstr "GOA"
-
-msgid "Hylki"
-msgstr "Hylki"
 
 msgid "Imported GNOME Online Account"
 msgstr "Импортировано из «Сетевых учётных записей GNOME»"
@@ -3102,6 +3120,10 @@ msgstr "Открыть «Контакты GNOME»"
 msgid "New contact"
 msgstr "Новый контакт"
 
+#, fuzzy
+msgid "Import contacts…"
+msgstr "Сортировка контактов"
+
 msgid "Loading Contacts…"
 msgstr "Загрузка контактов…"
 
@@ -3119,6 +3141,17 @@ msgstr "Имя"
 
 msgid "Last name"
 msgstr "Фамилия"
+
+#, fuzzy
+msgid "Import Contacts"
+msgstr "Сортировка контактов"
+
+#, fuzzy
+msgid "vCard files"
+msgstr "Большие файлы"
+
+msgid "All files"
+msgstr "Все файлы"
 
 msgid "Delete Contact?"
 msgstr "Удалить контакт?"
@@ -3916,9 +3949,6 @@ msgstr "Импортировать ключ"
 
 msgid "OpenPGP keys"
 msgstr "Ключи OpenPGP"
-
-msgid "All files"
-msgstr "Все файлы"
 
 msgid "Could not import: {e}"
 msgstr "Не удалось импортировать: {e}"
