@@ -125,6 +125,10 @@ pub fn show_context_menu_popover(
     popover.set_has_arrow(false);
     popover.set_position(gtk::PositionType::Bottom);
     popover.add_css_class("menu");
+    // GTK's autohide deactivates the window on the first press inside the
+    // popover on X11 and then closes it from that, so a click on a submenu
+    // row shut the whole menu. The menu is dismissed by hand instead.
+    popover.set_autohide(false);
 
     // Pages: the menu itself, and one per submenu, slid between. Each page
     // keeps its own size, so the popover fits whichever is showing.
@@ -156,6 +160,7 @@ pub fn show_context_menu_popover(
     let y = fitted_anchor(parent.as_ref(), &popover, x, y);
     popover.set_pointing_to(Some(&gtk::gdk::Rectangle::new(x as i32, y as i32, 1, 1)));
     popover.connect_closed(|p| p.unparent());
+    dismiss_on_outside_action(&popover, parent.as_ref());
     popover.popup();
 
     // HYLKI_SHOWCASE_MENU=main|<submenu label> captures the popover's page
@@ -175,6 +180,67 @@ pub fn show_context_menu_popover(
         }
     }
     popover
+}
+
+/// Close `popover` the way autohide would, which is off for it: on Esc, on a
+/// press anywhere else in the window, and when the window loses focus. The
+/// hooks come off again once the popover has closed.
+fn dismiss_on_outside_action(popover: &gtk::Popover, parent: &gtk::Widget) {
+    let key = gtk::EventControllerKey::new();
+    key.set_propagation_phase(gtk::PropagationPhase::Capture);
+    {
+        let weak = popover.downgrade();
+        key.connect_key_pressed(move |_, keyval, _, _| {
+            if keyval != gtk::gdk::Key::Escape {
+                return gtk::glib::Propagation::Proceed;
+            }
+            if let Some(p) = weak.upgrade() {
+                p.popdown();
+            }
+            gtk::glib::Propagation::Stop
+        });
+    }
+    popover.add_controller(key);
+
+    let Some(root) = parent.root() else { return };
+    let root_widget: gtk::Widget = root.clone().upcast();
+
+    // Presses inside the popover go to its own surface, so any press the
+    // window sees is an outside one. It is not claimed: the click still acts.
+    let press = gtk::GestureClick::new();
+    press.set_button(0);
+    press.set_propagation_phase(gtk::PropagationPhase::Capture);
+    {
+        let weak = popover.downgrade();
+        press.connect_pressed(move |_, _, _, _| {
+            if let Some(p) = weak.upgrade() {
+                p.popdown();
+            }
+        });
+    }
+    root_widget.add_controller(press.clone());
+
+    let window_handler = root.downcast::<gtk::Window>().ok().map(|window| {
+        let weak = popover.downgrade();
+        let id = window.connect_is_active_notify(move |w| {
+            if w.is_active() {
+                return;
+            }
+            if let Some(p) = weak.upgrade() {
+                p.popdown();
+            }
+        });
+        (window, id)
+    });
+
+    let cleanup = std::cell::RefCell::new(Some((root_widget, press, window_handler)));
+    popover.connect_closed(move |_| {
+        let Some((root_widget, press, window_handler)) = cleanup.borrow_mut().take() else { return };
+        root_widget.remove_controller(&press);
+        if let Some((window, id)) = window_handler {
+            window.disconnect(id);
+        }
+    });
 }
 
 /// Room left between a menu and the window's edges.

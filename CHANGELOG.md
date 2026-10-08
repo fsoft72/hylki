@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- **Fixed: a menu closed when a submenu row was clicked.** On X11, clicking
+  **Tags** (or any other submenu) in a context menu shut the whole menu
+  instead of opening the submenu, because GTK's autohide deactivated the
+  window on the press. Context menus now close by hand: on Esc, on a click
+  elsewhere in the window, or when the window loses focus.
 - **Fixed: the search scope picker could not be opened.** Clicking **All
   folders** next to an empty search field closed the search instead of
   opening the list, because the field lost focus. The search (and Find in
