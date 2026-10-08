@@ -41,8 +41,10 @@ The full list. The [README](../README.md) carries a shorter one.
   and hide the ones you never open. An Exchange server's calendar, contacts
   and task folders are hidden from the start.
 - **Filters:** multi-condition rules on sender, recipient, subject, body and
-  Reply-To, with comma-separated alternatives; they tag mail, file it away, or
-  both, and can be run over mail that is already in a folder.
+  Reply-To, with comma-separated alternatives, or on whether the sender is in
+  your Contacts (the system address books and the Hylki book, not addresses
+  collected from mail); they tag mail, file it away, or both, and can be run
+  over mail that is already in a folder.
 - **Tags:** IMAP keywords, Graph categories, or a local fallback where the
   server has neither; custom colours, drag to reorder, and number-key
   shortcuts.
