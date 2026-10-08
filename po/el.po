@@ -2074,6 +2074,34 @@ msgstr "Λογαριασμός IMAP/POP3 στο {host}"
 msgid "Mail account"
 msgstr "Λογαριασμός αλληλογραφίας"
 
+#, fuzzy
+msgid "From address"
+msgstr "Πληκτρολογήστε μια διεύθυνση αποστολέα"
+
+#, fuzzy
+msgid "From name"
+msgstr "Όνομα"
+
+#, fuzzy
+msgid "To or Cc"
+msgstr " ή "
+
+#, fuzzy
+msgid "Reply-To address"
+msgstr "Απάντηση προς"
+
+#, fuzzy
+msgid "Message body"
+msgstr "Γραμματοσειρά μηνυμάτων"
+
+#, fuzzy
+msgid "Sender is in Contacts"
+msgstr "Προσθήκη αποστολέα στις επαφές"
+
+#, fuzzy
+msgid "Sender is not in Contacts"
+msgstr "Προσθήκη αποστολέα στις επαφές"
+
 #. Every condition, joined the way the rule combines them (#192).
 msgid " or "
 msgstr " ή "
@@ -2187,6 +2215,9 @@ msgstr "Η αναζήτηση γίνεται στον διακομιστή· δ�
 
 msgid "From address when no Reply-To is set"
 msgstr "Διεύθυνση αποστολέα όταν δεν έχει οριστεί Reply-To"
+
+msgid "Looks in the system address books and the Hylki book"
+msgstr ""
 
 msgid "Add Condition"
 msgstr "Προσθήκη συνθήκης"

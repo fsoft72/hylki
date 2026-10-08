@@ -1871,6 +1871,27 @@ msgstr ""
 msgid "Mail account"
 msgstr ""
 
+msgid "From address"
+msgstr ""
+
+msgid "From name"
+msgstr ""
+
+msgid "To or Cc"
+msgstr ""
+
+msgid "Reply-To address"
+msgstr ""
+
+msgid "Message body"
+msgstr ""
+
+msgid "Sender is in Contacts"
+msgstr ""
+
+msgid "Sender is not in Contacts"
+msgstr ""
+
 #. Every condition, joined the way the rule combines them (#192).
 msgid " or "
 msgstr ""
@@ -1973,6 +1994,9 @@ msgid "Searched on the server; nothing is downloaded"
 msgstr ""
 
 msgid "From address when no Reply-To is set"
+msgstr ""
+
+msgid "Looks in the system address books and the Hylki book"
 msgstr ""
 
 msgid "Add Condition"

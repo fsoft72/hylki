@@ -2088,6 +2088,34 @@ msgstr "Konto IMAP/POP3 na serwerze {host}"
 msgid "Mail account"
 msgstr "Konto pocztowe"
 
+#, fuzzy
+msgid "From address"
+msgstr "Adres e-mail"
+
+#, fuzzy
+msgid "From name"
+msgstr "Imię"
+
+#, fuzzy
+msgid "To or Cc"
+msgstr " lub "
+
+#, fuzzy
+msgid "Reply-To address"
+msgstr "Odpowiedź do"
+
+#, fuzzy
+msgid "Message body"
+msgstr "Czcionka wiadomości"
+
+#, fuzzy
+msgid "Sender is in Contacts"
+msgstr "Dodaj nadawcę do kontaktów"
+
+#, fuzzy
+msgid "Sender is not in Contacts"
+msgstr "Dodaj nadawcę do kontaktów"
+
 #. Every condition, joined the way the rule combines them (#192).
 msgid " or "
 msgstr " lub "
@@ -2201,6 +2229,9 @@ msgstr "Wyszukiwane na serwerze; nic nie jest pobierane"
 
 msgid "From address when no Reply-To is set"
 msgstr "Adres nadawcy, jeśli nie ustawiono nagłówka Reply-To"
+
+msgid "Looks in the system address books and the Hylki book"
+msgstr ""
 
 msgid "Add Condition"
 msgstr "Dodaj warunek"

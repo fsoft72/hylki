@@ -2059,6 +2059,34 @@ msgstr "Conta IMAP/POP3 em {host}"
 msgid "Mail account"
 msgstr "Conta de correio"
 
+#, fuzzy
+msgid "From address"
+msgstr "Introduzir um endereço no campo De"
+
+#, fuzzy
+msgid "From name"
+msgstr "Nome próprio"
+
+#, fuzzy
+msgid "To or Cc"
+msgstr " ou "
+
+#, fuzzy
+msgid "Reply-To address"
+msgstr "Responder a"
+
+#, fuzzy
+msgid "Message body"
+msgstr "Tipo de letra das mensagens"
+
+#, fuzzy
+msgid "Sender is in Contacts"
+msgstr "Adicionar remetente aos contactos"
+
+#, fuzzy
+msgid "Sender is not in Contacts"
+msgstr "Adicionar remetente aos contactos"
+
 #. Every condition, joined the way the rule combines them (#192).
 msgid " or "
 msgstr " ou "
@@ -2172,6 +2200,9 @@ msgstr "Pesquisa no servidor; nada é transferido"
 
 msgid "From address when no Reply-To is set"
 msgstr "Endereço do remetente quando Responder a não está definido"
+
+msgid "Looks in the system address books and the Hylki book"
+msgstr ""
 
 msgid "Add Condition"
 msgstr "Adicionar condição"

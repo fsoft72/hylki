@@ -4885,16 +4885,18 @@ impl AccountsWindow {
     /// Human labels for the filter enums, shared by rows and the dialog.
     fn field_label(f: crate::config::FilterField) -> String {
         use crate::config::FilterField::*;
-        i18n(match f {
-            FromAddress => "From address",
-            FromName => "From name",
-            Subject => "Subject",
-            Recipients => "To or Cc",
-            ReplyTo => "Reply-To address",
-            Body => "Message body",
-            FromInContacts => "Sender is in Contacts",
-            FromNotInContacts => "Sender is not in Contacts",
-        })
+        // One i18n() call per label: the string extractor only sees literals
+        // written directly inside the call.
+        match f {
+            FromAddress => i18n("From address"),
+            FromName => i18n("From name"),
+            Subject => i18n("Subject"),
+            Recipients => i18n("To or Cc"),
+            ReplyTo => i18n("Reply-To address"),
+            Body => i18n("Message body"),
+            FromInContacts => i18n("Sender is in Contacts"),
+            FromNotInContacts => i18n("Sender is not in Contacts"),
+        }
     }
     fn match_label(m: crate::config::FilterMatch) -> String {
         use crate::config::FilterMatch::*;

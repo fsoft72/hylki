@@ -2067,6 +2067,32 @@ msgstr "Compte IMAP/POP3 sur {host}"
 msgid "Mail account"
 msgstr "Compte e-mail"
 
+msgid "From address"
+msgstr "Adresse de l'expéditeur"
+
+msgid "From name"
+msgstr "Nom de l'expéditeur"
+
+#, fuzzy
+msgid "To or Cc"
+msgstr " ou "
+
+#, fuzzy
+msgid "Reply-To address"
+msgstr "Répondre à"
+
+#, fuzzy
+msgid "Message body"
+msgstr "Police du message"
+
+#, fuzzy
+msgid "Sender is in Contacts"
+msgstr "Ajouter l'expéditeur aux contacts"
+
+#, fuzzy
+msgid "Sender is not in Contacts"
+msgstr "Ajouter l'expéditeur aux contacts"
+
 #. Every condition, joined the way the rule combines them (#192).
 msgid " or "
 msgstr " ou "
@@ -2180,6 +2206,9 @@ msgstr "Recherché sur le serveur ; rien n'est téléchargé"
 
 msgid "From address when no Reply-To is set"
 msgstr "Adresse d'expéditeur utilisée en l'absence de Reply-To"
+
+msgid "Looks in the system address books and the Hylki book"
+msgstr ""
 
 msgid "Add Condition"
 msgstr "Ajouter une condition"
@@ -6925,12 +6954,6 @@ msgstr "Hyprlab"
 #~ msgstr ""
 #~ "Où classer les e-mails correspondants ; ou les laisser dans la boîte de "
 #~ "réception et se contenter de les marquer"
-
-#~ msgid "From address"
-#~ msgstr "Adresse de l'expéditeur"
-
-#~ msgid "From name"
-#~ msgstr "Nom de l'expéditeur"
 
 #~ msgid "contains"
 #~ msgstr "contient"
