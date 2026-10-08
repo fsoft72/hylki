@@ -536,6 +536,13 @@ fn vcard_display_name(vcard: &str) -> Option<String> {
 /// form and the conventional `PHOTO;ENCODING=b` form. Remote PHOTO URLs are
 /// deliberately not fetched, both for privacy and to avoid tracking.
 fn vcard_photo(vcard: &str) -> Option<Vec<u8>> {
+    vcard_photo_with(vcard, true)
+}
+
+/// [`vcard_photo`], optionally refusing `file://` photos. The local Hylki book
+/// holds vCards from arbitrary `.vcf` files, which must not be able to point
+/// at files EDS keeps.
+pub(crate) fn vcard_photo_with(vcard: &str, allow_files: bool) -> Option<Vec<u8>> {
     use base64::Engine as _;
 
     const MAX_PHOTO_BYTES: usize = 2_000_000;
@@ -569,7 +576,7 @@ fn vcard_photo(vcard: &str) -> Option<Vec<u8>> {
             || property_upper.contains("ENCODING=BASE64")
         {
             value.as_str()
-        } else if value.to_ascii_lowercase().starts_with("file://") {
+        } else if allow_files && value.to_ascii_lowercase().starts_with("file://") {
             if let Some(bytes) = read_eds_photo_file(&value, MAX_PHOTO_BYTES) {
                 return Some(bytes);
             }
@@ -1311,7 +1318,7 @@ fn pretty_birthday(raw: &str) -> String {
 
 /// Parse the fields the Contacts view shows out of one vCard. Returns `None`
 /// for contact lists and entries with neither a name nor an address.
-fn parse_vcard_details(vcard: &str) -> Option<ContactDetails> {
+pub(crate) fn parse_vcard_details(vcard: &str) -> Option<ContactDetails> {
     let mut c = ContactDetails::default();
     for line in unfold_vcard(vcard).lines() {
         let Some((prop, raw_value)) = split_vcard_line(line) else { continue };
