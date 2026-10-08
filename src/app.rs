@@ -17964,7 +17964,9 @@ impl AppModel {
             css.push_str(&format!(
                 ".{class} {{ background-color: {color}; color: {text}; }} \
                  .{class} label {{ color: {text}; }} \
-                 .tag-tint.{class} {{ color: {color}; background-color: transparent; }}\n",
+                 .tag-tint.{class} {{ color: {color}; background-color: transparent; }} \
+                 .message-list > row:not(:selected) > .message-item.rowtint-{class}:not(.swiping) .message-row {{ background-color: alpha({color}, 0.18); }} \
+                 .message-list > row:hover:not(:selected) > .message-item.rowtint-{class}:not(.swiping) .message-row {{ background-color: alpha({color}, 0.28); }}\n",
                 color = t.color,
             ));
         }

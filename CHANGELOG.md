@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- **Added: tagged messages tint their row.** A message with at least one
+  tag now has a light wash of the tag's color behind its row in the message
+  list (the first tag in Settings order wins), light enough to keep the
+  sender and subject readable. Selection and hover keep their own look.
 - **Added: templates** (#360, requested by amadeusp). A Templates folder is
   now a special folder like Drafts and Sent: found by its name, or chosen
   under **Special Folders** in the account's settings, and listed after
