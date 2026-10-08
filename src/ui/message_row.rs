@@ -2455,7 +2455,7 @@ impl Row {
         let (start, top, valign) = if look.single_line {
             (12, 0, gtk::Align::Center)
         } else if look.avatars {
-            (5, 3, gtk::Align::Start)
+            (10, 5, gtk::Align::Start)
         } else {
             (11, 9, gtk::Align::Start)
         };
