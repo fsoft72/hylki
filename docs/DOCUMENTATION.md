@@ -419,6 +419,29 @@ of the generated one.
   empty. Link passwords and expiry dates are a paid Dropbox feature; on a
   Basic plan leave both off, or the share step reports it.
 
+### The Hylki address book
+
+Contacts can be kept in Hylki itself. The Contacts view lists a book called
+**Hylki** beside the address books Evolution Data Server (EDS) holds, and it
+is there even when EDS is not installed. Contacts in it are created, edited
+and deleted like any other, and its addresses and photos are used for
+suggestions and avatars. If EDS has a writable book, a new contact goes there
+first; the Hylki book is the default only when there is none.
+
+**Import contacts…**, in the Contacts view's header, reads `.vcf` files into
+the Hylki book. A file can hold many contacts, in vCard 2.1, 3.0 or 4.0. A
+contact with the same ID as one already in the book updates it, and one
+without an ID is matched by its content, so importing a file twice adds
+nothing new. Entries with neither a name nor an address, and mailing lists,
+are skipped; truncated or oversized entries (over 5 MB) are counted as
+damaged. Files over 50 MB are refused, and photos are used only when they are
+inside the file: nothing is fetched from the web. A person who is in both an
+EDS book and the Hylki book appears in each, with the book named, and once in
+the composer's suggestions.
+
+The book is the file `local_contacts.db` in Hylki's data folder, kept apart
+from the mail cache, so clearing the cache leaves it alone.
+
 ### LDAP directories
 
 Settings → LDAP Directories holds the directories the composer looks

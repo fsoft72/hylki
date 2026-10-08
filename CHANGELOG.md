@@ -81,6 +81,17 @@
   re-count them afterwards, in place of a STATUS command per folder first.
   Conversation badges are read from the cache on a connection of their own,
   and reading bodies from the mailbox already selected skips a SELECT each.
+- **Added: a Hylki address book, and importing vCard files.** Contacts can
+  now live in Hylki itself, in a book called **Hylki** that sits beside the
+  ones Evolution Data Server keeps, so the Contacts view works without GNOME
+  or EDS. Create, edit and delete work as for any other book, photos show as
+  avatars, and the addresses join the composer's suggestions. The
+  **Import contacts…** button in the Contacts view reads one or more `.vcf`
+  files (vCard 2.1, 3.0 or 4.0, many contacts per file) into it; importing a
+  file twice updates its contacts instead of adding them again. A person who
+  is in several books is listed in each, with the book named. The book is the
+  file `local_contacts.db` in Hylki's data folder, kept apart from the mail
+  cache so clearing the cache never touches it.
 - **Added: templates** (#360, requested by amadeusp). A Templates folder is
   now a special folder like Drafts and Sent: found by its name, or chosen
   under **Special Folders** in the account's settings, and listed after
