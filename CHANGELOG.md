@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+- **Added: filter on whether the sender is in Contacts.** A filter condition
+  can now be **Sender is in Contacts** or **Sender is not in Contacts**. It
+  looks the sender's address up in the system address books and in the Hylki
+  book, and takes no text. Books that fill themselves from mail (Collected
+  Addresses, Recently contacted, Other contacts) and the mail history used
+  for autocomplete are not counted. If the address books cannot be read or
+  are empty, neither condition matches, so no mail is filed as unknown by
+  mistake.
 - **Added: Microsoft sign-in on a managed device** (#329, requested by
   erenoglu). Where an organization's Conditional Access lets only a managed
   device sign in, Hylki asks Microsoft's identity broker

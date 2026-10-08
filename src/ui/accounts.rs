@@ -4892,6 +4892,8 @@ impl AccountsWindow {
             Recipients => "To or Cc",
             ReplyTo => "Reply-To address",
             Body => "Message body",
+            FromInContacts => "Sender is in Contacts",
+            FromNotInContacts => "Sender is not in Contacts",
         })
     }
     fn match_label(m: crate::config::FilterMatch) -> String {
@@ -4907,6 +4909,9 @@ impl AccountsWindow {
     /// One condition as the rule rows print it: `Subject contains “a, b”`.
     /// A body condition is always a "contains", whatever it stores (#191).
     fn condition_label(c: &crate::config::FilterCondition) -> String {
+        if c.field.is_contact_check() {
+            return Self::field_label(c.field);
+        }
         let matcher = if c.field == crate::config::FilterField::Body {
             crate::config::FilterMatch::Contains
         } else {
@@ -5560,19 +5565,26 @@ impl AccountsWindow {
                 }
                 let explain = {
                     let matcher = matcher.clone();
+                    let value = value.clone();
                     move |field: &adw::ComboRow| {
                         let chosen = FilterField::ALL.get(field.selected() as usize).copied();
                         let body = chosen == Some(FilterField::Body);
+                        let contacts = chosen.is_some_and(|f| f.is_contact_check());
                         if body {
                             matcher.set_selected(0);
                         }
-                        matcher.set_sensitive(!body);
+                        matcher.set_sensitive(!body && !contacts);
+                        matcher.set_visible(!contacts);
+                        value.set_visible(!contacts);
                         field.set_subtitle(&match chosen {
                             Some(FilterField::Body) => {
                                 i18n("Searched on the server; nothing is downloaded")
                             }
                             Some(FilterField::ReplyTo) => {
                                 i18n("From address when no Reply-To is set")
+                            }
+                            Some(f) if f.is_contact_check() => {
+                                i18n("Looks in the system address books and the Hylki book")
                             }
                             _ => String::new(),
                         });
@@ -5841,12 +5853,13 @@ impl AccountsWindow {
                 .borrow()
                 .iter()
                 .filter_map(|c| {
+                    let field = FilterField::ALL[c.field.selected() as usize % FilterField::ALL.len()];
                     let value = c.value.text().trim().to_string();
-                    if value.is_empty() {
+                    if value.is_empty() && !field.is_contact_check() {
                         return None;
                     }
                     Some(crate::config::FilterCondition {
-                        field: FilterField::ALL[c.field.selected() as usize % FilterField::ALL.len()],
+                        field,
                         matcher: FilterMatch::ALL[c.matcher.selected() as usize % FilterMatch::ALL.len()],
                         value,
                     })

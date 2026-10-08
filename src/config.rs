@@ -2062,17 +2062,31 @@ pub enum FilterField {
     /// too. Always a "contains" match, whatever the matcher says: that is
     /// the only search a server offers.
     Body,
+    /// The sender's address is in the address books: EDS and the local Hylki
+    /// book. Takes no text and ignores the matcher. Never matches while the
+    /// address books are unreadable or empty, so a book that failed to load
+    /// cannot make every sender look unknown.
+    FromInContacts,
+    /// The opposite of [`FilterField::FromInContacts`], with the same guard.
+    FromNotInContacts,
 }
 
 impl FilterField {
+    /// Whether the field needs no text and no matcher.
+    pub fn is_contact_check(self) -> bool {
+        matches!(self, FilterField::FromInContacts | FilterField::FromNotInContacts)
+    }
+
     /// Every field, in the order the editor lists them.
-    pub const ALL: [FilterField; 6] = [
+    pub const ALL: [FilterField; 8] = [
         FilterField::FromAddress,
         FilterField::FromName,
         FilterField::Subject,
         FilterField::Recipients,
         FilterField::ReplyTo,
         FilterField::Body,
+        FilterField::FromInContacts,
+        FilterField::FromNotInContacts,
     ];
 }
 
@@ -2107,6 +2121,9 @@ pub struct FilterInput<'a> {
     /// The body alternatives the server confirmed for this message (#191),
     /// lowercased as [`FilterCondition::alternatives`] hands them out.
     pub body_hits: &'a [String],
+    /// Lowercased addresses from the address books, or `None` when they are
+    /// unknown (unread, empty, or no rule asked for them).
+    pub contacts: Option<&'a std::collections::HashSet<String>>,
 }
 
 impl FilterCondition {
@@ -2123,6 +2140,11 @@ impl FilterCondition {
 
     /// Case-insensitive match against one message.
     pub fn matches(&self, input: &FilterInput) -> bool {
+        if self.field.is_contact_check() {
+            let Some(contacts) = input.contacts else { return false };
+            let known = contacts.contains(&input.from_addr.trim().to_lowercase());
+            return known == (self.field == FilterField::FromInContacts);
+        }
         let alts = Self::alternatives(&self.value);
         if alts.is_empty() {
             return false;
@@ -2142,7 +2164,9 @@ impl FilterCondition {
             FilterField::Recipients => input.recipients,
             FilterField::ReplyTo if input.reply_to.trim().is_empty() => input.from_addr,
             FilterField::ReplyTo => input.reply_to,
-            FilterField::Body => unreachable!(),
+            FilterField::Body | FilterField::FromInContacts | FilterField::FromNotInContacts => {
+                unreachable!()
+            }
         }
         .to_lowercase();
         // The recipients are a list. "Contains" reads it whole, names
@@ -2220,6 +2244,11 @@ impl FilterRule {
             .map(|c| format!("{:?} {:?} {}", c.field, c.matcher, c.value))
             .collect::<Vec<_>>()
             .join(if self.any { " or " } else { " and " })
+    }
+
+    /// Whether any condition looks the sender up in the address books.
+    pub fn needs_contacts(&self) -> bool {
+        self.conditions().iter().any(|c| c.field.is_contact_check())
     }
 
     /// The body alternatives this rule needs a server search for (#191).
@@ -4170,6 +4199,34 @@ mod filter_tests {
         assert!(!r.matches(&headers("x", "x", "x", "x")));
         let r = rule(FilterField::Subject, FilterMatch::Contains, " , ,");
         assert!(!r.matches(&headers("x", "x", "x", "x")));
+    }
+
+    #[test]
+    fn filters_check_the_sender_against_the_address_books() {
+        let book: std::collections::HashSet<String> =
+            ["ann@x.org".to_string()].into_iter().collect();
+        let with_book = |from_addr| FilterInput { from_addr, contacts: Some(&book), ..Default::default() };
+
+        let inside = rule(FilterField::FromInContacts, FilterMatch::Contains, "");
+        let outside = rule(FilterField::FromNotInContacts, FilterMatch::Contains, "");
+        assert!(inside.matches(&with_book("Ann@X.org ")));
+        assert!(!inside.matches(&with_book("bob@x.org")));
+        assert!(outside.matches(&with_book("bob@x.org")));
+        assert!(!outside.matches(&with_book("ann@x.org")));
+
+        // Unknown address books match neither way, so a book that failed to
+        // load cannot make every sender look unknown.
+        let none = FilterInput { from_addr: "bob@x.org", ..Default::default() };
+        assert!(!inside.matches(&none));
+        assert!(!outside.matches(&none));
+
+        // Combined with another condition, and reported to the caller.
+        let mut mixed = rule(FilterField::FromNotInContacts, FilterMatch::Contains, "");
+        mixed.more.push(cond(FilterField::Subject, FilterMatch::Contains, "sale"));
+        let input = FilterInput { from_addr: "bob@x.org", subject: "Big SALE", contacts: Some(&book), ..Default::default() };
+        assert!(mixed.matches(&input));
+        assert!(mixed.needs_contacts());
+        assert!(!rule(FilterField::Subject, FilterMatch::Contains, "x").needs_contacts());
     }
 
     #[test]

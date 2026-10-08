@@ -139,6 +139,27 @@ fn config_dir() -> Option<PathBuf> {
 
 /// Read every address email from the local + cached (CardDAV) EDS books.
 pub fn read_contacts() -> Vec<Contact> {
+    read_contacts_from(false)
+}
+
+/// Like [`read_contacts`], but only the contacts someone saved: the books
+/// that fill themselves from mail ("Collected Addresses", "Recently
+/// contacted", "Other contacts") are left out, so a filter on "sender is in
+/// Contacts" does not trust an address just because you once mailed it.
+pub fn read_saved_contacts() -> Vec<Contact> {
+    read_contacts_from(true)
+}
+
+/// Whether a book fills itself from mail rather than being kept by hand.
+/// Judged by the source UID and display name, the only trace EDS leaves.
+fn is_auto_collected(uid: &str, name: &str) -> bool {
+    const MARKERS: [&str; 3] = ["collected", "recently contacted", "other contacts"];
+    let (uid, name) = (uid.to_lowercase(), name.to_lowercase());
+    MARKERS.iter().any(|m| uid.contains(m) || name.contains(m))
+}
+
+/// Shared body of [`read_contacts`] and [`read_saved_contacts`].
+fn read_contacts_from(saved_only: bool) -> Vec<Contact> {
     let mut out = Vec::new();
     let mut seen: HashSet<String> = HashSet::new();
 
@@ -148,7 +169,7 @@ pub fn read_contacts() -> Vec<Contact> {
     let active = registry_books();
     if let Some(dir) = data_dir() {
         for db in find_dbs(&dir, "contacts.db") {
-            if !db_book_active(&db, &active) {
+            if !db_book_wanted(&db, &active, saved_only) {
                 continue;
             }
             read_book_db(
@@ -163,7 +184,7 @@ pub fn read_contacts() -> Vec<Contact> {
     // Cached books (CardDAV etc.): table `ECacheObjects` + `attrlist_email_list`.
     if let Some(dir) = cache_dir() {
         for db in find_dbs(&dir, "cache.db") {
-            if !db_book_active(&db, &active) {
+            if !db_book_wanted(&db, &active, saved_only) {
                 continue;
             }
             read_book_db(
@@ -243,14 +264,19 @@ fn local_details() -> Vec<ContactDetails> {
     }
 }
 
-/// `book_uid_active` keyed off a book database's directory name.
-fn db_book_active(db: &std::path::Path, active: &Option<HashMap<String, String>>) -> bool {
+/// `book_uid_active` keyed off a book database's directory name, minus the
+/// auto-collected books when `saved_only` is set.
+fn db_book_wanted(db: &std::path::Path, active: &Option<HashMap<String, String>>, saved_only: bool) -> bool {
     let Some(folder) = db.parent().and_then(|p| p.file_name()) else {
         return true;
     };
     let folder = folder.to_string_lossy();
     let uid = if folder == "system" { "system-address-book" } else { folder.as_ref() };
-    book_uid_active(uid, active)
+    if !book_uid_active(uid, active) {
+        return false;
+    }
+    let name = active.as_ref().and_then(|m| m.get(uid)).map_or("", String::as_str);
+    !(saved_only && is_auto_collected(uid, name))
 }
 
 /// Photo bytes and the EDS database state they came from. The inexpensive
@@ -1996,6 +2022,16 @@ mod tests {
 
     fn card(name: &str, email: &str) -> String {
         format!("BEGIN:VCARD\r\nVERSION:3.0\r\nUID:{name}\r\nFN:{name}\r\nEMAIL:{email}\r\nEND:VCARD\r\n")
+    }
+
+    #[test]
+    fn books_that_fill_themselves_from_mail_are_spotted() {
+        assert!(super::is_auto_collected("contact-collected", ""));
+        assert!(super::is_auto_collected("x1", "Collected Addresses"));
+        assert!(super::is_auto_collected("x2", "CardDAV \u{2014} alice · Recently contacted"));
+        assert!(super::is_auto_collected("x3", "Google \u{2014} me@gmail.com · Other contacts"));
+        assert!(!super::is_auto_collected("system-address-book", "On This Computer"));
+        assert!(!super::is_auto_collected("x4", "CardDAV \u{2014} alice · Contacts"));
     }
 
     #[test]

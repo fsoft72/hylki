@@ -19355,6 +19355,18 @@ impl AppModel {
             Vec::new()
         };
         let hits = self.body_hits.get(&(account_id, folder_id));
+        // The address books are read once per pass, and only when a rule asks
+        // for them. An empty read counts as unknown: see FilterField::FromInContacts.
+        let contacts: Option<HashSet<String>> = rules
+            .iter()
+            .any(|r| r.needs_contacts())
+            .then(|| {
+                crate::contacts::read_saved_contacts()
+                    .into_iter()
+                    .map(|c| c.email.trim().to_lowercase())
+                    .collect::<HashSet<String>>()
+            })
+            .filter(|set| !set.is_empty());
         for mut m in messages {
             if own.iter().any(|a| a.eq_ignore_ascii_case(&m.from_addr)) {
                 kept.push(m);
@@ -19376,6 +19388,7 @@ impl AppModel {
                 // preview is what a sync brings for every message.
                 body: if m.body.is_empty() { &m.preview } else { &m.body },
                 body_hits,
+                contacts: contacts.as_ref(),
             };
             let matching: Vec<&&config::FilterRule> = rules
                 .iter()
