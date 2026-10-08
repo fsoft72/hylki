@@ -1120,13 +1120,9 @@ impl SimpleComponent for MessageList {
                         // Leaving an empty entry closes too.
                         add_controller = gtk::EventControllerFocus {
                             connect_leave[sender] => move |ctl| {
-                                let empty = ctl
-                                    .widget()
-                                    .and_downcast_ref::<gtk::SearchEntry>()
-                                    .is_some_and(|e| e.text().trim().is_empty());
-                                if empty {
-                                    sender.input(MessageListInput::CloseSearch);
-                                }
+                                let Some(entry) = ctl.widget().and_downcast::<gtk::SearchEntry>() else { return };
+                                let sender = sender.clone();
+                                crate::ui::close_if_focus_left_row(&entry, move || sender.input(MessageListInput::CloseSearch));
                             },
                         },
                     },

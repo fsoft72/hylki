@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- **Fixed: the search scope picker could not be opened.** Clicking **All
+  folders** next to an empty search field closed the search instead of
+  opening the list, because the field lost focus. The search (and Find in
+  message) now stay open while focus moves to something else in their own
+  row, such as the scope picker or its popup.
 - **Added: tagged messages tint their row.** A message with at least one
   tag now has a light wash of the tag's color behind its row in the message
   list (the first tag in Settings order wins), light enough to keep the

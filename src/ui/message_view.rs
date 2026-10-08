@@ -1759,13 +1759,9 @@ impl Component for MessageView {
                             },
                             add_controller = gtk::EventControllerFocus {
                                 connect_leave[sender] => move |ctl| {
-                                    let empty = ctl
-                                        .widget()
-                                        .and_downcast_ref::<gtk::SearchEntry>()
-                                        .is_some_and(|e| e.text().trim().is_empty());
-                                    if empty {
-                                        sender.input(MessageViewInput::CloseFind);
-                                    }
+                                    let Some(entry) = ctl.widget().and_downcast::<gtk::SearchEntry>() else { return };
+                                    let sender = sender.clone();
+                                    crate::ui::close_if_focus_left_row(&entry, move || sender.input(MessageViewInput::CloseFind));
                                 },
                             },
                         },
