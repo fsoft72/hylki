@@ -3710,6 +3710,16 @@ msgstr ""
 "formátumban, a feladó által megadott elrendezés, színek és betűtípusok "
 "nélkül."
 
+msgid "Light / Dark Mode"
+msgstr "Világos / sötét mód"
+
+msgid ""
+"Shows this message dark or light, whatever the message theme. Other "
+"messages are not affected."
+msgstr ""
+"Ezt az üzenetet sötéten vagy világosan jeleníti meg, az üzenettémától "
+"függetlenül. A többi üzenetet nem érinti."
+
 msgid "Reader View"
 msgstr "Olvasó nézet"
 

@@ -3747,6 +3747,16 @@ msgstr ""
 "Widok czytania wyświetla samą treść wiadomości w jednolitym formacie, bez "
 "układu, kolorów i czcionek nadawcy."
 
+msgid "Light / Dark Mode"
+msgstr "Tryb jasny / ciemny"
+
+msgid ""
+"Shows this message dark or light, whatever the message theme. Other "
+"messages are not affected."
+msgstr ""
+"Wyświetla tę wiadomość w trybie ciemnym lub jasnym, niezależnie od "
+"motywu wiadomości. Nie wpływa na inne wiadomości."
+
 msgid "Reader View"
 msgstr "Widok czytania"
 

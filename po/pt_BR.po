@@ -3678,6 +3678,16 @@ msgstr ""
 "O Modo de leitura mostra apenas o texto da mensagem, em um único formato "
 "simples, sem o layout, as cores e as fontes do remetente."
 
+msgid "Light / Dark Mode"
+msgstr "Modo claro / escuro"
+
+msgid ""
+"Shows this message dark or light, whatever the message theme. Other "
+"messages are not affected."
+msgstr ""
+"Mostra esta mensagem escura ou clara, independentemente do tema das "
+"mensagens. As outras mensagens não são afetadas."
+
 msgid "Reader View"
 msgstr "Modo de leitura"
 

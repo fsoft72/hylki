@@ -3706,6 +3706,16 @@ msgstr ""
 "en forme unique et sobre, sans la mise en page, les couleurs ni les polices "
 "de l'expéditeur."
 
+msgid "Light / Dark Mode"
+msgstr "Mode clair / sombre"
+
+msgid ""
+"Shows this message dark or light, whatever the message theme. Other "
+"messages are not affected."
+msgstr ""
+"Affiche ce message en sombre ou en clair, quel que soit le thème des "
+"messages. Les autres messages ne sont pas modifiés."
+
 msgid "Reader View"
 msgstr "Mode Lecture"
 

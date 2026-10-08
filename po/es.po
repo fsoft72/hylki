@@ -3697,6 +3697,16 @@ msgstr ""
 "La Vista de lectura muestra únicamente el texto del mensaje con un formato "
 "uniforme, sin el diseño, colores ni fuentes del remitente."
 
+msgid "Light / Dark Mode"
+msgstr "Modo claro / oscuro"
+
+msgid ""
+"Shows this message dark or light, whatever the message theme. Other "
+"messages are not affected."
+msgstr ""
+"Muestra este mensaje oscuro o claro, sea cual sea el tema de los "
+"mensajes. Los demás mensajes no se ven afectados."
+
 msgid "Reader View"
 msgstr "Vista de lectura"
 

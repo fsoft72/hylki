@@ -3731,6 +3731,16 @@ msgstr ""
 "Reader View zeigt eine Nachricht als Text allein, in einem einfachen Format, "
 "ohne das Layout, die Farben und die Schriftarten des Absenders."
 
+msgid "Light / Dark Mode"
+msgstr "Heller / Dunkler Modus"
+
+msgid ""
+"Shows this message dark or light, whatever the message theme. Other "
+"messages are not affected."
+msgstr ""
+"Zeigt diese Nachricht dunkel oder hell an, unabhängig vom "
+"Nachrichtendesign. Andere Nachrichten sind nicht betroffen."
+
 msgid "Reader View"
 msgstr "Leseansicht"
 

@@ -3683,6 +3683,16 @@ msgstr ""
 "Режим чтения отображает сообщение в виде чистого текста в едином простом "
 "формате, без оформления, цветов и шрифтов отправителя."
 
+msgid "Light / Dark Mode"
+msgstr "Светлый / тёмный режим"
+
+msgid ""
+"Shows this message dark or light, whatever the message theme. Other "
+"messages are not affected."
+msgstr ""
+"Показывает это сообщение в тёмном или светлом виде независимо от темы "
+"сообщений. Другие сообщения не затрагиваются."
+
 msgid "Reader View"
 msgstr "Режим чтения"
 

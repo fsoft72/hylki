@@ -3351,6 +3351,14 @@ msgid ""
 "the sender's layout, colors and fonts."
 msgstr ""
 
+msgid "Light / Dark Mode"
+msgstr ""
+
+msgid ""
+"Shows this message dark or light, whatever the message theme. Other "
+"messages are not affected."
+msgstr ""
+
 msgid "Reader View"
 msgstr ""
 
