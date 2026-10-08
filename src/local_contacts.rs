@@ -323,12 +323,7 @@ pub fn decode_text(bytes: &[u8]) -> Result<String, String> {
     }
 }
 
-/// Import the vCards found in `text` into the local book, in one transaction.
-pub fn import_text(text: &str) -> Result<ImportOutcome, String> {
-    import_text_into(&mut Store::open()?, text)
-}
-
-/// [`import_text`] against an already open store.
+/// Import the vCards found in `text` into the store, in one transaction.
 fn import_text_into(store: &mut Store, text: &str) -> Result<ImportOutcome, String> {
     let (blocks, truncated) = split_vcards(text);
     let mut out = store.upsert_all(&blocks)?;

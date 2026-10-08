@@ -72,6 +72,8 @@ pub enum ContactsPageInput {
     EditIndex(usize),
     /// The header's "+": a blank editor for a new contact.
     NewContact,
+    /// The header's import button: choose `.vcf` files for the Hylki book.
+    ImportContacts,
     CancelEdit,
     SaveEdit,
     OpenInGnome(usize),
@@ -93,6 +95,8 @@ pub enum ContactsPageOutput {
     CreateContact { vcard: String },
     /// Delete, already confirmed by the user.
     DeleteContact { book_uid: String, uid: String },
+    /// `.vcf` files chosen for import into the local Hylki book.
+    ImportContacts(Vec<std::path::PathBuf>),
     /// Show the contact's photo in the app lightbox.
     ShowPhoto { name: String, data: Vec<u8> },
 }
@@ -140,6 +144,12 @@ impl Component for ContactsPage {
                         set_tooltip_text: Some(i18n("New contact").as_str()),
                         add_css_class: "flat",
                         connect_clicked => ContactsPageInput::NewContact,
+                    },
+                    pack_end = &gtk::Button {
+                        set_icon_name: "document-open-symbolic",
+                        set_tooltip_text: Some(i18n("Import contacts…").as_str()),
+                        add_css_class: "flat",
+                        connect_clicked => ContactsPageInput::ImportContacts,
                     },
                 },
 
@@ -240,6 +250,12 @@ impl Component for ContactsPage {
                             set_tooltip_text: Some(i18n("New contact").as_str()),
                             add_css_class: "flat",
                             connect_clicked => ContactsPageInput::NewContact,
+                        },
+                        pack_end = &gtk::Button {
+                            set_icon_name: "document-open-symbolic",
+                            set_tooltip_text: Some(i18n("Import contacts…").as_str()),
+                            add_css_class: "flat",
+                            connect_clicked => ContactsPageInput::ImportContacts,
                         },
                     },
 
@@ -483,6 +499,37 @@ impl Component for ContactsPage {
                 self.editing_target = None;
                 widgets.page_stack.set_visible_child_name("browser");
                 self.render_editor(widgets, &sender);
+            }
+
+            ContactsPageInput::ImportContacts => {
+                let dialog = gtk::FileDialog::builder().title(&i18n("Import Contacts")).build();
+                let filter = gtk::FileFilter::new();
+                filter.set_name(Some(&i18n("vCard files")));
+                filter.add_pattern("*.vcf");
+                filter.add_pattern("*.vcard");
+                filter.add_mime_type("text/vcard");
+                filter.add_mime_type("text/x-vcard");
+                let filters = gtk::gio::ListStore::new::<gtk::FileFilter>();
+                filters.append(&filter);
+                let any = gtk::FileFilter::new();
+                any.set_name(Some(&i18n("All files")));
+                any.add_pattern("*");
+                filters.append(&any);
+                dialog.set_filters(Some(&filters));
+                let parent = relm4::main_application().active_window();
+                let s = sender.clone();
+                dialog.open_multiple(parent.as_ref(), gtk::gio::Cancellable::NONE, move |res| {
+                    let Ok(files) = res else { return };
+                    let paths: Vec<std::path::PathBuf> = files
+                        .iter::<gtk::gio::File>()
+                        .flatten()
+                        .filter_map(|f| f.path())
+                        .collect();
+                    if paths.is_empty() {
+                        return;
+                    }
+                    let _ = s.output(ContactsPageOutput::ImportContacts(paths));
+                });
             }
 
             ContactsPageInput::CancelEdit => {

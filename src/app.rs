@@ -1809,6 +1809,10 @@ pub enum AppMsg {
     DeleteContact { book_uid: String, uid: String },
     /// A contact write finished (`Some` = the error to show).
     ContactWriteDone(Option<String>),
+    /// `.vcf` files chosen in the Contacts page, to import into the Hylki book.
+    ImportContacts(Vec<std::path::PathBuf>),
+    /// The import finished.
+    ContactsImported(Result<crate::local_contacts::ImportOutcome, String>),
 }
 
 #[relm4::component(pub)]
@@ -2836,6 +2840,7 @@ impl SimpleComponent for AppModel {
                     ContactsPageOutput::DeleteContact { book_uid, uid } => {
                         AppMsg::DeleteContact { book_uid, uid }
                     }
+                    ContactsPageOutput::ImportContacts(paths) => AppMsg::ImportContacts(paths),
                     ContactsPageOutput::ShowPhoto { name, data } => {
                         // The lightbox routes by extension — a bare contact
                         // name sent the JPEG down the PDF path, where poppler
@@ -10871,11 +10876,60 @@ impl SimpleComponent for AppModel {
                 });
             }
 
+            AppMsg::ImportContacts(paths) => {
+                let s = sender.clone();
+                std::thread::spawn(move || {
+                    s.input(AppMsg::ContactsImported(crate::contacts::import_vcf_files(&paths)));
+                });
+            }
+
+            AppMsg::ContactsImported(result) => {
+                let (text, error) = match &result {
+                    Err(e) => (i18n_f("Could not import contacts: {e}", &[("e", e)]), true),
+                    Ok(o) => import_summary(o),
+                };
+                self.notifications.emit(NotifyInput::Push { text, error, connectivity: false });
+                if let Ok(o) = &result {
+                    if !o.failed_files.is_empty() {
+                        self.notifications.emit(NotifyInput::Push {
+                            text: i18n_f(
+                                "Could not read: {files}",
+                                &[("files", &o.failed_files.join("; "))],
+                            ),
+                            error: true,
+                            connectivity: false,
+                        });
+                    }
+                }
+                let s = sender.clone();
+                std::thread::spawn(move || {
+                    s.input(AppMsg::ContactsLoaded(crate::contacts::read_contact_details()));
+                });
+            }
+
             // The rest of Preferences' outputs are mapped to their own
             // messages before they get here.
             AppMsg::Pref(_) => {}
         }
     }
+}
+
+/// The notification text for a finished contacts import, and whether it is an error.
+fn import_summary(o: &crate::local_contacts::ImportOutcome) -> (String, bool) {
+    if o.added + o.updated == 0 {
+        return (i18n("No contacts were found in the selected files"), o.errors > 0);
+    }
+    let mut text = i18n_f(
+        "Imported {added} new and {updated} updated contacts",
+        &[("added", &o.added.to_string()), ("updated", &o.updated.to_string())],
+    );
+    if o.skipped + o.errors > 0 {
+        text.push_str(&i18n_f(
+            " ({skipped} skipped, {errors} damaged)",
+            &[("skipped", &o.skipped.to_string()), ("errors", &o.errors.to_string())],
+        ));
+    }
+    (text, false)
 }
 
 /// How long a conversation waits for its outstanding bodies before painting what
