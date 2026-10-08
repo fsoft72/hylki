@@ -4900,12 +4900,12 @@ impl AccountsWindow {
     }
     fn match_label(m: crate::config::FilterMatch) -> String {
         use crate::config::FilterMatch::*;
-        i18n(match m {
-            Contains => "contains",
-            Equals => "is exactly",
-            StartsWith => "starts with",
-            EndsWith => "ends with",
-        })
+        match m {
+            Contains => i18n("contains"),
+            Equals => i18n("is exactly"),
+            StartsWith => i18n("starts with"),
+            EndsWith => i18n("ends with"),
+        }
     }
 
     /// One condition as the rule rows print it: `Subject contains “a, b”`.

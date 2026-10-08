@@ -2078,6 +2078,18 @@ msgstr "Feladó hozzáadása a névjegyekhez"
 msgid "Sender is not in Contacts"
 msgstr "Feladó hozzáadása a névjegyekhez"
 
+msgid "contains"
+msgstr "tartalmazza"
+
+msgid "is exactly"
+msgstr "pontosan ez"
+
+msgid "starts with"
+msgstr "ezzel kezdődik"
+
+msgid "ends with"
+msgstr "ezzel végződik"
+
 #. Every condition, joined the way the rule combines them (#192).
 msgid " or "
 msgstr " vagy "
@@ -6920,18 +6932,6 @@ msgstr "Hyprlab"
 #~ msgstr ""
 #~ "Az egyező levelek helye; vagy hagyja őket a Beérkezett üzenetek között, "
 #~ "és csak címkézze őket"
-
-#~ msgid "contains"
-#~ msgstr "tartalmazza"
-
-#~ msgid "is exactly"
-#~ msgstr "pontosan ez"
-
-#~ msgid "starts with"
-#~ msgstr "ezzel kezdődik"
-
-#~ msgid "ends with"
-#~ msgstr "ezzel végződik"
 
 #~ msgid "Send Now"
 #~ msgstr "Küldés most"

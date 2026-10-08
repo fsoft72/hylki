@@ -1892,6 +1892,18 @@ msgstr ""
 msgid "Sender is not in Contacts"
 msgstr ""
 
+msgid "contains"
+msgstr ""
+
+msgid "is exactly"
+msgstr ""
+
+msgid "starts with"
+msgstr ""
+
+msgid "ends with"
+msgstr ""
+
 #. Every condition, joined the way the rule combines them (#192).
 msgid " or "
 msgstr ""

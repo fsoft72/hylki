@@ -2076,6 +2076,20 @@ msgstr "Adicionar remetente aos contatos"
 msgid "Sender is not in Contacts"
 msgstr "Adicionar remetente aos contatos"
 
+#, fuzzy
+msgid "contains"
+msgstr "Contatos"
+
+msgid "is exactly"
+msgstr ""
+
+#, fuzzy
+msgid "starts with"
+msgstr "Reiniciar agora"
+
+msgid "ends with"
+msgstr ""
+
 #. Every condition, joined the way the rule combines them (#192).
 msgid " or "
 msgstr " ou "

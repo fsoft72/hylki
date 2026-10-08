@@ -2116,6 +2116,20 @@ msgstr "Dodaj nadawcę do kontaktów"
 msgid "Sender is not in Contacts"
 msgstr "Dodaj nadawcę do kontaktów"
 
+#, fuzzy
+msgid "contains"
+msgstr "Kontakty"
+
+msgid "is exactly"
+msgstr ""
+
+#, fuzzy
+msgid "starts with"
+msgstr "Uruchom ponownie teraz"
+
+msgid "ends with"
+msgstr ""
+
 #. Every condition, joined the way the rule combines them (#192).
 msgid " or "
 msgstr " lub "

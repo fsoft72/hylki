@@ -2102,6 +2102,20 @@ msgstr "Προσθήκη αποστολέα στις επαφές"
 msgid "Sender is not in Contacts"
 msgstr "Προσθήκη αποστολέα στις επαφές"
 
+#, fuzzy
+msgid "contains"
+msgstr "Επαφές"
+
+msgid "is exactly"
+msgstr ""
+
+#, fuzzy
+msgid "starts with"
+msgstr "Επανεκκίνηση τώρα"
+
+msgid "ends with"
+msgstr ""
+
 #. Every condition, joined the way the rule combines them (#192).
 msgid " or "
 msgstr " ή "

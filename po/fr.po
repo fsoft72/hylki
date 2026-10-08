@@ -2093,6 +2093,18 @@ msgstr "Ajouter l'expéditeur aux contacts"
 msgid "Sender is not in Contacts"
 msgstr "Ajouter l'expéditeur aux contacts"
 
+msgid "contains"
+msgstr "contient"
+
+msgid "is exactly"
+msgstr "est exactement"
+
+msgid "starts with"
+msgstr "commence par"
+
+msgid "ends with"
+msgstr "se termine par"
+
 #. Every condition, joined the way the rule combines them (#192).
 msgid " or "
 msgstr " ou "
@@ -6954,18 +6966,6 @@ msgstr "Hyprlab"
 #~ msgstr ""
 #~ "Où classer les e-mails correspondants ; ou les laisser dans la boîte de "
 #~ "réception et se contenter de les marquer"
-
-#~ msgid "contains"
-#~ msgstr "contient"
-
-#~ msgid "is exactly"
-#~ msgstr "est exactement"
-
-#~ msgid "starts with"
-#~ msgstr "commence par"
-
-#~ msgid "ends with"
-#~ msgstr "se termine par"
 
 #~ msgid "Send Now"
 #~ msgstr "Envoyer maintenant"

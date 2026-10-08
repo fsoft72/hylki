@@ -2080,6 +2080,18 @@ msgstr "Добавить отправителя в контакты"
 msgid "Sender is not in Contacts"
 msgstr "Добавить отправителя в контакты"
 
+msgid "contains"
+msgstr "содержит"
+
+msgid "is exactly"
+msgstr "совпадает с"
+
+msgid "starts with"
+msgstr "начинается с"
+
+msgid "ends with"
+msgstr "заканчивается на"
+
 #. Every condition, joined the way the rule combines them (#192).
 msgid " or "
 msgstr " или "
@@ -6860,18 +6872,6 @@ msgstr "Hyprlab"
 #~ msgstr ""
 #~ "Куда складывать подходящие письма; либо оставить во «Входящих» и только "
 #~ "присвоить метку"
-
-#~ msgid "contains"
-#~ msgstr "содержит"
-
-#~ msgid "is exactly"
-#~ msgstr "совпадает с"
-
-#~ msgid "starts with"
-#~ msgstr "начинается с"
-
-#~ msgid "ends with"
-#~ msgstr "заканчивается на"
 
 #~ msgid "Send Now"
 #~ msgstr "Отправить сейчас"
