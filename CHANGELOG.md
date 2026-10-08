@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- **Added: a clickable read / unread dot in the message list.** Every
+  message has a dot in the top-left corner of its row: green while the
+  message is unread, grey once it is read. Clicking the dot flips the state
+  without opening the message. Drafts have no dot.
 - **Added: templates** (#360, requested by amadeusp). A Templates folder is
   now a special folder like Drafts and Sent: found by its name, or chosen
   under **Special Folders** in the account's settings, and listed after

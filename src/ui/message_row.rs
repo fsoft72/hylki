@@ -1232,7 +1232,12 @@ pub struct RowWidgets {
     content: gtk::Box,
     avatar_revealer: gtk::Revealer,
     avatar: adw::Avatar,
+    /// The empty slot that keeps the dot's place in the row's flow.
     dot: gtk::Box,
+    /// The clickable read / unread mark floating over the pill's corner.
+    dot_btn: gtk::Button,
+    /// The mark's coloured disc: green unread, grey read.
+    dot_mark: gtk::Box,
     text: gtk::Box,
     /// The three-line card's first line, which the single-line layout
     /// borrows its widgets from (#334).
@@ -1467,6 +1472,11 @@ impl Row {
         }
         self.w.host.add_controller(drag);
 
+        // The read / unread dot toggles the state.
+        {
+            let toggle = on(|r| r.act(RowAction::ToggleRead));
+            self.w.dot_btn.connect_clicked(move |_| toggle());
+        }
         // The ⋯ and the palette.
         {
             let toggle = on(Row::toggle_palette);
@@ -1722,7 +1732,7 @@ impl Row {
         // the dot's ink changes, so text never jitters as mail is read.
         let unread = msg.unread || meta.unread;
         w.dot.set_valign(if look.avatars || single { gtk::Align::Center } else { gtk::Align::Start });
-        w.dot.set_opacity(if unread { 1.0 } else { 0.0 });
+        self.sync_dot(&data, &look, unread);
         w.text.set_valign(if look.avatars { gtk::Align::Center } else { gtk::Align::Start });
 
         w.name_col.set_visible(col(ListColumn::Sender));
@@ -2431,6 +2441,29 @@ impl Row {
         self.sync_palette_buttons();
     }
 
+    /// Colour and place the read / unread dot: green while unread, grey once
+    /// read, in the pill's top-left corner (over the row's left padding, so
+    /// the text never moves). A draft is neither, so it gets no dot.
+    fn sync_dot(&self, data: &RowData, look: &RowLook, unread: bool) {
+        let w = &self.w;
+        w.dot_btn.set_visible(!look.in_drafts);
+        w.dot_mark.set_css_classes(if unread { &["unread-dot"] } else { &["unread-dot", "read"] });
+        let tip = if data.msg.unread { i18n("Mark as read") } else { i18n("Mark as unread") };
+        w.dot_btn.set_tooltip_text(Some(tip.as_str()));
+        // Offsets are from the overlay edge: the pill's own margin (6px
+        // sides, 2px top; 1px on one line) plus the corner inset.
+        let (start, top, valign) = if look.single_line {
+            (12, 0, gtk::Align::Center)
+        } else if look.avatars {
+            (5, 3, gtk::Align::Start)
+        } else {
+            (11, 9, gtk::Align::Start)
+        };
+        w.dot_btn.set_margin_start(start);
+        w.dot_btn.set_margin_top(top);
+        w.dot_btn.set_valign(valign);
+    }
+
     /// Keep the built palette's state-carrying buttons in step with the
     /// message.
     fn sync_palette_buttons(&self) {
@@ -2847,7 +2880,7 @@ fn build_widgets() -> RowWidgets {
     content.append(&avatar_revealer);
 
     let dot = gtk::Box::new(gtk::Orientation::Horizontal, 0);
-    dot.add_css_class("unread-dot");
+    dot.add_css_class("unread-dot-slot");
     content.append(&dot);
 
     let text = gtk::Box::new(gtk::Orientation::Vertical, 2);
@@ -2988,6 +3021,19 @@ fn build_widgets() -> RowWidgets {
     node.set_valign(gtk::Align::Center);
     overlay.add_overlay(&node);
 
+    // The read / unread mark: a button, so a click toggles the state without
+    // selecting or opening the message (a button's click is consumed before
+    // the row's selection gesture).
+    let dot_mark = gtk::Box::new(gtk::Orientation::Horizontal, 0);
+    dot_mark.add_css_class("unread-dot");
+    let dot_btn = gtk::Button::new();
+    dot_btn.set_child(Some(&dot_mark));
+    dot_btn.add_css_class("flat");
+    dot_btn.add_css_class("unread-dot-btn");
+    dot_btn.set_halign(gtk::Align::Start);
+    dot_btn.set_valign(gtk::Align::Start);
+    overlay.add_overlay(&dot_btn);
+
     // The actions palette floats over the pill's bottom-left corner, opening
     // rightward from the ⋯ (#81). The holder has a FIXED width: overlay
     // children are re-allocated lazily, so one that grew with the slide
@@ -3059,6 +3105,8 @@ fn build_widgets() -> RowWidgets {
         avatar_revealer,
         avatar,
         dot,
+        dot_btn,
+        dot_mark,
         text,
         top,
         line,

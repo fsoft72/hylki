@@ -21968,7 +21968,9 @@ fn install_scheme_css(window: &impl IsA<gtk::Widget>) {
              .message-list:not(:focus-within):not(:backdrop) > row:selected .message-row label:not(.tag-chip) {{ \
                color: @window_fg_color; }}\
              .message-list:not(:focus-within):not(:backdrop) > row:selected .message-row .unread-dot {{ \
-               background: @accent_bg_color; }}\
+               background: @success_bg_color; }}\
+             .message-list:not(:focus-within):not(:backdrop) > row:selected .message-row .unread-dot.read {{ \
+               background: alpha(@window_fg_color, 0.3); }}\
              .message-list:not(:focus-within):not(:backdrop) > row:selected .message-row .thread-chip {{ \
                background: alpha(@window_fg_color, 0.1); }}\
              .message-list:not(:focus-within):not(:backdrop) > row:selected .message-row .thread-chip image {{ \

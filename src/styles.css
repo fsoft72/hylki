@@ -771,6 +771,9 @@ flowbox.attach-flow > flowboxchild {
 .message-list > row:selected .message-row .unread-dot {
   background: white;
 }
+.message-list > row:selected .message-row .unread-dot.read {
+  background: alpha(white, 0.4);
+}
 
 /* The thread chip inverts on the accent ground: white pill, accent text
    and caret — a grey chip would sink into the highlight. */
@@ -802,7 +805,7 @@ flowbox.attach-flow > flowboxchild {
   padding-bottom: 18px;
 }
 
-.message-row.no-avatar .unread-dot {
+.message-row.no-avatar .unread-dot-slot {
   margin-left: 1px;
   margin-right: -2px;
   /* Valign Start plus this nudge centres the 10px dot on the sender name's
@@ -827,7 +830,7 @@ flowbox.attach-flow > flowboxchild {
   padding: 5px 10px 5px 8px;
 }
 
-.message-row.single-line .unread-dot {
+.message-row.single-line .unread-dot-slot {
   margin: 0;
 }
 
@@ -1135,11 +1138,34 @@ flowbox.attach-flow > flowboxchild {
   font-weight: bold;
 }
 
+/* The in-flow slot only keeps the dot's room; the visible dot is the button
+   floating over the pill's corner. */
+.unread-dot-slot {
+  min-width: 10px;
+  min-height: 10px;
+}
+
+/* The read / unread mark: green while unread, grey once read, a click flips
+   it. The button is only a hit area around the disc. */
+.unread-dot-btn {
+  min-width: 0;
+  min-height: 0;
+  padding: 3px;
+  background: none;
+  box-shadow: none;
+  border: none;
+}
+.unread-dot-btn:hover .unread-dot {
+  opacity: 0.75;
+}
 .unread-dot {
   min-width: 10px;
   min-height: 10px;
   border-radius: 5px;
-  background: @accent_bg_color;
+  background: @success_bg_color;
+}
+.unread-dot.read {
+  background: alpha(@window_fg_color, 0.3);
 }
 
 .message-sender {
