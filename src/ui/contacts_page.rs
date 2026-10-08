@@ -78,6 +78,8 @@ pub enum ContactsPageInput {
     SaveEdit,
     OpenInGnome(usize),
     DeleteRequest(usize),
+    /// The Delete key on the list: ask to delete the contact shown.
+    DeleteSelected,
     DeleteConfirmed(usize),
     /// The card's photo was clicked: expand it in the app lightbox.
     OpenPhoto { name: String, data: Vec<u8> },
@@ -367,6 +369,22 @@ impl Component for ContactsPage {
         let widgets = view_output!();
         widgets.detail_overlay.add_overlay(&compose_slot);
 
+        // Delete on the list asks to remove the contact being looked at. The
+        // controller sits on the list, not the page, so Delete inside the
+        // search box or the editor still edits text.
+        {
+            let keys = gtk::EventControllerKey::new();
+            let s = sender.input_sender().clone();
+            keys.connect_key_pressed(move |_, keyval, _, _| {
+                if !matches!(keyval, gtk::gdk::Key::Delete | gtk::gdk::Key::KP_Delete) {
+                    return gtk::glib::Propagation::Proceed;
+                }
+                let _ = s.send(ContactsPageInput::DeleteSelected);
+                gtk::glib::Propagation::Stop
+            });
+            widgets.list.add_controller(keys);
+        }
+
         // The sort menu: a radio per order, mirroring the message list's
         // sort button.
         {
@@ -570,6 +588,16 @@ impl Component for ContactsPage {
             ContactsPageInput::OpenInGnome(idx) => {
                 if let Some(c) = self.contacts.get(idx) {
                     crate::ui::contacts_browser::launch_gnome_contacts_for(&c.eds_uid);
+                }
+            }
+
+            ContactsPageInput::DeleteSelected => {
+                // Not while an editor is open: that contact is being changed.
+                if self.editor.is_some() {
+                    return;
+                }
+                if let Some(idx) = self.selected {
+                    sender.input(ContactsPageInput::DeleteRequest(idx));
                 }
             }
 

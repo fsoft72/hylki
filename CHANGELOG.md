@@ -92,6 +92,9 @@
   is in several books is listed in each, with the book named. The book is the
   file `local_contacts.db` in Hylki's data folder, kept apart from the mail
   cache so clearing the cache never touches it.
+- **Added: Delete key in the Contacts view.** With the contact list focused,
+  Delete asks to remove the contact being shown, with the same confirmation
+  as the card's Delete button.
 - **Added: templates** (#360, requested by amadeusp). A Templates folder is
   now a special folder like Drafts and Sent: found by its name, or chosen
   under **Special Folders** in the account's settings, and listed after
