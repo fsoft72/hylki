@@ -28,3 +28,6 @@ cargo-sources.json
 co.hyprlab.Hylki.local.yml
 po/.build/
 __pycache__/
+
+# Local AI-assisted design notes (specs, plans)
+docs/superpowers/
