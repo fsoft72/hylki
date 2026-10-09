@@ -47,6 +47,12 @@
   tagging from the right-click menu included. Focus went back to the list
   as a whole, which moved to its first row; it now goes back to the row it
   came from, and the list stays where it was scrolled.
+- **Fixed: tags came and went in the Tags view**, most of all for iCloud.
+  The keyword check that runs with a tag view open trusted the server's
+  search, which on iCloud lags behind the tags just set, and took them off
+  until the folder's next sync put them back. Where the search and the
+  index disagree, the message's own flags now decide. A folder list fetched
+  just before a tag reached the server no longer takes it off the row.
 
 ## 1.43.1 — 2026-10-09
 

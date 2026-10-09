@@ -590,6 +590,10 @@ pub struct AppModel {
     /// ahead of the STORE still shows the old state; while an entry is
     /// young the app's own state for that message and folder wins over it.
     pending_seen: HashMap<(u32, String, u32), (bool, std::time::Instant)>,
+    /// (account, folder path, uid, lower-cased keyword) → (on, when sent):
+    /// the same for tags. A folder list fetched ahead of the STORE took a
+    /// tag just set off the row until the next sync put it back.
+    pending_tags: HashMap<(u32, String, u32, String), (bool, std::time::Instant, String)>,
     /// Folders (account, folder) whose server unread count arrived while a
     /// read mark or a move was on its way and was set aside: synced again
     /// once those are stored. The count may also have been the only word of
@@ -3084,6 +3088,7 @@ impl SimpleComponent for AppModel {
             related_ids: HashMap::new(),
             folder_unread: HashMap::new(),
             pending_seen: HashMap::new(),
+            pending_tags: HashMap::new(),
             dropped_unread: Default::default(),
             pending_moves: std::cell::RefCell::new(HashMap::new()),
             transfers: HashMap::new(),
@@ -10062,6 +10067,7 @@ impl SimpleComponent for AppModel {
                 // A list fetched ahead of a read mark still in the worker's
                 // queue shows the message unread again; keep the app's state.
                 let messages = self.apply_pending_seen(account_id, folder_id, messages);
+                let messages = self.apply_pending_tags(account_id, folder_id, messages);
                 // A message a move has just brought home arrives with a new
                 // UID — that is what a move does — which leaves its body filed
                 // under the id the old one became. Move the body across before
@@ -14496,6 +14502,34 @@ impl AppModel {
         messages
     }
 
+    /// [`apply_pending_seen`] for tags: a list fetched before a tag reached
+    /// the server keeps the tag as the user just set it.
+    fn apply_pending_tags(&mut self, account_id: u32, folder_id: u32, mut messages: Vec<Message>) -> Vec<Message> {
+        self.pending_tags.retain(|_, (_, at, _)| at.elapsed() < PENDING_SEEN_MAX);
+        if !self.pending_tags.keys().any(|(a, _, _, _)| *a == account_id) {
+            return messages;
+        }
+        let Some(path) = self
+            .folders
+            .get(&account_id)
+            .and_then(|fs| fs.iter().find(|f| f.id == folder_id))
+            .map(|f| f.path.clone())
+        else {
+            return messages;
+        };
+        for ((a, p, uid, _), (on, _, kw)) in &self.pending_tags {
+            if *a != account_id || *p != path {
+                continue;
+            }
+            for m in messages.iter_mut().filter(|m| m.uid == *uid) {
+                if m.has_keyword(kw) != *on {
+                    m.set_keyword(kw, *on);
+                }
+            }
+        }
+        messages
+    }
+
     /// Switch the message list to a folder: reset the view, show its cached
     /// messages instantly (if any), and kick off a background sync. Shared by the
     /// sidebar selection and the "open message from notification" flow.
@@ -18233,6 +18267,10 @@ impl AppModel {
             return;
         }
         let Some(path) = self.resolve_folder_path(m) else { return };
+        self.pending_tags.insert(
+            (m.account_id, path.clone(), m.uid, keyword.to_lowercase()),
+            (add, std::time::Instant::now(), keyword.to_string()),
+        );
         self.send_to(m.account_id, MailRequest::SetKeyword {
             path,
             uid: m.uid,
