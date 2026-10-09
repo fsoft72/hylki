@@ -102,6 +102,13 @@ shows. Want to join them? See [CONTRIBUTING.md](CONTRIBUTING.md).
 - [**Yo'av Moshe**](https://github.com/bjesus) ([#389](https://github.com/hyprlab/hylki/pull/389)):
   a test suite that no longer depends on the list-preview setting of the
   person running it.
+- [**Fabio Rotondo**](https://github.com/fsoft72) ([#379](https://github.com/hyprlab/hylki/pull/379),
+  [#380](https://github.com/hyprlab/hylki/pull/380), [#383](https://github.com/hyprlab/hylki/pull/383),
+  [#384](https://github.com/hyprlab/hylki/pull/384), [#386](https://github.com/hyprlab/hylki/pull/386)):
+  the Hylki address book with vCard import, filters on whether the sender is
+  in Contacts, the per-message Light / Dark Mode switch, tag-colored rows,
+  marking a message read from its unread dot, and a search that stays open
+  while its folder scope is picked.
 
 
 ## Reports, design and ideas
