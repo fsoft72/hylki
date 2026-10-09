@@ -252,6 +252,26 @@ msgstr "Δεν υπάρχει διαθέσιμο βιβλίο διευθύνσε
 msgid "Could not update contact: {e}"
 msgstr "Αδυναμία ενημέρωσης επαφής: {e}"
 
+#, fuzzy
+msgid "Could not import contacts: {e}"
+msgstr "Αδυναμία εισαγωγής λογαριασμού: {e}"
+
+#, fuzzy
+msgid "Could not read: {files}"
+msgstr "Δεν ήταν δυνατή η επανεκκίνηση των Αρχείων"
+
+#, fuzzy
+msgid "No contacts were found in the selected files"
+msgstr "Δεν βρέθηκε κλειδί σε αυτό το αρχείο."
+
+msgid ""
+"Contacts imported: {added} new, {updated} updated, {skipped} skipped, "
+"{errors} damaged"
+msgstr ""
+
+msgid "Contacts imported: {added} new, {updated} updated"
+msgstr ""
+
 msgid "Hide Status Bar"
 msgstr "Απόκρυψη γραμμής κατάστασης"
 
@@ -1041,6 +1061,9 @@ msgstr "Εύρεση"
 msgid "Print"
 msgstr "Εκτύπωση"
 
+msgid "Hylki"
+msgstr "Hylki"
+
 msgid "On This Computer"
 msgstr "Σε αυτόν τον υπολογιστή"
 
@@ -1060,6 +1083,22 @@ msgstr ""
 
 msgid "The directory did not accept the password."
 msgstr "Ο κατάλογος δεν αποδέχθηκε τον κωδικό πρόσβασης."
+
+msgid "A contact needs a name or an email address"
+msgstr ""
+
+msgid "The contact is too large"
+msgstr ""
+
+msgid "UTF-16 files are not supported"
+msgstr ""
+
+#, fuzzy
+msgid "The file is not a text file"
+msgstr "Αυτός ο φάκελος δεν υπάρχει στον διακομιστή"
+
+msgid "The file is larger than {size} MB"
+msgstr ""
 
 msgid "{used} of {limit} used"
 msgstr "Χρησιμοποιούνται {used} από {limit}"
@@ -2000,9 +2039,6 @@ msgstr ""
 
 msgid "GOA"
 msgstr "GOA"
-
-msgid "Hylki"
-msgstr "Hylki"
 
 msgid "Imported GNOME Online Account"
 msgstr "Εισηγμένος διαδικτυακός λογαριασμός GNOME"
@@ -3140,6 +3176,10 @@ msgstr "Άνοιγμα Επαφών GNOME"
 msgid "New contact"
 msgstr "Νέα επαφή"
 
+#, fuzzy
+msgid "Import contacts…"
+msgstr "Ταξινόμηση επαφών"
+
 msgid "Loading Contacts…"
 msgstr "Φόρτωση επαφών..."
 
@@ -3158,8 +3198,24 @@ msgstr "Όνομα"
 msgid "Last name"
 msgstr "Επώνυμο"
 
+#, fuzzy
+msgid "Import Contacts"
+msgstr "Ταξινόμηση επαφών"
+
+#, fuzzy
+msgid "vCard files"
+msgstr "Μεγάλα αρχεία"
+
+msgid "All files"
+msgstr "Όλα τα αρχεία"
+
 msgid "Delete Contact?"
 msgstr "Διαγραφή επαφής;"
+
+msgid ""
+"{name} is removed from your address book, and for a synced book, from the "
+"server too."
+msgstr ""
 
 msgid "Edit"
 msgstr "Επεξεργασία"
@@ -3955,9 +4011,6 @@ msgstr "Εισαγωγή κλειδιού"
 
 msgid "OpenPGP keys"
 msgstr "Κλειδιά OpenPGP"
-
-msgid "All files"
-msgstr "Όλα τα αρχεία"
 
 msgid "Could not import: {e}"
 msgstr "Δεν ήταν δυνατή η εισαγωγή: {e}"

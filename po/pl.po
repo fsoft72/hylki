@@ -250,6 +250,26 @@ msgstr "Brak dostępnej książki adresowej"
 msgid "Could not update contact: {e}"
 msgstr "Nie udało się zaktualizować kontaktu: {e}"
 
+#, fuzzy
+msgid "Could not import contacts: {e}"
+msgstr "Nie udało się zaimportować konta: {e}"
+
+#, fuzzy
+msgid "Could not read: {files}"
+msgstr "Nie udało się ponownie uruchomić aplikacji Pliki"
+
+#, fuzzy
+msgid "No contacts were found in the selected files"
+msgstr "W tym pliku nie odnaleziono klucza."
+
+msgid ""
+"Contacts imported: {added} new, {updated} updated, {skipped} skipped, "
+"{errors} damaged"
+msgstr ""
+
+msgid "Contacts imported: {added} new, {updated} updated"
+msgstr ""
+
 msgid "Hide Status Bar"
 msgstr "Ukryj pasek stanu"
 
@@ -1067,6 +1087,9 @@ msgstr "Znajdź"
 msgid "Print"
 msgstr "Drukuj"
 
+msgid "Hylki"
+msgstr "Hylki"
+
 msgid "On This Computer"
 msgstr "Na tym komputerze"
 
@@ -1083,6 +1106,22 @@ msgid "The directory needs a password. Add it in Settings → LDAP Directories."
 msgstr ""
 
 msgid "The directory did not accept the password."
+msgstr ""
+
+msgid "A contact needs a name or an email address"
+msgstr ""
+
+msgid "The contact is too large"
+msgstr ""
+
+msgid "UTF-16 files are not supported"
+msgstr ""
+
+#, fuzzy
+msgid "The file is not a text file"
+msgstr "Tego katalogu nie ma na serwerze"
+
+msgid "The file is larger than {size} MB"
 msgstr ""
 
 msgid "{used} of {limit} used"
@@ -2013,9 +2052,6 @@ msgstr ""
 
 msgid "GOA"
 msgstr "GOA"
-
-msgid "Hylki"
-msgstr "Hylki"
 
 msgid "Imported GNOME Online Account"
 msgstr "Zaimportowane konto online GNOME"
@@ -3156,6 +3192,10 @@ msgstr "Otwórz aplikację Kontakty"
 msgid "New contact"
 msgstr "Nowy kontakt"
 
+#, fuzzy
+msgid "Import contacts…"
+msgstr "Sortuj kontakty"
+
 msgid "Loading Contacts…"
 msgstr "Wczytywanie kontaktów…"
 
@@ -3174,8 +3214,24 @@ msgstr "Imię"
 msgid "Last name"
 msgstr "Nazwisko"
 
+#, fuzzy
+msgid "Import Contacts"
+msgstr "Sortuj kontakty"
+
+#, fuzzy
+msgid "vCard files"
+msgstr "Duże pliki"
+
+msgid "All files"
+msgstr "Wszystkie pliki"
+
 msgid "Delete Contact?"
 msgstr "Czy usunąć kontakt?"
+
+msgid ""
+"{name} is removed from your address book, and for a synced book, from the "
+"server too."
+msgstr ""
 
 msgid "Edit"
 msgstr "Modyfikuj"
@@ -4000,9 +4056,6 @@ msgstr "Importuj klucz"
 
 msgid "OpenPGP keys"
 msgstr "Klucze OpenPGP"
-
-msgid "All files"
-msgstr "Wszystkie pliki"
 
 msgid "Could not import: {e}"
 msgstr "Nie udało się zaimportować: {e}"

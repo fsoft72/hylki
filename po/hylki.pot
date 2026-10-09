@@ -237,6 +237,23 @@ msgstr ""
 msgid "Could not update contact: {e}"
 msgstr ""
 
+msgid "Could not import contacts: {e}"
+msgstr ""
+
+msgid "Could not read: {files}"
+msgstr ""
+
+msgid "No contacts were found in the selected files"
+msgstr ""
+
+msgid ""
+"Contacts imported: {added} new, {updated} updated, {skipped} skipped, "
+"{errors} damaged"
+msgstr ""
+
+msgid "Contacts imported: {added} new, {updated} updated"
+msgstr ""
+
 msgid "Hide Status Bar"
 msgstr ""
 
@@ -969,6 +986,9 @@ msgstr ""
 msgid "Print"
 msgstr ""
 
+msgid "Hylki"
+msgstr ""
+
 msgid "On This Computer"
 msgstr ""
 
@@ -985,6 +1005,21 @@ msgid "The directory needs a password. Add it in Settings → LDAP Directories."
 msgstr ""
 
 msgid "The directory did not accept the password."
+msgstr ""
+
+msgid "A contact needs a name or an email address"
+msgstr ""
+
+msgid "The contact is too large"
+msgstr ""
+
+msgid "UTF-16 files are not supported"
+msgstr ""
+
+msgid "The file is not a text file"
+msgstr ""
+
+msgid "The file is larger than {size} MB"
 msgstr ""
 
 msgid "{used} of {limit} used"
@@ -1799,9 +1834,6 @@ msgid "POP3 accounts have no server folders to save a copy in."
 msgstr ""
 
 msgid "GOA"
-msgstr ""
-
-msgid "Hylki"
 msgstr ""
 
 msgid "Imported GNOME Online Account"
@@ -2808,6 +2840,9 @@ msgstr ""
 msgid "New contact"
 msgstr ""
 
+msgid "Import contacts…"
+msgstr ""
+
 msgid "Loading Contacts…"
 msgstr ""
 
@@ -2826,7 +2861,21 @@ msgstr ""
 msgid "Last name"
 msgstr ""
 
+msgid "Import Contacts"
+msgstr ""
+
+msgid "vCard files"
+msgstr ""
+
+msgid "All files"
+msgstr ""
+
 msgid "Delete Contact?"
+msgstr ""
+
+msgid ""
+"{name} is removed from your address book, and for a synced book, from the "
+"server too."
 msgstr ""
 
 msgid "Edit"
@@ -3573,9 +3622,6 @@ msgid "Import Key"
 msgstr ""
 
 msgid "OpenPGP keys"
-msgstr ""
-
-msgid "All files"
 msgstr ""
 
 msgid "Could not import: {e}"

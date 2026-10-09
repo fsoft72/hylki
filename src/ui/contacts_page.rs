@@ -52,8 +52,9 @@ pub struct ContactsPage {
     /// EDS UIDs deleted here but possibly still in EDS's local cache — a
     /// re-read races the CardDAV flush, and without these tombstones a
     /// deleted contact pops right back into the list. A tombstone lives
-    /// until a fresh read no longer contains its contact.
-    deleted: std::collections::HashSet<String>,
+    /// until a fresh read no longer contains its contact. Keyed by book and
+    /// UID: an imported card keeps the UID of the book it came from.
+    deleted: std::collections::HashSet<(String, String)>,
 }
 
 #[derive(Debug)]
@@ -72,11 +73,17 @@ pub enum ContactsPageInput {
     EditIndex(usize),
     /// The header's "+": a blank editor for a new contact.
     NewContact,
+    /// The header's import button: choose `.vcf` files for the Hylki book.
+    ImportContacts,
     CancelEdit,
     SaveEdit,
     OpenInGnome(usize),
     DeleteRequest(usize),
-    DeleteConfirmed(usize),
+    /// The Delete key on the list: ask to delete the contact shown.
+    DeleteSelected,
+    /// The contact to delete, by book and UID: the list may have been
+    /// re-read and re-sorted while the dialog was open.
+    DeleteConfirmed { book_uid: String, uid: String },
     /// The card's photo was clicked: expand it in the app lightbox.
     OpenPhoto { name: String, data: Vec<u8> },
 }
@@ -93,6 +100,8 @@ pub enum ContactsPageOutput {
     CreateContact { vcard: String },
     /// Delete, already confirmed by the user.
     DeleteContact { book_uid: String, uid: String },
+    /// `.vcf` files chosen for import into the local Hylki book.
+    ImportContacts(Vec<std::path::PathBuf>),
     /// Show the contact's photo in the app lightbox.
     ShowPhoto { name: String, data: Vec<u8> },
 }
@@ -140,6 +149,12 @@ impl Component for ContactsPage {
                         set_tooltip_text: Some(i18n("New contact").as_str()),
                         add_css_class: "flat",
                         connect_clicked => ContactsPageInput::NewContact,
+                    },
+                    pack_end = &gtk::Button {
+                        set_icon_name: "document-open-symbolic",
+                        set_tooltip_text: Some(i18n("Import contacts…").as_str()),
+                        add_css_class: "flat",
+                        connect_clicked => ContactsPageInput::ImportContacts,
                     },
                 },
 
@@ -240,6 +255,12 @@ impl Component for ContactsPage {
                             set_tooltip_text: Some(i18n("New contact").as_str()),
                             add_css_class: "flat",
                             connect_clicked => ContactsPageInput::NewContact,
+                        },
+                        pack_end = &gtk::Button {
+                            set_icon_name: "document-open-symbolic",
+                            set_tooltip_text: Some(i18n("Import contacts…").as_str()),
+                            add_css_class: "flat",
+                            connect_clicked => ContactsPageInput::ImportContacts,
                         },
                     },
 
@@ -351,6 +372,22 @@ impl Component for ContactsPage {
         let widgets = view_output!();
         widgets.detail_overlay.add_overlay(&compose_slot);
 
+        // Delete on the list asks to remove the contact being looked at. The
+        // controller sits on the list, not the page, so Delete inside the
+        // search box or the editor still edits text.
+        {
+            let keys = gtk::EventControllerKey::new();
+            let s = sender.input_sender().clone();
+            keys.connect_key_pressed(move |_, keyval, _, _| {
+                if !matches!(keyval, gtk::gdk::Key::Delete | gtk::gdk::Key::KP_Delete) {
+                    return gtk::glib::Propagation::Proceed;
+                }
+                let _ = s.send(ContactsPageInput::DeleteSelected);
+                gtk::glib::Propagation::Stop
+            });
+            widgets.list.add_controller(keys);
+        }
+
         // The sort menu: a radio per order, mirroring the message list's
         // sort button.
         {
@@ -408,10 +445,10 @@ impl Component for ContactsPage {
             ContactsPageInput::SetContacts(mut contacts) => {
                 // Drop tombstoned (locally deleted) entries the read still
                 // carries; a tombstone retires once a read comes back clean.
-                let incoming: std::collections::HashSet<String> =
-                    contacts.iter().map(|c| c.eds_uid.clone()).collect();
-                self.deleted.retain(|uid| incoming.contains(uid));
-                contacts.retain(|c| !self.deleted.contains(&c.eds_uid));
+                let incoming: std::collections::HashSet<(String, String)> =
+                    contacts.iter().map(|c| (c.book_uid.clone(), c.eds_uid.clone())).collect();
+                self.deleted.retain(|key| incoming.contains(key));
+                contacts.retain(|c| !self.deleted.contains(&(c.book_uid.clone(), c.eds_uid.clone())));
                 // Keep the same person selected across a refresh, by identity.
                 let keep = self
                     .selected
@@ -485,6 +522,37 @@ impl Component for ContactsPage {
                 self.render_editor(widgets, &sender);
             }
 
+            ContactsPageInput::ImportContacts => {
+                let dialog = gtk::FileDialog::builder().title(&i18n("Import Contacts")).build();
+                let filter = gtk::FileFilter::new();
+                filter.set_name(Some(&i18n("vCard files")));
+                filter.add_pattern("*.vcf");
+                filter.add_pattern("*.vcard");
+                filter.add_mime_type("text/vcard");
+                filter.add_mime_type("text/x-vcard");
+                let filters = gtk::gio::ListStore::new::<gtk::FileFilter>();
+                filters.append(&filter);
+                let any = gtk::FileFilter::new();
+                any.set_name(Some(&i18n("All files")));
+                any.add_pattern("*");
+                filters.append(&any);
+                dialog.set_filters(Some(&filters));
+                let parent = relm4::main_application().active_window();
+                let s = sender.clone();
+                dialog.open_multiple(parent.as_ref(), gtk::gio::Cancellable::NONE, move |res| {
+                    let Ok(files) = res else { return };
+                    let paths: Vec<std::path::PathBuf> = files
+                        .iter::<gtk::gio::File>()
+                        .flatten()
+                        .filter_map(|f| f.path())
+                        .collect();
+                    if paths.is_empty() {
+                        return;
+                    }
+                    let _ = s.output(ContactsPageOutput::ImportContacts(paths));
+                });
+            }
+
             ContactsPageInput::CancelEdit => {
                 self.editor = None;
                 self.editing_target = None;
@@ -526,16 +594,25 @@ impl Component for ContactsPage {
                 }
             }
 
+            ContactsPageInput::DeleteSelected => {
+                // Not while an editor is open: that contact is being changed.
+                if self.editor.is_some() {
+                    return;
+                }
+                if let Some(idx) = self.selected {
+                    sender.input(ContactsPageInput::DeleteRequest(idx));
+                }
+            }
+
             ContactsPageInput::DeleteRequest(idx) => {
                 let Some(c) = self.contacts.get(idx) else { return };
                 let win = widgets.page_stack.root().and_downcast::<gtk::Window>();
                 let dialog = adw::MessageDialog::new(
                     win.as_ref(),
                     Some(i18n("Delete Contact?").as_str()),
-                    Some(&format!(
-                        "{} is removed from your address book — and, for a synced \
-                         book, from the server too.",
-                        c.name
+                    Some(&i18n_f(
+                        "{name} is removed from your address book, and for a synced book, from the server too.",
+                        &[("name", &c.name)],
                     )),
                 );
                 dialog.add_response("cancel", &i18n("Cancel"));
@@ -544,9 +621,13 @@ impl Component for ContactsPage {
                 dialog.set_default_response(Some("cancel"));
                 dialog.set_close_response("cancel");
                 let s = sender.input_sender().clone();
+                let (book_uid, uid) = (c.book_uid.clone(), c.eds_uid.clone());
                 dialog.connect_response(None, move |_, resp| {
                     if resp == "delete" {
-                        let _ = s.send(ContactsPageInput::DeleteConfirmed(idx));
+                        let _ = s.send(ContactsPageInput::DeleteConfirmed {
+                            book_uid: book_uid.clone(),
+                            uid: uid.clone(),
+                        });
                     }
                 });
                 dialog.present();
@@ -556,13 +637,15 @@ impl Component for ContactsPage {
                 let _ = sender.output(ContactsPageOutput::ShowPhoto { name, data });
             }
 
-            ContactsPageInput::DeleteConfirmed(idx) => {
-                if idx >= self.contacts.len() {
+            ContactsPageInput::DeleteConfirmed { book_uid, uid } => {
+                let Some(idx) =
+                    self.contacts.iter().position(|c| c.book_uid == book_uid && c.eds_uid == uid)
+                else {
                     return;
-                }
+                };
                 let c = self.contacts.remove(idx);
                 if !c.eds_uid.is_empty() {
-                    self.deleted.insert(c.eds_uid.clone());
+                    self.deleted.insert((c.book_uid.clone(), c.eds_uid.clone()));
                     let _ = sender.output(ContactsPageOutput::DeleteContact {
                         book_uid: c.book_uid,
                         uid: c.eds_uid,
@@ -660,27 +743,32 @@ impl ContactsPage {
             row.add_prefix(&avatar_for(c, 34));
 
             // Right-click: the quick actions on this entry.
+            let local = crate::contacts::is_local_book(&c.book_uid);
             let right_click = gtk::GestureClick::new();
             right_click.set_button(3);
             let s = sender.input_sender().clone();
             right_click.connect_pressed(move |gesture, _, x, y| {
                 let Some(widget) = gesture.widget() else { return };
                 let (se, sd, sg) = (s.clone(), s.clone(), s.clone());
+                let mut first = vec![MenuEntry::new(i18n("Edit"), move || {
+                    let _ = se.send(ContactsPageInput::EditIndex(idx));
+                })
+                .icon("document-edit-symbolic")];
+                // GNOME Contacts knows nothing of the Hylki book.
+                if !local {
+                    first.push(
+                        MenuEntry::new(i18n("Open in GNOME Contacts"), move || {
+                            let _ = sg.send(ContactsPageInput::OpenInGnome(idx));
+                        })
+                        .icon("adw-external-link-symbolic"),
+                    );
+                }
                 show_context_menu(
                     &widget,
                     x,
                     y,
                     vec![
-                        vec![
-                            MenuEntry::new(i18n("Edit"), move || {
-                                let _ = se.send(ContactsPageInput::EditIndex(idx));
-                            })
-                            .icon("document-edit-symbolic"),
-                            MenuEntry::new(i18n("Open in GNOME Contacts"), move || {
-                                let _ = sg.send(ContactsPageInput::OpenInGnome(idx));
-                            })
-                            .icon("adw-external-link-symbolic"),
-                        ],
+                        first,
                         vec![MenuEntry::new(i18n("Delete…"), move || {
                             let _ = sd.send(ContactsPageInput::DeleteRequest(idx));
                         })

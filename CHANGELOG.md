@@ -25,6 +25,18 @@
   Rotondo). With **Settings → Reading → Light / Dark Mode switch** on, a
   switch beside Reader View draws the message on screen in the other
   scheme, for that message alone, until Hylki is closed; off by default.
+- **Added: a Hylki address book, and importing vCard files** (PR #379 by
+  Fabio Rotondo). A book called **Hylki** sits beside the ones Evolution
+  Data Server keeps, so the Contacts view works without GNOME or EDS. Its
+  contacts are created, edited and deleted like any other, and their
+  addresses and photos feed suggestions and avatars. **Import contacts…** in
+  the Contacts view reads `.vcf` files (vCard 2.1, 3.0 or 4.0) into it;
+  importing a file twice updates its contacts instead of adding them again.
+  The book is `local_contacts.db` in Hylki's data folder, apart from the
+  mail cache. In the Contacts view, Delete asks to delete the contact shown.
+- **Fixed: confirming a contact's deletion could delete another one**, when
+  the list was re-read while the dialog was open. The dialog now names the
+  contact it deletes rather than its place in the list.
 
 ## 1.43.1 — 2026-10-09
 

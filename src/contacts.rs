@@ -175,7 +175,72 @@ pub fn read_contacts() -> Vec<Contact> {
             );
         }
     }
+    // The local Hylki book, last: an address EDS already has keeps EDS's name.
+    add_local_contacts(&mut out, &mut seen);
     out
+}
+
+/// Append the local book's addresses, skipping the ones already in `seen`.
+fn add_local_contacts(out: &mut Vec<Contact>, seen: &mut HashSet<String>) {
+    if !crate::local_contacts::exists() {
+        return;
+    }
+    let rows = match crate::local_contacts::emails() {
+        Ok(rows) => rows,
+        Err(e) => {
+            tracing::warn!("contacts: cannot read the local address book: {e}");
+            return;
+        }
+    };
+    for (name, email) in rows {
+        let email = email.trim().to_string();
+        if email.is_empty() || !email.contains('@') || !seen.insert(email.to_lowercase()) {
+            continue;
+        }
+        let name = if name.trim().is_empty() { email.clone() } else { name };
+        out.push(Contact { name, email });
+    }
+}
+
+/// Whether `book_uid` is the local Hylki book rather than an EDS one.
+pub fn is_local_book(book_uid: &str) -> bool {
+    book_uid == crate::local_contacts::LOCAL_BOOK_UID
+}
+
+/// The local Hylki book as a [`Book`].
+fn local_book() -> Book {
+    Book { uid: crate::local_contacts::LOCAL_BOOK_UID.to_string(), name: i18n("Hylki") }
+}
+
+/// Parse stored local vCards into the Contacts view's entries. A local
+/// vCard may come from any `.vcf` file, so its PHOTO is read only when
+/// embedded, never from a `file://` path.
+fn details_from_local_vcards(vcards: Vec<String>, book_name: &str) -> Vec<ContactDetails> {
+    vcards
+        .into_iter()
+        .filter_map(|vcard| {
+            let mut c = parse_vcard_fields(&vcard)?;
+            c.book_uid = crate::local_contacts::LOCAL_BOOK_UID.to_string();
+            c.book_name = book_name.to_string();
+            c.photo = vcard_photo_with(&vcard, false);
+            c.raw_vcard = vcard;
+            Some(c)
+        })
+        .collect()
+}
+
+/// The local book's contacts, parsed (empty when it was never written).
+fn local_details() -> Vec<ContactDetails> {
+    if !crate::local_contacts::exists() {
+        return Vec::new();
+    }
+    match crate::local_contacts::list_vcards() {
+        Ok(vcards) => details_from_local_vcards(vcards, &local_book().name),
+        Err(e) => {
+            tracing::warn!("contacts: cannot read the local address book: {e}");
+            Vec::new()
+        }
+    }
 }
 
 /// `book_uid_active` keyed off a book database's directory name.
@@ -196,6 +261,8 @@ struct PhotoLocation {
     db: PathBuf,
     uid: String,
     cached_book: bool,
+    /// The photo lives in the local Hylki book (`db` is unused).
+    local: bool,
 }
 
 /// (path, size, mtime-nanos) per EDS database file — the cheap change signal.
@@ -358,6 +425,7 @@ fn photo_db_fingerprint() -> DbFingerprint {
             files.push(PathBuf::from(format!("{}{suffix}", db.to_string_lossy())));
         }
     }
+    files.extend(crate::local_contacts::db_paths());
     files.sort();
     files
         .into_iter()
@@ -412,8 +480,44 @@ fn load_contact_photo_index() -> HashMap<String, Vec<PhotoLocation>> {
             );
         }
     }
+    add_local_photo_locations(&mut photos);
     tracing::debug!(count = photos.len(), "indexed EDS contact photos");
     photos
+}
+
+/// Index the local Hylki book's contacts that carry a photo.
+fn add_local_photo_locations(photos: &mut HashMap<String, Vec<PhotoLocation>>) {
+    if !crate::local_contacts::exists() {
+        return;
+    }
+    let entries = match crate::local_contacts::photo_entries() {
+        Ok(entries) => entries,
+        Err(e) => {
+            tracing::warn!("contacts: cannot index local photos: {e}");
+            return;
+        }
+    };
+    for (email, uid) in entries {
+        let location = PhotoLocation { db: PathBuf::new(), uid, cached_book: false, local: true };
+        photos.entry(email).or_default().push(location);
+    }
+}
+
+/// A local write happened: re-index the photos now (rather than at the next
+/// 30 second check) so avatars and the Contacts list follow at once.
+fn local_changed() {
+    start_photo_load();
+    start_photo_watcher();
+    let index = CONTACT_PHOTOS.get_or_init(new_photo_index).clone();
+    let _ = std::thread::Builder::new().name("local-photo-reload".into()).spawn(move || {
+        let (photos, fingerprint) = load_stable_photo_index();
+        let mut current = index.lock().unwrap_or_else(|p| p.into_inner());
+        current.photos = photos;
+        current.fingerprint = fingerprint;
+        current.generation = current.generation.wrapping_add(1).max(1);
+        drop(current);
+        notify_photo_change();
+    });
 }
 
 fn read_photo_locations(
@@ -452,6 +556,7 @@ fn read_photo_locations(
                 db: path.to_path_buf(),
                 uid,
                 cached_book,
+                local: false,
             };
             photos.entry(key).or_default().push(location);
         }
@@ -459,6 +564,10 @@ fn read_photo_locations(
 }
 
 fn read_photo_at(location: &PhotoLocation) -> Option<Vec<u8>> {
+    if location.local {
+        let vcard = crate::local_contacts::vcard_by_uid(&location.uid).ok()??;
+        return vcard_photo_with(&vcard, false);
+    }
     let conn = open_book_db(&location.db).ok()?;
     let query = if location.cached_book {
         "SELECT ECacheOBJ FROM ECacheObjects WHERE ECacheUID = ?1"
@@ -536,6 +645,13 @@ fn vcard_display_name(vcard: &str) -> Option<String> {
 /// form and the conventional `PHOTO;ENCODING=b` form. Remote PHOTO URLs are
 /// deliberately not fetched, both for privacy and to avoid tracking.
 fn vcard_photo(vcard: &str) -> Option<Vec<u8>> {
+    vcard_photo_with(vcard, true)
+}
+
+/// [`vcard_photo`], optionally refusing `file://` photos. The local Hylki book
+/// holds vCards from arbitrary `.vcf` files, which must not be able to point
+/// at files EDS keeps.
+pub(crate) fn vcard_photo_with(vcard: &str, allow_files: bool) -> Option<Vec<u8>> {
     use base64::Engine as _;
 
     const MAX_PHOTO_BYTES: usize = 2_000_000;
@@ -569,7 +685,7 @@ fn vcard_photo(vcard: &str) -> Option<Vec<u8>> {
             || property_upper.contains("ENCODING=BASE64")
         {
             value.as_str()
-        } else if value.to_ascii_lowercase().starts_with("file://") {
+        } else if allow_files && value.to_ascii_lowercase().starts_with("file://") {
             if let Some(bytes) = read_eds_photo_file(&value, MAX_PHOTO_BYTES) {
                 return Some(bytes);
             }
@@ -739,6 +855,8 @@ pub fn writable_books() -> Vec<Book> {
     if let (Some(dest), Ok(conn)) = (factory_dest(), zbus::blocking::Connection::session()) {
         books.retain(|b| !book_read_only(&conn, &dest, &b.uid));
     }
+    // Always last: EDS books keep priority as the default destination.
+    books.push(local_book());
     books
 }
 
@@ -886,6 +1004,10 @@ pub fn add_or_merge(book_uid: &str, name: &str, email: &str) -> Result<AddOutcom
         return Ok(AddOutcome::AlreadyPresent(existing.name));
     }
 
+    if is_local_book(book_uid) {
+        return add_or_merge_local(name, email);
+    }
+
     let dest = factory_dest().ok_or("Evolution Data Server is not available")?;
     let conn = zbus::blocking::Connection::session().map_err(|e| e.to_string())?;
     let (bus, path) = open_book(&conn, &dest, book_uid)?;
@@ -911,6 +1033,42 @@ pub fn add_or_merge(book_uid: &str, name: &str, email: &str) -> Result<AddOutcom
         &(vec![vcard_for(name, email)], 0u32),
     )?;
     Ok(AddOutcome::Created)
+}
+
+/// [`add_or_merge`] for the local book: merge into the contact with the same
+/// name, else create one.
+fn add_or_merge_local(name: &str, email: &str) -> Result<AddOutcome, String> {
+    let vcards = if crate::local_contacts::exists() {
+        crate::local_contacts::list_vcards()?
+    } else {
+        Vec::new()
+    };
+    let result = match merge_target(&vcards, name) {
+        Some(vcard) => {
+            crate::local_contacts::modify(&add_email_to_vcard(&vcard, email.trim()))?;
+            AddOutcome::Merged(name.trim().to_string())
+        }
+        None => {
+            crate::local_contacts::create(&vcard_for(name, email))?;
+            AddOutcome::Created
+        }
+    };
+    local_changed();
+    Ok(result)
+}
+
+/// The stored vCard whose display name equals `name` (case-insensitive).
+fn merge_target(vcards: &[String], name: &str) -> Option<String> {
+    let name = name.trim();
+    if name.is_empty() {
+        return None;
+    }
+    vcards
+        .iter()
+        .find(|v| {
+            parse_vcard_fields(v).is_some_and(|d| d.name.trim().eq_ignore_ascii_case(name))
+        })
+        .cloned()
 }
 
 fn book_call<B>(
@@ -1219,6 +1377,9 @@ pub fn read_contact_details() -> Vec<ContactDetails> {
             );
         }
     }
+    // Every copy of a person is shown, so the local book skips the `seen`
+    // filter that de-duplicates the EDS books among themselves.
+    out.extend(local_details());
     out.sort_by_key(|c| c.name.to_lowercase());
     out
 }
@@ -1309,9 +1470,18 @@ fn pretty_birthday(raw: &str) -> String {
     }
 }
 
-/// Parse the fields the Contacts view shows out of one vCard. Returns `None`
-/// for contact lists and entries with neither a name nor an address.
-fn parse_vcard_details(vcard: &str) -> Option<ContactDetails> {
+/// Parse the fields the Contacts view shows out of one vCard, its photo
+/// included. Returns `None` for contact lists and entries with neither a name
+/// nor an address.
+pub(crate) fn parse_vcard_details(vcard: &str) -> Option<ContactDetails> {
+    let mut c = parse_vcard_fields(vcard)?;
+    c.photo = vcard_photo(vcard);
+    Some(c)
+}
+
+/// [`parse_vcard_details`] without the photo, which costs a base64 decode or
+/// a file read: for imports and lookups that never show it.
+pub(crate) fn parse_vcard_fields(vcard: &str) -> Option<ContactDetails> {
     let mut c = ContactDetails::default();
     for line in unfold_vcard(vcard).lines() {
         let Some((prop, raw_value)) = split_vcard_line(line) else { continue };
@@ -1377,7 +1547,6 @@ fn parse_vcard_details(vcard: &str) -> Option<ContactDetails> {
             .map(str::to_string)
             .or_else(|| (!c.nickname.is_empty()).then(|| c.nickname.clone()))?;
     }
-    c.photo = vcard_photo(vcard);
     Some(c)
 }
 
@@ -1584,8 +1753,29 @@ pub fn new_vcard(e: &ContactEdit) -> String {
     patched_vcard("BEGIN:VCARD\r\nVERSION:3.0\r\nEND:VCARD\r\n", e)
 }
 
+/// Tell the photo index and the UI about a finished local write.
+fn write_local(result: Result<(), String>) -> Result<(), String> {
+    if result.is_ok() {
+        local_changed();
+    }
+    result
+}
+
+/// Import `.vcf` files into the local Hylki book (blocking: call from a
+/// background thread).
+pub fn import_vcf_files(paths: &[PathBuf]) -> Result<crate::local_contacts::ImportOutcome, String> {
+    let outcome = crate::local_contacts::import_files(paths)?;
+    if outcome.added + outcome.updated > 0 {
+        local_changed();
+    }
+    Ok(outcome)
+}
+
 /// Write a modified vCard back to its book through EDS.
 pub fn modify_contact(book_uid: &str, vcard: &str) -> Result<(), String> {
+    if is_local_book(book_uid) {
+        return write_local(crate::local_contacts::modify(vcard));
+    }
     let dest = factory_dest().ok_or("Evolution Data Server is not available")?;
     let conn = zbus::blocking::Connection::session().map_err(|e| e.to_string())?;
     let (bus, path) = open_book(&conn, &dest, book_uid)?;
@@ -1595,6 +1785,9 @@ pub fn modify_contact(book_uid: &str, vcard: &str) -> Result<(), String> {
 
 /// Create a contact from a full vCard through EDS.
 pub fn create_contact(book_uid: &str, vcard: &str) -> Result<(), String> {
+    if is_local_book(book_uid) {
+        return write_local(crate::local_contacts::create(vcard));
+    }
     let dest = factory_dest().ok_or("Evolution Data Server is not available")?;
     let conn = zbus::blocking::Connection::session().map_err(|e| e.to_string())?;
     let (bus, path) = open_book(&conn, &dest, book_uid)?;
@@ -1604,6 +1797,9 @@ pub fn create_contact(book_uid: &str, vcard: &str) -> Result<(), String> {
 
 /// Delete a contact (by its EDS UID) from its book.
 pub fn delete_contact(book_uid: &str, uid: &str) -> Result<(), String> {
+    if is_local_book(book_uid) {
+        return write_local(crate::local_contacts::delete(uid));
+    }
     let dest = factory_dest().ok_or("Evolution Data Server is not available")?;
     let conn = zbus::blocking::Connection::session().map_err(|e| e.to_string())?;
     let (bus, path) = open_book(&conn, &dest, book_uid)?;
@@ -1613,7 +1809,10 @@ pub fn delete_contact(book_uid: &str, uid: &str) -> Result<(), String> {
 
 #[cfg(test)]
 mod tests {
-    use super::{vcard_display_name, vcard_photo};
+    use super::{
+        details_from_local_vcards, is_local_book, merge_target, vcard_display_name, vcard_photo,
+        vcard_photo_with,
+    };
 
     const ONE_PIXEL_PNG: &str =
         "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=";
@@ -1801,5 +2000,50 @@ mod tests {
         assert_eq!(super::book_display_name(lone, &sources), "CardDAV — Work");
         assert!(super::data_source_disabled(&book.replace("Enabled=true", "Enabled=false")));
         assert_eq!(crate::platform::keyfile_value(book, "Address Book", "Missing"), None);
+    }
+
+    fn card(name: &str, email: &str) -> String {
+        format!("BEGIN:VCARD\r\nVERSION:3.0\r\nUID:{name}\r\nFN:{name}\r\nEMAIL:{email}\r\nEND:VCARD\r\n")
+    }
+
+    #[test]
+    fn only_the_reserved_uid_is_local() {
+        assert!(is_local_book("hylki-local"));
+        assert!(!is_local_book("system-address-book"));
+    }
+
+    #[test]
+    fn local_details_carry_the_book_and_the_raw_vcard() {
+        let v = card("Ann", "ann@x.org");
+        let out = details_from_local_vcards(vec![v.clone()], "Hylki");
+        assert_eq!(out.len(), 1);
+        assert_eq!(out[0].book_uid, "hylki-local");
+        assert_eq!(out[0].book_name, "Hylki");
+        assert_eq!(out[0].eds_uid, "Ann");
+        assert_eq!(out[0].raw_vcard, v);
+    }
+
+    #[test]
+    fn same_email_in_two_books_is_kept_per_book() {
+        // The EDS reader de-duplicates among EDS books by first email; the
+        // local list is built on its own, so a shared address is not dropped.
+        let a = details_from_local_vcards(vec![card("Ann", "same@x.org")], "Hylki");
+        let b = details_from_local_vcards(vec![card("Ann", "same@x.org")], "Hylki");
+        assert_eq!(a[0].primary_email(), b[0].primary_email());
+        assert_eq!(a.len() + b.len(), 2);
+    }
+
+    #[test]
+    fn local_vcards_never_read_file_photos() {
+        let v = "BEGIN:VCARD\r\nFN:Ann\r\nPHOTO;VALUE=uri:file:///etc/hostname\r\nEND:VCARD\r\n";
+        assert!(vcard_photo_with(v, false).is_none());
+    }
+
+    #[test]
+    fn merge_target_matches_the_name_ignoring_case() {
+        let vcards = vec![card("Ann Lee", "ann@x.org"), card("Bob", "bob@x.org")];
+        assert!(merge_target(&vcards, " ann lee ").unwrap().contains("ann@x.org"));
+        assert!(merge_target(&vcards, "Carl").is_none());
+        assert!(merge_target(&vcards, "  ").is_none());
     }
 }

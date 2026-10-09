@@ -247,6 +247,26 @@ msgstr "Адресная книга недоступна"
 msgid "Could not update contact: {e}"
 msgstr "Не удалось обновить контакт: {e}"
 
+#, fuzzy
+msgid "Could not import contacts: {e}"
+msgstr "Не удалось импортировать учетную запись: {e}"
+
+#, fuzzy
+msgid "Could not read: {files}"
+msgstr "Не удалось перезапустить «Файлы»"
+
+#, fuzzy
+msgid "No contacts were found in the selected files"
+msgstr "В этом файле не найдено ни одного ключа."
+
+msgid ""
+"Contacts imported: {added} new, {updated} updated, {skipped} skipped, "
+"{errors} damaged"
+msgstr ""
+
+msgid "Contacts imported: {added} new, {updated} updated"
+msgstr ""
+
 msgid "Hide Status Bar"
 msgstr "Скрыть строку состояния"
 
@@ -1051,6 +1071,9 @@ msgstr "Найти"
 msgid "Print"
 msgstr "Печать"
 
+msgid "Hylki"
+msgstr "Hylki"
+
 msgid "On This Computer"
 msgstr "На этом компьютере"
 
@@ -1070,6 +1093,22 @@ msgstr ""
 
 msgid "The directory did not accept the password."
 msgstr "Каталог не принял пароль."
+
+msgid "A contact needs a name or an email address"
+msgstr ""
+
+msgid "The contact is too large"
+msgstr ""
+
+msgid "UTF-16 files are not supported"
+msgstr ""
+
+#, fuzzy
+msgid "The file is not a text file"
+msgstr "Эта папка отсутствует на сервере"
+
+msgid "The file is larger than {size} MB"
+msgstr ""
 
 msgid "{used} of {limit} used"
 msgstr "Использовано {used} из {limit}"
@@ -1978,9 +2017,6 @@ msgstr "У учётных записей POP3 нет папок на серве�
 
 msgid "GOA"
 msgstr "GOA"
-
-msgid "Hylki"
-msgstr "Hylki"
 
 msgid "Imported GNOME Online Account"
 msgstr "Импортировано из «Сетевых учётных записей GNOME»"
@@ -3102,6 +3138,10 @@ msgstr "Открыть «Контакты GNOME»"
 msgid "New contact"
 msgstr "Новый контакт"
 
+#, fuzzy
+msgid "Import contacts…"
+msgstr "Сортировка контактов"
+
 msgid "Loading Contacts…"
 msgstr "Загрузка контактов…"
 
@@ -3120,8 +3160,24 @@ msgstr "Имя"
 msgid "Last name"
 msgstr "Фамилия"
 
+#, fuzzy
+msgid "Import Contacts"
+msgstr "Сортировка контактов"
+
+#, fuzzy
+msgid "vCard files"
+msgstr "Большие файлы"
+
+msgid "All files"
+msgstr "Все файлы"
+
 msgid "Delete Contact?"
 msgstr "Удалить контакт?"
+
+msgid ""
+"{name} is removed from your address book, and for a synced book, from the "
+"server too."
+msgstr ""
 
 msgid "Edit"
 msgstr "Редактировать"
@@ -3924,9 +3980,6 @@ msgstr "Импортировать ключ"
 
 msgid "OpenPGP keys"
 msgstr "Ключи OpenPGP"
-
-msgid "All files"
-msgstr "Все файлы"
 
 msgid "Could not import: {e}"
 msgstr "Не удалось импортировать: {e}"
