@@ -1471,6 +1471,19 @@ impl Row {
         }
         self.w.host.add_controller(drag);
 
+        // The unread dot marks the message read (PR #380). The press is
+        // claimed so the row is neither selected nor opened by it.
+        {
+            let click = gtk::GestureClick::new();
+            click.set_button(gtk::gdk::BUTTON_PRIMARY);
+            click.connect_pressed(|g, _, _, _| {
+                g.set_state(gtk::EventSequenceState::Claimed);
+            });
+            let mark = on(|r| r.act(RowAction::ToggleRead));
+            click.connect_released(move |_, _, _, _| mark());
+            self.w.dot.add_controller(click);
+            self.w.dot.set_cursor_from_name(Some("pointer"));
+        }
         // The ⋯ and the palette.
         {
             let toggle = on(Row::toggle_palette);
@@ -1727,6 +1740,11 @@ impl Row {
         let unread = msg.unread || meta.unread;
         w.dot.set_valign(if look.avatars || single { gtk::Align::Center } else { gtk::Align::Start });
         w.dot.set_opacity(if unread { 1.0 } else { 0.0 });
+        // Only a dot for the message's own unread state takes a click: on a
+        // thread head lit by an unread reply, it would mark the head unread.
+        let clickable = msg.unread && !look.in_drafts;
+        w.dot.set_can_target(clickable);
+        w.dot.set_tooltip_text(clickable.then(|| i18n("Mark as Read")).as_deref());
         w.text.set_valign(if look.avatars { gtk::Align::Center } else { gtk::Align::Start });
 
         w.name_col.set_visible(col(ListColumn::Sender));

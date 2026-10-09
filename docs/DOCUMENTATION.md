@@ -1006,6 +1006,10 @@ tagged message with its tag's color, in both layouts. A message with more
 than one tag takes the color of the one listed first in **Settings → Tags**.
 A selected row keeps the selection color. It is off by default.
 
+Clicking the unread dot on a row marks that message read without selecting
+or opening it. A conversation's dot that is lit only for an unread reply
+does not take the click.
+
 ### Text size
 
 **Settings → Appearance → Text size** makes Hylki's text smaller or larger

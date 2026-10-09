@@ -19,6 +19,8 @@
 - **Added: tagged messages can tint their row** (PR #383 by Fabio Rotondo).
   **Settings → Message List → Tint tagged messages** washes the row of a
   tagged message with its first tag's color; off by default.
+- **Added: clicking the unread dot marks a message read** (PR #380 by Fabio
+  Rotondo), without selecting or opening it.
 
 ## 1.43.1 — 2026-10-09
 
