@@ -2100,6 +2100,48 @@ msgstr "IMAP / POP3-Konto auf {host}"
 msgid "Mail account"
 msgstr "E-Mail-Konto"
 
+#, fuzzy
+msgid "From address"
+msgstr "E-Mail-Adresse"
+
+#, fuzzy
+msgid "From name"
+msgstr "Vorname"
+
+#, fuzzy
+msgid "To or Cc"
+msgstr " oder "
+
+#, fuzzy
+msgid "Reply-To address"
+msgstr "Antwort an"
+
+#, fuzzy
+msgid "Message body"
+msgstr "Schriftart der Nachricht"
+
+#, fuzzy
+msgid "Sender is in Contacts"
+msgstr "Absender zu Kontakten hinzufügen"
+
+#, fuzzy
+msgid "Sender is not in Contacts"
+msgstr "Absender zu Kontakten hinzufügen"
+
+#, fuzzy
+msgid "contains"
+msgstr "Kontakte"
+
+msgid "is exactly"
+msgstr ""
+
+#, fuzzy
+msgid "starts with"
+msgstr "Jetzt neu starten"
+
+msgid "ends with"
+msgstr ""
+
 #. Every condition, joined the way the rule combines them (#192).
 msgid " or "
 msgstr " oder "
@@ -2213,6 +2255,9 @@ msgstr "Auf dem Server gesucht; nichts wird heruntergeladen"
 
 msgid "From address when no Reply-To is set"
 msgstr "Von der Adresse, wenn kein Reply-To gesetzt ist"
+
+msgid "Looks in the system address books and the Hylki book"
+msgstr ""
 
 msgid "Add Condition"
 msgstr "Bedingung hinzufügen"

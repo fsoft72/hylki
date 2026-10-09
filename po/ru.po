@@ -2071,6 +2071,45 @@ msgstr "Учётная запись IMAP/POP3 на {host}"
 msgid "Mail account"
 msgstr "Почтовая учётная запись"
 
+#, fuzzy
+msgid "From address"
+msgstr "Введите адрес отправителя"
+
+msgid "From name"
+msgstr "Имя отправителя"
+
+#, fuzzy
+msgid "To or Cc"
+msgstr " или "
+
+#, fuzzy
+msgid "Reply-To address"
+msgstr "Адрес для ответа"
+
+#, fuzzy
+msgid "Message body"
+msgstr "Шрифт сообщений"
+
+#, fuzzy
+msgid "Sender is in Contacts"
+msgstr "Добавить отправителя в контакты"
+
+#, fuzzy
+msgid "Sender is not in Contacts"
+msgstr "Добавить отправителя в контакты"
+
+msgid "contains"
+msgstr "содержит"
+
+msgid "is exactly"
+msgstr "совпадает с"
+
+msgid "starts with"
+msgstr "начинается с"
+
+msgid "ends with"
+msgstr "заканчивается на"
+
 #. Every condition, joined the way the rule combines them (#192).
 msgid " or "
 msgstr " или "
@@ -2182,6 +2221,9 @@ msgstr "Поиск выполняется на сервере; ничего не
 
 msgid "From address when no Reply-To is set"
 msgstr "Адрес отправителя, если не указан адрес для ответа (Reply-To)"
+
+msgid "Looks in the system address books and the Hylki book"
+msgstr ""
 
 msgid "Add Condition"
 msgstr "Добавить условие"
@@ -6882,21 +6924,6 @@ msgstr "Hyprlab"
 #~ msgstr ""
 #~ "Куда складывать подходящие письма; либо оставить во «Входящих» и только "
 #~ "присвоить метку"
-
-#~ msgid "From name"
-#~ msgstr "Имя отправителя"
-
-#~ msgid "contains"
-#~ msgstr "содержит"
-
-#~ msgid "is exactly"
-#~ msgstr "совпадает с"
-
-#~ msgid "starts with"
-#~ msgstr "начинается с"
-
-#~ msgid "ends with"
-#~ msgstr "заканчивается на"
 
 #~ msgid "Send Now"
 #~ msgstr "Отправить сейчас"

@@ -443,6 +443,23 @@ the composer's suggestions.
 The book is the file `local_contacts.db` in Hylki's data folder, kept apart
 from the mail cache, so clearing the cache leaves it alone.
 
+### Filtering on Contacts
+
+A filter condition can be **Sender is in Contacts** or **Sender is not in
+Contacts**, under **Settings → Filters**. They take no text. The sender's
+address is looked up in the address books Evolution Data Server keeps and
+in the Hylki book. Books that fill themselves from mail you exchange are
+left out, so writing to someone once does not make them a contact: they are
+recognised by an English name such as "Collected Addresses", "Recently
+contacted" or "Other contacts", and a book named in another language may
+still count. While any book cannot be read, or all of them are empty,
+neither condition matches, so mail is not filed as coming from a stranger
+by mistake. The books are read again in the background at most once a
+minute and after a contact changes.
+
+A version of Hylki from before these conditions reads them as a From
+address condition with no text, which matches nothing.
+
 ### LDAP directories
 
 Settings → LDAP Directories holds the directories the composer looks

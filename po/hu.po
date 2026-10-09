@@ -2069,6 +2069,45 @@ msgstr "IMAP/POP3 fiók: {host}"
 msgid "Mail account"
 msgstr "E-mail fiók"
 
+#, fuzzy
+msgid "From address"
+msgstr "Feladó címe"
+
+msgid "From name"
+msgstr "Feladó neve"
+
+#, fuzzy
+msgid "To or Cc"
+msgstr " vagy "
+
+#, fuzzy
+msgid "Reply-To address"
+msgstr "Válaszcím"
+
+#, fuzzy
+msgid "Message body"
+msgstr "Üzenet betűtípusa"
+
+#, fuzzy
+msgid "Sender is in Contacts"
+msgstr "Feladó hozzáadása a névjegyekhez"
+
+#, fuzzy
+msgid "Sender is not in Contacts"
+msgstr "Feladó hozzáadása a névjegyekhez"
+
+msgid "contains"
+msgstr "tartalmazza"
+
+msgid "is exactly"
+msgstr "pontosan ez"
+
+msgid "starts with"
+msgstr "ezzel kezdődik"
+
+msgid "ends with"
+msgstr "ezzel végződik"
+
 #. Every condition, joined the way the rule combines them (#192).
 msgid " or "
 msgstr " vagy "
@@ -2183,6 +2222,9 @@ msgstr "Keresés a kiszolgálón; semmi sem töltődött le"
 
 msgid "From address when no Reply-To is set"
 msgstr "Feladó cím, ha nincs megadva „Válaszcím” mező"
+
+msgid "Looks in the system address books and the Hylki book"
+msgstr ""
 
 msgid "Add Condition"
 msgstr "Feltétel hozzáadása"
@@ -6944,21 +6986,6 @@ msgstr "Hyprlab"
 #~ msgstr ""
 #~ "Az egyező levelek helye; vagy hagyja őket a Beérkezett üzenetek között, "
 #~ "és csak címkézze őket"
-
-#~ msgid "From name"
-#~ msgstr "Feladó neve"
-
-#~ msgid "contains"
-#~ msgstr "tartalmazza"
-
-#~ msgid "is exactly"
-#~ msgstr "pontosan ez"
-
-#~ msgid "starts with"
-#~ msgstr "ezzel kezdődik"
-
-#~ msgid "ends with"
-#~ msgstr "ezzel végződik"
 
 #~ msgid "Send Now"
 #~ msgstr "Küldés most"

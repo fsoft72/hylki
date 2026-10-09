@@ -139,6 +139,96 @@ fn config_dir() -> Option<PathBuf> {
 
 /// Read every address email from the local + cached (CardDAV) EDS books.
 pub fn read_contacts() -> Vec<Contact> {
+    read_contacts_from(false).0
+}
+
+/// Like [`read_contacts`], but only the contacts someone saved: the books
+/// that fill themselves from mail ("Collected Addresses", "Recently
+/// contacted", "Other contacts") are left out, so a filter on "sender is in
+/// Contacts" does not trust an address just because you once mailed it.
+/// `None` when any book could not be read: a filter then cannot tell a
+/// stranger from a contact whose book failed, and must match neither way.
+pub fn read_saved_contacts() -> Option<Vec<Contact>> {
+    let (contacts, complete) = read_contacts_from(true);
+    complete.then_some(contacts)
+}
+
+/// The saved contacts' addresses, lower-cased, for the filter rules that ask
+/// whether a sender is in Contacts (PR #384). The filter pass runs on the main
+/// thread and a read goes to D-Bus and every book, so after the first read
+/// the set is refreshed in the background once it is a minute old, and the
+/// pass uses the last one. `None` inside means unknown: unreadable or empty.
+#[derive(Clone, Default)]
+pub struct SavedAddresses(std::sync::Arc<std::sync::Mutex<SavedAddressesState>>);
+
+#[derive(Default)]
+struct SavedAddressesState {
+    read_at: Option<std::time::Instant>,
+    set: Option<std::sync::Arc<HashSet<String>>>,
+    refreshing: bool,
+}
+
+impl SavedAddresses {
+    const FRESH_FOR: std::time::Duration = std::time::Duration::from_secs(60);
+
+    /// The addresses for this filter pass. Only the very first call reads
+    /// on the caller's thread: mail filtered before any read would never be
+    /// looked at again.
+    pub fn get(&self) -> Option<std::sync::Arc<HashSet<String>>> {
+        let (never, stale) = {
+            let st = self.0.lock().unwrap_or_else(|e| e.into_inner());
+            (st.read_at.is_none(), st.read_at.is_some_and(|t| t.elapsed() > Self::FRESH_FOR))
+        };
+        if never {
+            let set = read_saved_addresses();
+            let mut st = self.0.lock().unwrap_or_else(|e| e.into_inner());
+            st.read_at = Some(std::time::Instant::now());
+            st.set = set;
+        } else if stale {
+            self.refresh();
+        }
+        self.0.lock().unwrap_or_else(|e| e.into_inner()).set.clone()
+    }
+
+    /// Read the addresses again in the background (after a contact changed,
+    /// or a rule that needs them was added).
+    pub fn refresh(&self) {
+        {
+            let mut st = self.0.lock().unwrap_or_else(|e| e.into_inner());
+            if st.refreshing {
+                return;
+            }
+            st.refreshing = true;
+        }
+        let shared = self.0.clone();
+        std::thread::spawn(move || {
+            let set = read_saved_addresses();
+            let mut st = shared.lock().unwrap_or_else(|e| e.into_inner());
+            st.read_at = Some(std::time::Instant::now());
+            st.set = set;
+            st.refreshing = false;
+        });
+    }
+}
+
+fn read_saved_addresses() -> Option<std::sync::Arc<HashSet<String>>> {
+    let set: HashSet<String> =
+        read_saved_contacts()?.into_iter().map(|c| c.email.trim().to_lowercase()).collect();
+    (!set.is_empty()).then(|| std::sync::Arc::new(set))
+}
+
+/// Whether a book fills itself from mail rather than being kept by hand.
+/// Judged by the source UID and display name, the only trace EDS leaves.
+fn is_auto_collected(uid: &str, name: &str) -> bool {
+    const MARKERS: [&str; 3] = ["collected", "recently contacted", "other contacts"];
+    let (uid, name) = (uid.to_lowercase(), name.to_lowercase());
+    MARKERS.iter().any(|m| uid.contains(m) || name.contains(m))
+}
+
+/// Shared body of [`read_contacts`] and [`read_saved_contacts`], and
+/// whether every book it wanted could be read.
+fn read_contacts_from(saved_only: bool) -> (Vec<Contact>, bool) {
+    let mut complete = true;
     let mut out = Vec::new();
     let mut seen: HashSet<String> = HashSet::new();
 
@@ -148,10 +238,10 @@ pub fn read_contacts() -> Vec<Contact> {
     let active = registry_books();
     if let Some(dir) = data_dir() {
         for db in find_dbs(&dir, "contacts.db") {
-            if !db_book_active(&db, &active) {
+            if !db_book_wanted(&db, &active, saved_only) {
                 continue;
             }
-            read_book_db(
+            complete &= read_book_db(
                 &db,
                 "SELECT f.vcard, e.value FROM folder_id f \
                  JOIN folder_id_email_list e ON f.uid = e.uid",
@@ -163,10 +253,10 @@ pub fn read_contacts() -> Vec<Contact> {
     // Cached books (CardDAV etc.): table `ECacheObjects` + `attrlist_email_list`.
     if let Some(dir) = cache_dir() {
         for db in find_dbs(&dir, "cache.db") {
-            if !db_book_active(&db, &active) {
+            if !db_book_wanted(&db, &active, saved_only) {
                 continue;
             }
-            read_book_db(
+            complete &= read_book_db(
                 &db,
                 "SELECT o.ECacheOBJ, e.value FROM ECacheObjects o \
                  JOIN attrlist_email_list e ON o.ECacheUID = e.uid",
@@ -176,20 +266,21 @@ pub fn read_contacts() -> Vec<Contact> {
         }
     }
     // The local Hylki book, last: an address EDS already has keeps EDS's name.
-    add_local_contacts(&mut out, &mut seen);
-    out
+    complete &= add_local_contacts(&mut out, &mut seen);
+    (out, complete)
 }
 
 /// Append the local book's addresses, skipping the ones already in `seen`.
-fn add_local_contacts(out: &mut Vec<Contact>, seen: &mut HashSet<String>) {
+/// False when the book is there but could not be read.
+fn add_local_contacts(out: &mut Vec<Contact>, seen: &mut HashSet<String>) -> bool {
     if !crate::local_contacts::exists() {
-        return;
+        return true;
     }
     let rows = match crate::local_contacts::emails() {
         Ok(rows) => rows,
         Err(e) => {
             tracing::warn!("contacts: cannot read the local address book: {e}");
-            return;
+            return false;
         }
     };
     for (name, email) in rows {
@@ -200,6 +291,7 @@ fn add_local_contacts(out: &mut Vec<Contact>, seen: &mut HashSet<String>) {
         let name = if name.trim().is_empty() { email.clone() } else { name };
         out.push(Contact { name, email });
     }
+    true
 }
 
 /// Whether `book_uid` is the local Hylki book rather than an EDS one.
@@ -243,14 +335,19 @@ fn local_details() -> Vec<ContactDetails> {
     }
 }
 
-/// `book_uid_active` keyed off a book database's directory name.
-fn db_book_active(db: &std::path::Path, active: &Option<HashMap<String, String>>) -> bool {
+/// `book_uid_active` keyed off a book database's directory name, minus the
+/// auto-collected books when `saved_only` is set.
+fn db_book_wanted(db: &std::path::Path, active: &Option<HashMap<String, String>>, saved_only: bool) -> bool {
     let Some(folder) = db.parent().and_then(|p| p.file_name()) else {
         return true;
     };
     let folder = folder.to_string_lossy();
     let uid = if folder == "system" { "system-address-book" } else { folder.as_ref() };
-    book_uid_active(uid, active)
+    if !book_uid_active(uid, active) {
+        return false;
+    }
+    let name = active.as_ref().and_then(|m| m.get(uid)).map_or("", String::as_str);
+    !(saved_only && is_auto_collected(uid, name))
 }
 
 /// Photo bytes and the EDS database state they came from. The inexpensive
@@ -780,19 +877,19 @@ fn open_book_db(path: &std::path::Path) -> rusqlite::Result<rusqlite::Connection
     }
 }
 
-fn read_book_db(path: &std::path::Path, query: &str, out: &mut Vec<Contact>, seen: &mut HashSet<String>) {
+fn read_book_db(path: &std::path::Path, query: &str, out: &mut Vec<Contact>, seen: &mut HashSet<String>) -> bool {
     let conn = match open_book_db(path) {
         Ok(c) => c,
         Err(e) => {
             tracing::warn!("contacts: cannot open {}: {e}", path.display());
-            return;
+            return false;
         }
     };
     let mut stmt = match conn.prepare(query) {
         Ok(s) => s,
         Err(e) => {
             tracing::warn!("contacts: query failed on {}: {e}", path.display());
-            return;
+            return false;
         }
     };
     let rows = stmt.query_map([], |row| {
@@ -801,19 +898,19 @@ fn read_book_db(path: &std::path::Path, query: &str, out: &mut Vec<Contact>, see
         let name = vcard.as_deref().and_then(vcard_display_name).unwrap_or_default();
         Ok((name, email))
     });
-    if let Ok(rows) = rows {
-        for (name, email) in rows.flatten() {
-            let email = email.trim().to_string();
-            if email.is_empty() || !email.contains('@') {
-                continue;
-            }
-            let key = email.to_lowercase();
-            if seen.insert(key) {
-                let name = if name.trim().is_empty() { email.clone() } else { name };
-                out.push(Contact { name, email });
-            }
+    let Ok(rows) = rows else { return false };
+    for (name, email) in rows.flatten() {
+        let email = email.trim().to_string();
+        if email.is_empty() || !email.contains('@') {
+            continue;
+        }
+        let key = email.to_lowercase();
+        if seen.insert(key) {
+            let name = if name.trim().is_empty() { email.clone() } else { name };
+            out.push(Contact { name, email });
         }
     }
+    true
 }
 
 /// Address books the user can add contacts to (local + cached/CardDAV).
@@ -2004,6 +2101,16 @@ mod tests {
 
     fn card(name: &str, email: &str) -> String {
         format!("BEGIN:VCARD\r\nVERSION:3.0\r\nUID:{name}\r\nFN:{name}\r\nEMAIL:{email}\r\nEND:VCARD\r\n")
+    }
+
+    #[test]
+    fn books_that_fill_themselves_from_mail_are_spotted() {
+        assert!(super::is_auto_collected("contact-collected", ""));
+        assert!(super::is_auto_collected("x1", "Collected Addresses"));
+        assert!(super::is_auto_collected("x2", "CardDAV \u{2014} alice · Recently contacted"));
+        assert!(super::is_auto_collected("x3", "Google \u{2014} me@gmail.com · Other contacts"));
+        assert!(!super::is_auto_collected("system-address-book", "On This Computer"));
+        assert!(!super::is_auto_collected("x4", "CardDAV \u{2014} alice · Contacts"));
     }
 
     #[test]

@@ -882,6 +882,9 @@ pub struct AppModel {
     read_mark: config::ReadMark,
     /// Mail filter rules (#47), applied to inbox syncs.
     filters: Vec<config::FilterRule>,
+    /// The saved contacts' addresses, for rules on whether a sender is in
+    /// Contacts (PR #384).
+    saved_addresses: crate::contacts::SavedAddresses,
     /// Tags (#71): a name and color per keyword.
     tags: Vec<config::Tag>,
     /// The tag view, if that is the view — alongside `unified` and
@@ -3223,6 +3226,7 @@ impl SimpleComponent for AppModel {
             // The demo (no accounts of its own) ships with tags and filter
             // rules, so its sidebar shows the Tags and Filtered Folders
             // sections; a staged tags.toml / filters.toml still wins.
+            saved_addresses: crate::contacts::SavedAddresses::default(),
             filters: {
                 let filters = config::load_filters();
                 if filters.is_empty() && demo_data { demo_filters() } else { filters }
@@ -3321,6 +3325,9 @@ impl SimpleComponent for AppModel {
         };
         model.prime_from_cache();
         model.refresh_tag_css();
+        if model.filters.iter().any(|r| r.needs_contacts()) {
+            model.saved_addresses.refresh();
+        }
         model.message_list.emit(MessageListInput::SetTags(model.tags.clone()));
         model.message_view.emit(MessageViewInput::SetTags(model.tags.clone()));
         // What each mailbox of the user's own shows (#189), before the first
@@ -9026,6 +9033,9 @@ impl SimpleComponent for AppModel {
             AppMsg::SetFilters(rules) => {
                 config::save_filters(&rules);
                 let listed_before = self.unified_folder_keys();
+                if rules.iter().any(|r| r.needs_contacts()) {
+                    self.saved_addresses.refresh();
+                }
                 self.filters = rules;
                 // A rule opting its folder in or out of All Inboxes changes
                 // the sidebar's Filtered Folders section; nothing else
@@ -10891,6 +10901,11 @@ impl SimpleComponent for AppModel {
 
             AppMsg::ContactsLoaded(contacts) => {
                 self.contacts_page.emit(ContactsPageInput::SetContacts(contacts));
+                // A contact was saved, deleted or imported: the rules on
+                // whether a sender is in Contacts should know.
+                if self.filters.iter().any(|r| r.needs_contacts()) {
+                    self.saved_addresses.refresh();
+                }
             }
 
             AppMsg::LaunchGnomeContacts => crate::ui::contacts_browser::launch_gnome_contacts(),
@@ -19449,6 +19464,9 @@ impl AppModel {
             Vec::new()
         };
         let hits = self.body_hits.get(&(account_id, folder_id));
+        // The address books are read once per pass, and only when a rule asks
+        // for them. An empty read counts as unknown: see FilterField::FromInContacts.
+        let contacts = if rules.iter().any(|r| r.needs_contacts()) { self.saved_addresses.get() } else { None };
         for mut m in messages {
             if own.iter().any(|a| a.eq_ignore_ascii_case(&m.from_addr)) {
                 kept.push(m);
@@ -19470,6 +19488,7 @@ impl AppModel {
                 // preview is what a sync brings for every message.
                 body: if m.body.is_empty() { &m.preview } else { &m.body },
                 body_hits,
+                contacts: contacts.as_deref(),
             };
             let matching: Vec<&&config::FilterRule> = rules
                 .iter()

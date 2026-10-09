@@ -37,6 +37,12 @@
 - **Fixed: confirming a contact's deletion could delete another one**, when
   the list was re-read while the dialog was open. The dialog now names the
   contact it deletes rather than its place in the list.
+- **Added: filters on whether the sender is in Contacts** (PR #384 by Fabio
+  Rotondo). **Sender is in Contacts** and **Sender is not in Contacts** look
+  the address up in the Evolution Data Server books and the Hylki book,
+  leaving out the books that collect addresses from mail. While a book
+  cannot be read, neither matches. An older Hylki reads these conditions as
+  an empty From address match instead of losing every rule.
 
 ## 1.43.1 — 2026-10-09
 
