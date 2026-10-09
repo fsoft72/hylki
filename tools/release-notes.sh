@@ -97,9 +97,13 @@ if printf '%s' "v${ver}" | grep -Eq "$beta_re"; then
 else
   kind() { grep -Ev -- "$beta_re"; }
 fi
-prev=$(git tag --list 'v*' --sort=-v:refname \
-  | kind \
-  | awk -v cur="v${ver}" 'seen { print; exit } $0 == cur { seen = 1 }')
+before() { awk -v cur="v${ver}" 'seen { print; exit } $0 == cur { seen = 1 }'; }
+prev=$(git tag --list 'v*' --sort=-v:refname | kind | before)
+# A superseded release loses its tag, so the first beta after a stable finds
+# no beta to measure against; the stable before it is the next best thing.
+if [ -z "$prev" ]; then
+  prev=$(git tag --list 'v*' --sort=-v:refname | before)
+fi
 
 if [ -n "$prev" ]; then
   printf '\nFull changelog: [%s...v%s](https://github.com/%s/compare/%s...v%s)\n' \
