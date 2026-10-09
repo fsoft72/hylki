@@ -43,6 +43,10 @@
   leaving out the books that collect addresses from mail. While a book
   cannot be read, neither matches. An older Hylki reads these conditions as
   an empty From address match instead of losing every rule.
+- **Fixed: closing a menu in the message list scrolled it to the top**,
+  tagging from the right-click menu included. Focus went back to the list
+  as a whole, which moved to its first row; it now goes back to the row it
+  came from, and the list stays where it was scrolled.
 
 ## 1.43.1 — 2026-10-09
 

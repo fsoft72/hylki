@@ -8,7 +8,7 @@ use gtk::glib;
 use relm4::prelude::*;
 
 use crate::models::{Message, ThreadSummary};
-use crate::ui::context_menu::{show_context_menu, show_context_menu_with_header, MenuEntry};
+use crate::ui::context_menu::{show_context_menu_popover, MenuEntry};
 use crate::i18n::i18n;
 use crate::ui::message_row::{RowData, RowMeta, RowShared};
 pub use crate::ui::message_row::{tag_menu_entries, RowAction};
@@ -2801,7 +2801,30 @@ impl MessageList {
             vec![item(RowAction::ViewSource, &i18n("View Source"), "code-symbolic")],
         ];
 
-        show_context_menu(&self.list_view, x, y, sections);
+        self.popup_menu(x, y, None, sections);
+    }
+
+    /// Open a menu on the list, keeping the list where it was scrolled. The
+    /// popover hands focus back to the list view as it closes, and the list
+    /// view then scrolls to the row its focus starts from, the first one:
+    /// every right-click menu, tagging included, sent the list to the top.
+    fn popup_menu(&self, x: f64, y: f64, header: Option<&str>, sections: Vec<Vec<MenuEntry>>) {
+        let before = self.list_view.root().and_then(|r| gtk::prelude::RootExt::focus(&r));
+        let popover = show_context_menu_popover(&self.list_view, x, y, header, sections);
+        let Some(scroller) = self.scroller.clone() else { return };
+        let adj = scroller.vadjustment();
+        let pos = adj.value();
+        popover.connect_closed(move |_| {
+            // Focus goes back where it was, and the list to where it was
+            // scrolled, once GTK has done its own focus hand-back.
+            let (adj, before) = (adj.clone(), before.clone());
+            gtk::glib::idle_add_local_once(move || {
+                if let Some(w) = before.filter(|w| w.root().is_some() && w.is_mapped()) {
+                    w.grab_focus();
+                }
+                adj.set_value(pos);
+            });
+        });
     }
 
     /// The messages of the selected rows.
@@ -2905,13 +2928,7 @@ impl MessageList {
             },
         ];
 
-        show_context_menu_with_header(
-            &self.list_view,
-            x,
-            y,
-            Some(&format!("{} selected", self.selection_count)),
-            sections,
-        );
+        self.popup_menu(x, y, Some(&format!("{} selected", self.selection_count)), sections);
     }
 
     /// After a rebuild: a lone selected conversation head whose thread has
