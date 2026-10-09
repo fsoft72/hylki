@@ -4,9 +4,9 @@ Hylki (formerly Vireo) is a clean, fast, GNOME-native email client built with Ru
 
 ## What's new in 1.43.1
 
-- **Fixed: the new-mail sound did not play** when GNOME's alert sound is
-  set to None (#337, reported by yioannides). Hylki's own switch decides
-  now; Do Not Disturb still silences it in a native install.
+Fixes:
+
+- the new-mail sound not playing when GNOME's alert sound is None - (#337)
 
 ## What's new in 1.43.0
 
