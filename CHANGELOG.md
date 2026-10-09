@@ -11,6 +11,11 @@
   playing, ready, finished, skipped because the previous one was still
   playing, switched off, or held back by Do Not Disturb. A sound that still
   says it is playing after ten seconds no longer silences the ones after it.
+- **Fixed: an empty search closed when its folder scope was clicked**
+  (PR #383 by Fabio Rotondo). The search closed as soon as it lost focus
+  while empty, so the All folders picker beside it could not be opened. It
+  now stays open while focus moves within its own row; Find in Message
+  behaves the same.
 
 ## 1.43.1 — 2026-10-09
 
