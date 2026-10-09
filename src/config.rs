@@ -1147,6 +1147,10 @@ pub(crate) struct PrivacyFile {
     /// Whether the Reader View switch is shown in the reader header at all.
     #[serde(default = "default_on")]
     pub(crate) reader_switch: bool,
+    /// Whether the Light / Dark Mode switch, which draws one message in the
+    /// other scheme, is shown in the reader header (PR #386).
+    #[serde(default)]
+    pub(crate) theme_switch: bool,
     /// What Reader View does when a message is opened: keep the last choice,
     /// or start every message on or off.
     #[serde(default)]
@@ -1593,6 +1597,7 @@ impl Default for PrivacyFile {
             single_message_card: default_single_message_card(),
             reader_mode: false,
             reader_switch: true,
+            theme_switch: false,
             reader_default: ReaderDefault::default(),
             reader_zoom: default_reader_zoom(),
             card_attachments: true,

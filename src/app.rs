@@ -929,6 +929,8 @@ pub struct AppModel {
     reader_mode: bool,
     /// The Reader View switch is shown in the reader header.
     reader_switch: bool,
+    /// The Light / Dark Mode switch is shown in the reader header (PR #386).
+    theme_switch: bool,
     /// What Reader View does when a message is opened (Settings).
     reader_default: config::ReaderDefault,
     /// Each conversation message lists its own attachments (#213).
@@ -1418,6 +1420,8 @@ pub enum AppMsg {
     /// Settings → Reading: the zoom every launch starts at.
     SetZoomDefault(u32),
     /// Settings: show the Reader View switch in the reader header.
+    /// Settings: show the Light / Dark Mode switch in the reader header.
+    SetThemeSwitchShown(bool),
     SetReaderSwitchShown(bool),
     /// Copy the message the reader is on into a new one (#232).
     EditAsNewCurrent,
@@ -3249,6 +3253,7 @@ impl SimpleComponent for AppModel {
             zoom: config::load_reader_zoom(),
             zoom_default: config::load_reader_zoom(),
             reader_switch: prefs.reader_switch,
+            theme_switch: prefs.theme_switch,
             reader_default: prefs.reader_default,
             card_attachments: prefs.card_attachments,
             drawer_enabled: prefs.attachment_drawer,
@@ -3464,6 +3469,7 @@ impl SimpleComponent for AppModel {
         model.message_view.emit(MessageViewInput::SetZoomDefault(model.zoom_default));
         model.message_view.emit(MessageViewInput::SetZoom(model.zoom));
         model.message_view.emit(MessageViewInput::SetReaderSwitchShown(model.reader_switch));
+        model.message_view.emit(MessageViewInput::SetThemeSwitchShown(model.theme_switch));
         model.message_view.emit(MessageViewInput::SetReaderDefault(model.effective_reader_default()));
         model
             .message_view
@@ -7972,6 +7978,14 @@ impl SimpleComponent for AppModel {
                     }
                 }
             }
+            AppMsg::SetThemeSwitchShown(on) => {
+                if pref!(self.theme_switch = on) {
+                    self.message_view.emit(MessageViewInput::SetThemeSwitchShown(on));
+                    for p in self.popouts.values() {
+                        p.controller.emit(MessageWindowInput::SetThemeSwitchShown(on));
+                    }
+                }
+            }
             AppMsg::Pref(PrefOutput::SetReaderDefault(policy)) => {
                 if pref!(self.reader_default = policy) {
                     // Focus Mode's Reader View outranks it while on.
@@ -11206,6 +11220,7 @@ impl AppModel {
             single_message_card: self.single_message_card,
             reader_mode: self.reader_mode,
             reader_switch: self.reader_switch,
+            theme_switch: self.theme_switch,
             reader_default: self.reader_default,
             reader_zoom: self.zoom_default,
             card_attachments: self.card_attachments,
@@ -14727,6 +14742,7 @@ impl AppModel {
             zoom: self.zoom,
             zoom_default: self.zoom_default,
             reader_switch: self.reader_switch,
+            theme_switch: self.theme_switch,
             reader_default: self.effective_reader_default(),
             tags: self.tags.clone(),
             pgp_labels: self.pgp_labels,
@@ -18319,6 +18335,7 @@ impl AppModel {
             pgp_labels: self.pgp_labels,
             single_message_card: self.single_message_card,
             reader_switch: self.reader_switch,
+            theme_switch: self.theme_switch,
             reader_default: self.reader_default,
             reader_zoom: self.zoom_default,
             card_attachments: self.card_attachments,
@@ -18424,6 +18441,7 @@ impl AppModel {
             .launch(init)
             .forward(sender.input_sender(), |out| match out {
                 PrefOutput::SetReaderSwitch(on) => AppMsg::SetReaderSwitchShown(on),
+                PrefOutput::SetThemeSwitch(on) => AppMsg::SetThemeSwitchShown(on),
                 PrefOutput::SetReaderZoom(z) => AppMsg::SetZoomDefault(z),
                 PrefOutput::PageShown(id) => AppMsg::SettingsPageShown(id),
                 PrefOutput::Closed => AppMsg::ClosePreferences,

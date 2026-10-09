@@ -45,6 +45,8 @@ pub struct PrefInit {
     pub pgp_labels: bool,
     /// Lone messages render as inset cards, like conversation messages.
     pub single_message_card: bool,
+    /// The Light / Dark Mode switch is shown in the reader header (PR #386).
+    pub theme_switch: bool,
     /// The Reader View switch is shown in the reader header.
     pub reader_switch: bool,
     /// What Reader View does when a message is opened.
@@ -1225,6 +1227,7 @@ pub enum PrefOutput {
     SetPgpLabels(bool),
     SetSingleMessageCard(bool),
     SetReaderSwitch(bool),
+    SetThemeSwitch(bool),
     SetReaderDefault(crate::config::ReaderDefault),
     SetReaderZoom(u32),
     SetCardAttachments(bool),
@@ -3039,6 +3042,15 @@ impl Component for Preferences {
                                         },
                                     },
 
+                                    #[name = "theme_switch_row"]
+                                    adw::SwitchRow {
+                                        set_title: &i18n("Light / Dark Mode switch"),
+                                        set_subtitle: &i18n("Show a switch in the message header that draws the message on screen light or dark, for that message alone."),
+                                        connect_active_notify[sender] => move |row| {
+                                            let _ = sender.output(PrefOutput::SetThemeSwitch(row.is_active()));
+                                        },
+                                    },
+
                                     #[name = "reader_zoom_row"]
                                     adw::ComboRow {
                                         set_title: &i18n("Default zoom"),
@@ -4173,6 +4185,7 @@ impl Component for Preferences {
         widgets.print_punch_margin_row.set_active(init.print_options.punch_margin);
         widgets.single_message_card_row.set_active(init.single_message_card);
         widgets.reader_switch_row.set_active(init.reader_switch);
+        widgets.theme_switch_row.set_active(init.theme_switch);
         widgets.reader_default_row.set_model(Some(&gtk::StringList::new(&[
             &i18n("Remember the last choice"),
             &i18n("Reader View on"),

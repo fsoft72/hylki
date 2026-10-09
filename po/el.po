@@ -3706,6 +3706,14 @@ msgstr ""
 "Ctrl+0 την επαναφέρει στην προεπιλογή των Ρυθμίσεων."
 
 msgid ""
+"Shows this message dark or light, whatever the message theme. Other messages "
+"are not affected."
+msgstr ""
+
+msgid "Light / Dark Mode"
+msgstr ""
+
+msgid ""
 "Reader View shows a message as its text alone, in one plain format, without "
 "the sender's layout, colors and fonts."
 msgstr ""
@@ -5018,6 +5026,14 @@ msgstr "Εμφάνιση μηνυμάτων"
 
 msgid "Theme for email content only, not the app itself."
 msgstr "Θέμα μόνο για το περιεχόμενο email, όχι για την ίδια την εφαρμογή."
+
+msgid "Light / Dark Mode switch"
+msgstr ""
+
+msgid ""
+"Show a switch in the message header that draws the message on screen light "
+"or dark, for that message alone."
+msgstr ""
 
 msgid "Default zoom"
 msgstr "Προεπιλεγμένη μεγέθυνση"

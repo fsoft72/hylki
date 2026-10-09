@@ -3682,6 +3682,14 @@ msgstr ""
 "a predefinição das Definições."
 
 msgid ""
+"Shows this message dark or light, whatever the message theme. Other messages "
+"are not affected."
+msgstr ""
+
+msgid "Light / Dark Mode"
+msgstr ""
+
+msgid ""
 "Reader View shows a message as its text alone, in one plain format, without "
 "the sender's layout, colors and fonts."
 msgstr ""
@@ -4984,6 +4992,14 @@ msgstr "Aspeto das mensagens"
 msgid "Theme for email content only, not the app itself."
 msgstr ""
 "Tema apenas para o conteúdo das mensagens, não para a própria aplicação."
+
+msgid "Light / Dark Mode switch"
+msgstr ""
+
+msgid ""
+"Show a switch in the message header that draws the message on screen light "
+"or dark, for that message alone."
+msgstr ""
 
 msgid "Default zoom"
 msgstr "Zoom predefinido"

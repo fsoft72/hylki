@@ -931,6 +931,15 @@ gathers the files of every message in it. Its Reader View switch changes
 that window alone; the main window and the choice Hylki remembers stay as
 they were. **Ctrl+F** finds in the message and **Ctrl+P** prints it.
 
+### One message light or dark
+
+**Settings → Reading → Message appearance** draws every message light, dark
+or as the system is. With **Light / Dark Mode switch**, in the same group,
+the message header gets a switch that draws the message on screen in the
+other scheme, for that message alone, until Hylki is closed. In a
+conversation the choice follows the message the conversation was opened on.
+It works in a message's own window too. The switch is off by default.
+
 ### Printing
 
 **Ctrl+P** prints the message or conversation in the reader, and

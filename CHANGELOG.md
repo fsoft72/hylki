@@ -21,6 +21,10 @@
   tagged message with its first tag's color; off by default.
 - **Added: clicking the unread dot marks a message read** (PR #380 by Fabio
   Rotondo), without selecting or opening it.
+- **Added: one message can be drawn light or dark** (PR #386 by Fabio
+  Rotondo). With **Settings → Reading → Light / Dark Mode switch** on, a
+  switch beside Reader View draws the message on screen in the other
+  scheme, for that message alone, until Hylki is closed; off by default.
 
 ## 1.43.1 — 2026-10-09
 
