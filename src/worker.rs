@@ -152,7 +152,7 @@ fn previews_rejected(account_id: u32) -> bool {
 /// Whether the account's fetches should read list previews at all: the
 /// setting is on and the server has not rejected the preview items.
 fn inline_previews_wanted(account_id: u32) -> bool {
-    crate::config::load_preview_lines() > 0 && !previews_rejected(account_id)
+    (cfg!(test) || crate::config::load_preview_lines() > 0) && !previews_rejected(account_id)
 }
 
 /// Start the account at the summary-fetch mode that worked last time

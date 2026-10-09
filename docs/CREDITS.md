@@ -99,6 +99,9 @@ shows. Want to join them? See [CONTRIBUTING.md](CONTRIBUTING.md).
   a command is dropped and reconnected instead of holding up the account's
   syncing; and background syncing that steps aside for a message being
   opened, with a probe that measures how long its body takes to arrive.
+- [**Yo'av Moshe**](https://github.com/bjesus) ([#389](https://github.com/hyprlab/hylki/pull/389)):
+  a test suite that no longer depends on the list-preview setting of the
+  person running it.
 
 
 ## Reports, design and ideas
