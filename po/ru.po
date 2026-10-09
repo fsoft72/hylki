@@ -4764,6 +4764,13 @@ msgstr ""
 "Количество строк текста письма, отображаемых под его темой. При отключении "
 "загрузка предпросмотров также прекращается."
 
+#, fuzzy
+msgid "Tint tagged messages"
+msgstr "Метка добавлена к {n} письму"
+
+msgid "Wash the row of a tagged message with the color of its first tag."
+msgstr ""
+
 msgid "Actions palette in the message list"
 msgstr "Палитра действий в списке сообщений"
 

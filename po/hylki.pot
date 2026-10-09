@@ -4287,6 +4287,12 @@ msgid ""
 "being downloaded."
 msgstr ""
 
+msgid "Tint tagged messages"
+msgstr ""
+
+msgid "Wash the row of a tagged message with the color of its first tag."
+msgstr ""
+
 msgid "Actions palette in the message list"
 msgstr ""
 

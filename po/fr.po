@@ -4790,6 +4790,13 @@ msgstr ""
 "La quantité de texte affichée sous l'objet de chaque message. Désactiver "
 "cette option stoppe aussi le téléchargement des aperçus."
 
+#, fuzzy
+msgid "Tint tagged messages"
+msgstr "{n} message marqué"
+
+msgid "Wash the row of a tagged message with the color of its first tag."
+msgstr ""
+
 msgid "Actions palette in the message list"
 msgstr "Palette d'actions dans la liste des messages"
 

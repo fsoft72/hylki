@@ -1865,8 +1865,17 @@ impl Row {
     /// The row's own classes, on the item widget the view wraps it in.
     fn sync_host_classes(&self) {
         let Some(data) = self.data() else { return };
+        // The first tag (in tag order) the message carries tints its row.
+        let tint = self.shared().and_then(|shared| {
+            let tags = shared.tags.borrow();
+            let tag = tags.iter().find(|t| data.msg.has_keyword(&t.keyword))?;
+            Some(format!("rowtint-{}", tag.css_class()))
+        });
         let st = self.st.borrow();
         let mut v = vec!["message-item"];
+        if let Some(class) = tint.as_deref() {
+            v.push(class);
+        }
         if data.msg.unread {
             v.push("message-unread");
         }

@@ -726,6 +726,8 @@ pub struct AppModel {
     avatars: bool,
     /// Whether the mail you sent wears its mailbox's face rather than the
     /// circle any other sender would get (#189).
+    /// Whether tagged rows wear their tag's color (PR #383).
+    tag_row_tint: bool,
     own_mailbox_face: bool,
     /// Whether a sender's site icon may fill their circle (#30).
     sender_logos: bool,
@@ -3141,6 +3143,7 @@ impl SimpleComponent for AppModel {
             gravatar: prefs.gravatar,
             avatars: prefs.avatars,
             own_mailbox_face: prefs.own_mailbox_face,
+            tag_row_tint: prefs.tag_row_tint,
             sender_logos: prefs.sender_logos,
             date_style: config::load_date_format().0,
             clock_style: config::load_date_format().1,
@@ -7122,6 +7125,11 @@ impl SimpleComponent for AppModel {
 
             AppMsg::ListOverflowMenu => self.show_list_overflow_menu(&sender),
 
+            AppMsg::Pref(PrefOutput::SetTagRowTint(on)) => {
+                if pref!(self.tag_row_tint = on) {
+                    self.refresh_tag_css();
+                }
+            }
             AppMsg::Pref(PrefOutput::SetOwnMailboxFace(on)) => {
                 if pref!(self.own_mailbox_face = on) {
                     self.refresh_own_faces();
@@ -11178,6 +11186,7 @@ impl AppModel {
             gravatar: self.gravatar,
             avatars: self.avatars,
             own_mailbox_face: self.own_mailbox_face,
+            tag_row_tint: self.tag_row_tint,
             sender_logos: self.sender_logos,
             date_style: self.date_style,
             clock_style: self.clock_style,
@@ -18091,8 +18100,9 @@ impl AppModel {
         messages
     }
 
-    /// The tag colors as CSS: `.tag-<keyword>` fills (chips), and the same
-    /// class on a `.tag-tint` widget colors its glyph instead.
+    /// The tag colors as CSS: `.tag-<keyword>` fills (chips), the same
+    /// class on a `.tag-tint` widget colors its glyph instead, and with the
+    /// setting on, `.rowtint-tag-<keyword>` washes a message row.
     fn refresh_tag_css(&self) {
         let mut css = String::new();
         for t in &self.tags {
@@ -18104,6 +18114,17 @@ impl AppModel {
                  .tag-tint.{class} {{ color: {color}; background-color: transparent; }}\n",
                 color = t.color,
             ));
+            // Rows carry their `rowtint-` class whatever the setting; only
+            // the rules come and go, so switching it restyles no row by hand.
+            if self.tag_row_tint {
+                css.push_str(&format!(
+                    ".message-list > row:not(:selected) > .message-item.rowtint-{class}:not(.swiping) .message-row {{ \
+                       background-color: alpha({color}, 0.18); }} \
+                     .message-list > row:hover:not(:selected) > .message-item.rowtint-{class}:not(.swiping) .message-row {{ \
+                       background-color: alpha({color}, 0.28); }}\n",
+                    color = t.color,
+                ));
+            }
         }
         self.tag_provider.load(css);
     }
@@ -18281,6 +18302,7 @@ impl AppModel {
             gravatar: self.gravatar,
             avatars: self.avatars,
             own_mailbox_face: self.own_mailbox_face,
+            tag_row_tint: self.tag_row_tint,
             sender_logos: self.sender_logos,
             date_style: self.date_style,
             clock_style: self.clock_style,

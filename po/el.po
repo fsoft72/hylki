@@ -4809,6 +4809,13 @@ msgstr ""
 "Πόσο από κάθε μήνυμα θα εμφανίζεται κάτω από το θέμα του. Η απενεργοποίηση "
 "σταματά επίσης τη λήψη προεπισκοπήσεων."
 
+#, fuzzy
+msgid "Tint tagged messages"
+msgstr "Προστέθηκε ετικέτα σε {n} μήνυμα"
+
+msgid "Wash the row of a tagged message with the color of its first tag."
+msgstr ""
+
 msgid "Actions palette in the message list"
 msgstr "Παλέτα ενεργειών στη λίστα μηνυμάτων"
 

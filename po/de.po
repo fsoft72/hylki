@@ -4817,6 +4817,13 @@ msgstr ""
 "Wie viel von jeder Nachricht unter ihrem Betreff angezeigt werden soll. "
 "Ausgeschaltet werden auch Vorschauen, die heruntergeladen werden."
 
+#, fuzzy
+msgid "Tint tagged messages"
+msgstr "{n} Nachricht mit Tag versehen"
+
+msgid "Wash the row of a tagged message with the color of its first tag."
+msgstr ""
+
 msgid "Actions palette in the message list"
 msgstr "Aktionspalette in der Nachrichtenliste"
 

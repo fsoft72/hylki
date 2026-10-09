@@ -4801,6 +4801,13 @@ msgstr ""
 "Az egyes üzenetekből a tárgy alatt megjelenő mennyiség. Kikapcsolva az "
 "előnézetek letöltése is leáll."
 
+#, fuzzy
+msgid "Tint tagged messages"
+msgstr "{n} db üzenet címkézve"
+
+msgid "Wash the row of a tagged message with the color of its first tag."
+msgstr ""
+
 msgid "Actions palette in the message list"
 msgstr "Műveletpaletta az üzenetlistában"
 

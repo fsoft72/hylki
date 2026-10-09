@@ -4752,6 +4752,13 @@ msgstr ""
 "Quanto de cada mensagem será exibido sob o assunto. Quando desativado, "
 "também interrompe o download das prévias."
 
+#, fuzzy
+msgid "Tint tagged messages"
+msgstr "{n} mensagem etiquetada"
+
+msgid "Wash the row of a tagged message with the color of its first tag."
+msgstr ""
+
 msgid "Actions palette in the message list"
 msgstr "Paleta de ações na lista de mensagens"
 

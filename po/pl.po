@@ -4844,6 +4844,13 @@ msgstr ""
 "Ile treści każdej wiadomości wyświetlać pod tematem. Wyłączenie podglądu "
 "wstrzymuje też jego pobieranie."
 
+#, fuzzy
+msgid "Tint tagged messages"
+msgstr "Oznaczono etykietą {n} wiadomość"
+
+msgid "Wash the row of a tagged message with the color of its first tag."
+msgstr ""
+
 msgid "Actions palette in the message list"
 msgstr "Paleta działań na liście wiadomości"
 

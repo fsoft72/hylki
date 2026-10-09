@@ -16,6 +16,9 @@
   while empty, so the All folders picker beside it could not be opened. It
   now stays open while focus moves within its own row; Find in Message
   behaves the same.
+- **Added: tagged messages can tint their row** (PR #383 by Fabio Rotondo).
+  **Settings → Message List → Tint tagged messages** washes the row of a
+  tagged message with its first tag's color; off by default.
 
 ## 1.43.1 — 2026-10-09
 

@@ -1075,6 +1075,10 @@ pub(crate) struct PrivacyFile {
     /// sender would get.
     #[serde(default = "default_on")]
     pub(crate) own_mailbox_face: bool,
+    /// Whether a tagged message's row in the list is washed with its first
+    /// tag's color (PR #383).
+    #[serde(default)]
+    pub(crate) tag_row_tint: bool,
     /// How dates are written (#32).
     #[serde(default)]
     pub(crate) date_style: DateStyle,
@@ -1569,6 +1573,7 @@ impl Default for PrivacyFile {
             gravatar: false,
             avatars: true,
             own_mailbox_face: true,
+            tag_row_tint: false,
             sender_logos: false,
             date_style: DateStyle::default(),
             clock_style: ClockStyle::default(),

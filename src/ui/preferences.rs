@@ -20,6 +20,8 @@ pub struct PrefInit {
     pub avatars: bool,
     /// Your own mail wears its mailbox's face, not a sender's circle (#189).
     pub own_mailbox_face: bool,
+    /// Tagged rows are washed with their tag's color (PR #383).
+    pub tag_row_tint: bool,
     pub sender_logos: bool,
     pub date_style: DateStyle,
     pub clock_style: ClockStyle,
@@ -1209,6 +1211,7 @@ pub enum PrefOutput {
     SetGravatar(bool),
     SetAvatars(bool),
     SetOwnMailboxFace(bool),
+    SetTagRowTint(bool),
     SetSenderLogos(bool),
     SetDateStyle(DateStyle),
     SetClockStyle(ClockStyle),
@@ -2770,6 +2773,16 @@ impl Component for Preferences {
                                         },
                                     },
 
+                                    #[name = "tag_row_tint_row"]
+                                    adw::SwitchRow {
+                                        set_title: &i18n("Tint tagged messages"),
+                                        set_subtitle: &i18n("Wash the row of a tagged message with the color of \
+                                                       its first tag."),
+                                        connect_active_notify[sender] => move |row| {
+                                            let _ = sender.output(PrefOutput::SetTagRowTint(row.is_active()));
+                                        },
+                                    },
+
                                     #[name = "list_palette_row"]
                                     adw::SwitchRow {
                                         set_title: &i18n("Actions palette in the message list"),
@@ -3909,6 +3922,7 @@ impl Component for Preferences {
         widgets.gravatar_row.set_active(init.gravatar);
         widgets.avatars_row.set_active(init.avatars);
         widgets.own_mailbox_face_row.set_active(init.own_mailbox_face);
+        widgets.tag_row_tint_row.set_active(init.tag_row_tint);
         widgets.sender_logos_row.set_active(init.sender_logos);
 
         // Mail-check interval combo.

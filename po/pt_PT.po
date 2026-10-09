@@ -4775,6 +4775,13 @@ msgstr ""
 "A quantidade de cada mensagem apresentada sob o respetivo assunto. Desativar "
 "esta opção também impede a transferência das pré-visualizações."
 
+#, fuzzy
+msgid "Tint tagged messages"
+msgstr "{n} mensagem etiquetada"
+
+msgid "Wash the row of a tagged message with the color of its first tag."
+msgstr ""
+
 msgid "Actions palette in the message list"
 msgstr "Paleta de ações na lista de mensagens"
 
