@@ -3553,8 +3553,10 @@ impl AccountsWindow {
                 .color
                 .clone()
                 .unwrap_or_else(|| crate::worker::accent_for(account_id).to_string());
+            // Ringed as in the sidebar, a pixel off the disc.
             css.push_str(&format!(
-                ".acct-list-color-{account_id} {{ background-color: {color}; }}\n"
+                ".acct-list-color-{account_id} {{ background-color: {color}; \
+                 outline: 2px solid {color}; outline-offset: 1px; }}\n"
             ));
             let circle = gtk::Box::new(gtk::Orientation::Horizontal, 0);
             circle.add_css_class("account-circle");
@@ -4097,7 +4099,7 @@ impl AccountsWindow {
     fn refresh_preview(&self, widgets: &AccountsWindowWidgets) {
         let color = crate::color::to_hex(&widgets.color_btn.rgba());
         self.preview_css.load_from_string(&format!(
-            ".account-preview-disc {{ background-color: {color}; }}"
+            ".account-preview-disc {{ background-color: {color}; outline: 3px solid {color}; outline-offset: 2px; }}"
         ));
         let disc = &widgets.preview_disc;
         while let Some(child) = disc.first_child() {
