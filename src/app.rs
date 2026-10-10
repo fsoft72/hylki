@@ -5371,8 +5371,8 @@ impl SimpleComponent for AppModel {
                 self.attachments_loading = false;
                 self.sync_attachment_drawer();
                 self.message_list.emit(MessageListInput::SetSelected(None));
-                self.message_list.emit(MessageListInput::SetColorize(self.accounts.len() > 1));
                 self.message_list.emit(MessageListInput::ResetPaging);
+                self.message_list.emit(MessageListInput::SetColorize(self.accounts.len() > 1));
                 self.show_message(None, false);
                 self.push_outbox();
             }
@@ -9215,8 +9215,8 @@ impl SimpleComponent for AppModel {
                 self.sync_attachment_drawer();
                 self.show_message(None, false);
                 self.message_list.emit(MessageListInput::SetSelected(None));
-                self.message_list.emit(MessageListInput::SetColorize(true));
                 self.message_list.emit(MessageListInput::ResetPaging);
+                self.message_list.emit(MessageListInput::SetColorize(true));
                 self.message_list.emit(MessageListInput::SetShowRecipient(false));
                 self.message_list.emit(MessageListInput::SetRestorable(false));
                 self.message_list.emit(MessageListInput::SetInJunk(false));
@@ -14317,8 +14317,8 @@ impl AppModel {
         self.sync_attachment_drawer();
         self.show_message(None, false);
         self.message_list.emit(MessageListInput::SetSelected(None));
-        self.message_list.emit(MessageListInput::SetColorize(true));
         self.message_list.emit(MessageListInput::ResetPaging);
+        self.message_list.emit(MessageListInput::SetColorize(true));
         // A Sent view's rows all come from you — name the recipients.
         self.message_list.emit(MessageListInput::SetShowRecipient(
             view == UnifiedView::Kind(FolderKind::Sent),
@@ -14680,8 +14680,8 @@ impl AppModel {
         self.sync_attachment_drawer();
         self.attachments_loading = false;
         self.message_list.emit(MessageListInput::SetSelected(None));
-        self.message_list.emit(MessageListInput::SetColorize(false));
         self.message_list.emit(MessageListInput::ResetPaging);
+        self.message_list.emit(MessageListInput::SetColorize(false));
         // A Sent folder's rows all come from you — name the recipients (#27).
         let is_sent = self
             .folders

@@ -71,6 +71,12 @@
   after clicking elsewhere and back. The sidebar now picks it again, by the
   account's address, once that account has listed its folders, and falls
   back to the usual first view if it does not within a few seconds.
+- **Fixed: switching folders paused the window** (#401, reported by
+  rzeigler). With thousands of messages in a folder, opening another one
+  held everything, the sidebar's highlight and the refresh spinner included,
+  for a third to half a second: the message list threw away its rows and
+  built new ones. It now hands the rows it has to the new folder, the
+  highlight moves at once, and the list follows a frame later.
 
 ## 1.43.1 — 2026-10-09
 
