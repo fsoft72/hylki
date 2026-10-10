@@ -2388,12 +2388,16 @@ impl Sidebar {
             let glyph: gtk::Widget = match (&gravatar, &section.avatar, &section.emoji) {
                 (Some(texture), ..) => {
                     circle.set_overflow(gtk::Overflow::Hidden);
+                    circle.add_css_class(&format!("acct-ring-{id}"));
                     crate::ui::initials::picture_from_texture(texture, 30).upcast()
                 }
                 (None, Some(path), _) => {
                     // A picture fills the disc; the disc's rounded corners
-                    // clip it into a circle.
+                    // clip it into a circle. It hides the account's color,
+                    // so the color rings it instead, as the list's
+                    // avatars are ringed in All Inboxes.
                     circle.set_overflow(gtk::Overflow::Hidden);
+                    circle.add_css_class(&format!("acct-ring-{id}"));
                     crate::ui::initials::avatar_picture(path, 30).upcast()
                 }
                 (None, None, Some(em)) if !em.is_empty() => {
@@ -2962,14 +2966,16 @@ impl Sidebar {
             self.build_tags_section(container, Slot::Unified, filtered_below, sender);
         }
 
-        // Per-account avatar colors (background + readable text).
+        // Per-account avatar colors (background + readable text), and the
+        // ring a picture wears in the color it covers.
         let mut css = String::new();
         for s in &sections {
             let text = crate::color::readable_text(&s.color);
             css.push_str(&format!(
                 ".acct-color-{0} {{ background-color: {1}; }} \
                  .acct-color-{0} label {{ color: {2}; }} \
-                 .acct-tint-{0} {{ color: {1}; }}\n",
+                 .acct-tint-{0} {{ color: {1}; }} \
+                 .acct-ring-{0} {{ box-shadow: 0 0 0 2px {1}; }}\n",
                 s.account.id, s.color, text
             ));
         }
@@ -5359,10 +5365,12 @@ fn build_unified_inbox_row(
     let glyph: gtk::Widget = match (&gravatar, &section.avatar, &section.emoji) {
         (Some(texture), ..) => {
             circle.set_overflow(gtk::Overflow::Hidden);
+            circle.add_css_class(&format!("acct-ring-{id}"));
             crate::ui::initials::picture_from_texture(texture, 21).upcast()
         }
         (None, Some(path), _) => {
             circle.set_overflow(gtk::Overflow::Hidden);
+            circle.add_css_class(&format!("acct-ring-{id}"));
             crate::ui::initials::avatar_picture(path, 21).upcast()
         }
         (None, None, Some(em)) if !em.is_empty() => {
