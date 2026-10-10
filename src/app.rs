@@ -12040,6 +12040,11 @@ impl AppModel {
         self.update_busy_indicator();
         self.show_message(None, false);
         self.message_list.emit(MessageListInput::SetLoading);
+        // The sidebar still shows the view selected; it picks it again, and
+        // says so, once the account behind it has listed its folders.
+        // Without this the list stayed empty until another folder was
+        // clicked and the first one clicked again.
+        self.sidebar.emit(SidebarInput::Reannounce);
         self.rebuild_sidebar();
         self.spawn_workers(sender);
     }
