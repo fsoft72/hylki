@@ -18,7 +18,7 @@
   behaves the same.
 - **Added: tagged messages can tint their row** (PR #383 by Fabio Rotondo).
   **Settings → Message List → Tint tagged messages** washes the row of a
-  tagged message with its first tag's color; off by default.
+  tagged message with its first tag's color; on unless switched off.
 - **Added: clicking the unread dot marks a message read** (PR #380 by Fabio
   Rotondo), without selecting or opening it.
 - **Added: one message can be drawn light or dark** (PR #386 by Fabio
@@ -65,6 +65,12 @@
   in the account editor's preview. A picture or Gravatar covered the color
   the circle otherwise shows. The ring stands a pixel off the circle, so
   every account looks the same, picture or not.
+- **Fixed: the view on screen stayed empty after saving an account.**
+  Saving reconnects every account, which let go of the folder or view
+  shown while the sidebar still showed it selected, so it came back only
+  after clicking elsewhere and back. The sidebar now picks it again, by the
+  account's address, once that account has listed its folders, and falls
+  back to the usual first view if it does not within a few seconds.
 
 ## 1.43.1 — 2026-10-09
 

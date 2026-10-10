@@ -1068,7 +1068,7 @@ proportion and the dates keep theirs.
 **Settings → Message List → Tint tagged messages** washes the row of a
 tagged message with its tag's color, in both layouts. A message with more
 than one tag takes the color of the one listed first in **Settings → Tags**.
-A selected row keeps the selection color. It is off by default.
+A selected row keeps the selection color. It is on unless switched off.
 
 Clicking the unread dot on a row marks that message read without selecting
 or opening it. A conversation's dot that is lit only for an unread reply
