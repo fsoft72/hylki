@@ -732,6 +732,8 @@ pub struct AppModel {
     /// circle any other sender would get (#189).
     /// Whether tagged rows wear their tag's color (PR #383).
     tag_row_tint: bool,
+    /// The address book new contacts go to (empty: automatic).
+    contact_book: String,
     own_mailbox_face: bool,
     /// Whether a sender's site icon may fill their circle (#30).
     sender_logos: bool,
@@ -1819,11 +1821,16 @@ pub enum AppMsg {
     OpenContacts,
     /// The background EDS read for the contacts view finished.
     ContactsLoaded(Vec<crate::contacts::ContactDetails>),
+    /// Read with the contacts: the books new contacts can go to, chosen one
+    /// first, and how many contacts the Hylki book holds.
+    ContactBooksLoaded { books: Vec<crate::contacts::Book>, local_count: usize },
     /// Right-click on the sidebar's Contacts row: the external app.
     LaunchGnomeContacts,
     /// Contact editor writes (run on a background thread against EDS).
     SaveContact { book_uid: String, vcard: String },
-    CreateContact(String),
+    /// A new contact, into the book picked in the editor (`None`: the
+    /// default one).
+    CreateContact { book_uid: Option<String>, vcard: String },
     DeleteContact { book_uid: String, uid: String },
     /// A contact write finished (`Some` = the error to show).
     ContactWriteDone(Option<String>),
@@ -2852,8 +2859,8 @@ impl SimpleComponent for AppModel {
                     ContactsPageOutput::SaveContact { book_uid, vcard } => {
                         AppMsg::SaveContact { book_uid, vcard }
                     }
-                    ContactsPageOutput::CreateContact { vcard } => {
-                        AppMsg::CreateContact(vcard)
+                    ContactsPageOutput::CreateContact { book_uid, vcard } => {
+                        AppMsg::CreateContact { book_uid, vcard }
                     }
                     ContactsPageOutput::DeleteContact { book_uid, uid } => {
                         AppMsg::DeleteContact { book_uid, uid }
@@ -3161,6 +3168,7 @@ impl SimpleComponent for AppModel {
             avatars: prefs.avatars,
             own_mailbox_face: prefs.own_mailbox_face,
             tag_row_tint: prefs.tag_row_tint,
+            contact_book: prefs.contact_book.clone(),
             sender_logos: prefs.sender_logos,
             date_style: config::load_date_format().0,
             clock_style: config::load_date_format().1,
@@ -5068,6 +5076,18 @@ impl SimpleComponent for AppModel {
                             None => tracing::warn!("showcase: no dialog to answer"),
                         }
                     });
+                }
+                // HYLKI_SHOWCASE_CONTACTS=list|new opens Contacts at 3s,
+                // and with "new" its editor for a new contact at 5s.
+                if let Ok(which) = std::env::var("HYLKI_SHOWCASE_CONTACTS") {
+                    let s = sender.clone();
+                    gtk::glib::timeout_add_seconds_local_once(3, move || s.input(AppMsg::OpenContacts));
+                    if which == "new" {
+                        let page = model.contacts_page.sender().clone();
+                        gtk::glib::timeout_add_seconds_local_once(5, move || {
+                            let _ = page.send(ContactsPageInput::NewContact);
+                        });
+                    }
                 }
                 // HYLKI_SHOWCASE_SETTINGS=accounts|prefs opens the Settings
                 // window on that panel (about: the About window) and
@@ -7148,6 +7168,88 @@ impl SimpleComponent for AppModel {
 
             AppMsg::ListOverflowMenu => self.show_list_overflow_menu(&sender),
 
+            AppMsg::Pref(PrefOutput::SetContactBook(uid)) => {
+                if pref!(self.contact_book = uid) && self.showing_contacts {
+                    reload_contacts(&sender, 0);
+                }
+            }
+            AppMsg::Pref(PrefOutput::LoadContactBooks) => {
+                if demo_mode() {
+                    sender.input(AppMsg::ContactBooksLoaded { books: crate::contacts::demo_books(), local_count: 1 });
+                    return;
+                }
+                let s = sender.clone();
+                std::thread::spawn(move || {
+                    s.input(AppMsg::ContactBooksLoaded {
+                        books: crate::contacts::writable_books(),
+                        local_count: crate::local_contacts::count(),
+                    });
+                });
+            }
+            AppMsg::Pref(PrefOutput::ImportLocalContacts) => {
+                let s = sender.clone();
+                crate::ui::contacts_page::choose_vcf_files(self.dialog_parent().as_ref(), move |paths| {
+                    s.input(AppMsg::ImportContacts(paths));
+                });
+            }
+            AppMsg::Pref(PrefOutput::ExportLocalContacts) => {
+                let dialog = gtk::FileDialog::builder()
+                    .title(&i18n("Export Contacts"))
+                    .initial_name("hylki-contacts.vcf")
+                    .build();
+                let notif = self.notifications.sender().clone();
+                dialog.save(self.dialog_parent().as_ref(), gtk::gio::Cancellable::NONE, move |res| {
+                    let Ok(file) = res else { return };
+                    let Some(path) = file.path() else { return };
+                    let notif = notif.clone();
+                    std::thread::spawn(move || {
+                        let _ = notif.send(match crate::local_contacts::export_to(&path) {
+                            Ok(n) => NotifyInput::SetStatus(ni18n_f(
+                                "{n} contact exported to {path}",
+                                "{n} contacts exported to {path}",
+                                n as u32,
+                                &[("n", &n.to_string()), ("path", &path.display().to_string())],
+                            )),
+                            Err(e) => NotifyInput::Push {
+                                text: i18n_f("Could not export contacts: {e}", &[("e", &e)]),
+                                error: true,
+                                connectivity: false,
+                            },
+                        });
+                    });
+                });
+            }
+            AppMsg::Pref(PrefOutput::DeleteAllLocalContacts) => {
+                let n = crate::local_contacts::count();
+                let dialog = adw::MessageDialog::new(
+                    self.dialog_parent().as_ref(),
+                    Some(i18n("Delete All Contacts?").as_str()),
+                    Some(&ni18n_f(
+                        "The {n} contact in the Hylki address book is deleted. This cannot be undone; export the book first to keep a copy.",
+                        "The {n} contacts in the Hylki address book are deleted. This cannot be undone; export the book first to keep a copy.",
+                        n as u32,
+                        &[("n", &n.to_string())],
+                    )),
+                );
+                dialog.add_response("cancel", &i18n("Cancel"));
+                dialog.add_response("delete", &i18n("Delete All"));
+                dialog.set_response_appearance("delete", adw::ResponseAppearance::Destructive);
+                dialog.set_default_response(Some("cancel"));
+                dialog.set_close_response("cancel");
+                let s = sender.clone();
+                dialog.connect_response(None, move |_, resp| {
+                    if resp != "delete" {
+                        return;
+                    }
+                    let s = s.clone();
+                    std::thread::spawn(move || {
+                        let err = crate::local_contacts::delete_all().err();
+                        crate::contacts::local_changed();
+                        s.input(AppMsg::ContactWriteDone(err));
+                    });
+                });
+                dialog.present();
+            }
             AppMsg::Pref(PrefOutput::SetTagRowTint(on)) => {
                 if pref!(self.tag_row_tint = on) {
                     self.refresh_tag_css();
@@ -10894,15 +10996,15 @@ impl SimpleComponent for AppModel {
                 // Read EDS off the UI thread (SQLite + photo decoding); the
                 // page shows its loading face until the list lands.
                 self.contacts_page.emit(ContactsPageInput::SetLoading);
-                let s = sender.clone();
-                std::thread::spawn(move || {
-                    let contacts = if demo_mode() {
-                        crate::contacts::demo_contacts()
-                    } else {
-                        crate::contacts::read_contact_details()
-                    };
-                    s.input(AppMsg::ContactsLoaded(contacts));
-                });
+                reload_contacts(&sender, 0);
+            }
+
+            AppMsg::ContactBooksLoaded { books, local_count } => {
+                if let Some(p) = &self.prefs {
+                    p.emit(PrefInput::SetContactBooks(books.clone()));
+                    p.emit(PrefInput::SetLocalContactCount(local_count));
+                }
+                self.contacts_page.emit(ContactsPageInput::SetBooks(books));
             }
 
             AppMsg::ContactsLoaded(contacts) => {
@@ -10924,11 +11026,16 @@ impl SimpleComponent for AppModel {
                 });
             }
 
-            AppMsg::CreateContact(vcard) => {
+            AppMsg::CreateContact { book_uid, vcard } => {
                 let s = sender.clone();
                 std::thread::spawn(move || {
-                    let result = match crate::contacts::writable_books().first() {
-                        Some(book) => crate::contacts::create_contact(&book.uid, &vcard),
+                    // No book picked (none was listed yet): the default one.
+                    let book_uid = match book_uid {
+                        Some(uid) => Some(uid),
+                        None => crate::contacts::writable_books().first().map(|b| b.uid.clone()),
+                    };
+                    let result = match book_uid {
+                        Some(uid) => crate::contacts::create_contact(&uid, &vcard),
                         None => Err(i18n("No address book available")),
                     };
                     s.input(AppMsg::ContactWriteDone(result.err()));
@@ -10954,12 +11061,7 @@ impl SimpleComponent for AppModel {
                 // Success or not, re-read so the card shows what EDS holds.
                 // A short pause lets EDS flush the write to its SQLite cache
                 // (that is what the read goes through).
-                let s = sender.clone();
-                std::thread::spawn(move || {
-                    std::thread::sleep(std::time::Duration::from_millis(500));
-                    let contacts = crate::contacts::read_contact_details();
-                    s.input(AppMsg::ContactsLoaded(contacts));
-                });
+                reload_contacts(&sender, 500);
             }
 
             AppMsg::ImportContacts(paths) => {
@@ -10993,10 +11095,7 @@ impl SimpleComponent for AppModel {
                         });
                     }
                 }
-                let s = sender.clone();
-                std::thread::spawn(move || {
-                    s.input(AppMsg::ContactsLoaded(crate::contacts::read_contact_details()));
-                });
+                reload_contacts(&sender, 0);
             }
 
             // The rest of Preferences' outputs are mapped to their own
@@ -11004,6 +11103,26 @@ impl SimpleComponent for AppModel {
             AppMsg::Pref(_) => {}
         }
     }
+}
+
+/// Read the contacts, the books new ones can go to and the Hylki book's
+/// size off the main thread, after `delay_ms` (EDS takes a moment to flush
+/// a write to the cache the read goes through).
+fn reload_contacts(sender: &ComponentSender<AppModel>, delay_ms: u64) {
+    let s = sender.clone();
+    std::thread::spawn(move || {
+        std::thread::sleep(std::time::Duration::from_millis(delay_ms));
+        if demo_mode() {
+            s.input(AppMsg::ContactsLoaded(crate::contacts::demo_contacts()));
+            s.input(AppMsg::ContactBooksLoaded { books: crate::contacts::demo_books(), local_count: 1 });
+            return;
+        }
+        s.input(AppMsg::ContactsLoaded(crate::contacts::read_contact_details()));
+        s.input(AppMsg::ContactBooksLoaded {
+            books: crate::contacts::writable_books(),
+            local_count: crate::local_contacts::count(),
+        });
+    });
 }
 
 /// The notification text for a finished contacts import, and whether it is an error.
@@ -11286,6 +11405,7 @@ impl AppModel {
             gravatar: self.gravatar,
             avatars: self.avatars,
             own_mailbox_face: self.own_mailbox_face,
+            contact_book: self.contact_book.clone(),
             tag_row_tint: self.tag_row_tint,
             sender_logos: self.sender_logos,
             date_style: self.date_style,
@@ -18329,6 +18449,13 @@ impl AppModel {
                 self.message_list.emit(MessageListInput::SetMessages { messages: msgs.clone() });
             }
         }
+    }
+
+    /// The window a dialog opened from Settings belongs to: Settings while
+    /// it is open, else the main window.
+    fn dialog_parent(&self) -> Option<gtk::Window> {
+        let prefs = self.prefs.as_ref().map(|p| p.widget().clone().upcast::<gtk::Window>());
+        prefs.filter(|w| w.is_visible()).or_else(|| Some(self.window.clone().upcast()))
     }
 
     /// Dialog to add an email to GNOME Contacts (choosing the address book).

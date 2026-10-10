@@ -106,7 +106,7 @@ pub fn suggestions(own: &[(String, String)]) -> Vec<Suggestion> {
 }
 
 /// A writable address book the user can add contacts to.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Book {
     /// EDS source UID (what `OpenAddressBook` expects).
     pub uid: String,
@@ -300,8 +300,8 @@ pub fn is_local_book(book_uid: &str) -> bool {
 }
 
 /// The local Hylki book as a [`Book`].
-fn local_book() -> Book {
-    Book { uid: crate::local_contacts::LOCAL_BOOK_UID.to_string(), name: i18n("Hylki") }
+pub fn local_book() -> Book {
+    Book { uid: crate::local_contacts::LOCAL_BOOK_UID.to_string(), name: i18n("Hylki Address Book") }
 }
 
 /// Parse stored local vCards into the Contacts view's entries. A local
@@ -602,7 +602,7 @@ fn add_local_photo_locations(photos: &mut HashMap<String, Vec<PhotoLocation>>) {
 
 /// A local write happened: re-index the photos now (rather than at the next
 /// 30 second check) so avatars and the Contacts list follow at once.
-fn local_changed() {
+pub(crate) fn local_changed() {
     start_photo_load();
     start_photo_watcher();
     let index = CONTACT_PHOTOS.get_or_init(new_photo_index).clone();
@@ -952,9 +952,19 @@ pub fn writable_books() -> Vec<Book> {
     if let (Some(dest), Ok(conn)) = (factory_dest(), zbus::blocking::Connection::session()) {
         books.retain(|b| !book_read_only(&conn, &dest, &b.uid));
     }
-    // Always last: EDS books keep priority as the default destination.
+    // Last: unless chosen in Settings, EDS books keep priority as the
+    // default destination.
     books.push(local_book());
+    prefer_book(&mut books, &crate::config::load_contact_book());
     books
+}
+
+/// Move the book chosen for new contacts to the front, where every caller
+/// takes its default from. An empty or vanished choice changes nothing.
+fn prefer_book(books: &mut [Book], uid: &str) {
+    if let Some(i) = books.iter().position(|b| !uid.is_empty() && b.uid == uid) {
+        books[..=i].rotate_right(1);
+    }
 }
 
 /// Whether EDS says the book is read-only (Nextcloud's "Recently contacted"
@@ -1647,14 +1657,25 @@ pub(crate) fn parse_vcard_fields(vcard: &str) -> Option<ContactDetails> {
     Some(c)
 }
 
+/// The books demo mode offers new contacts, the Hylki book among them.
+pub fn demo_books() -> Vec<Book> {
+    vec![
+        Book { uid: "On This Computer".into(), name: "On This Computer".into() },
+        Book { uid: "CardDAV — jason@hylki.hyprlab.co".into(), name: "CardDAV — jason@hylki.hyprlab.co".into() },
+        local_book(),
+    ]
+}
+
 /// Sample contacts for demo mode (HYLKI_DEMO): the people from the demo
 /// mailbox, fleshed out so the contacts view has something to show off.
-/// No book/EDS identity — demo entries are display-only.
+/// No EDS identity: demo entries are display-only. The book's name stands
+/// in for its UID, so the book filter has something to tell apart.
 pub fn demo_contacts() -> Vec<ContactDetails> {
     let l = |label: &str, value: &str| Labeled { label: label.into(), value: value.into() };
     let contact = |name: &str, book: &str| ContactDetails {
         name: name.into(),
         book_name: book.into(),
+        book_uid: if book == "Hylki Address Book" { crate::local_contacts::LOCAL_BOOK_UID.into() } else { book.into() },
         ..ContactDetails::default()
     };
     vec![
@@ -1710,7 +1731,7 @@ pub fn demo_contacts() -> Vec<ContactDetails> {
             emails: vec![l("Home", "tom.okafor@example.com")],
             phones: vec![l("Mobile", "+44 7700 900 214")],
             birthday: "July 30, 1988".into(),
-            ..contact("Tom Okafor", "On This Computer")
+            ..contact("Tom Okafor", "Hylki Address Book")
         },
         ContactDetails {
             org: "Kim & Partners".into(),
@@ -1907,7 +1928,7 @@ pub fn delete_contact(book_uid: &str, uid: &str) -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use super::{
-        details_from_local_vcards, is_local_book, merge_target, vcard_display_name, vcard_photo,
+        details_from_local_vcards, is_local_book, prefer_book, Book, merge_target, vcard_display_name, vcard_photo,
         vcard_photo_with,
     };
 
@@ -2111,6 +2132,17 @@ mod tests {
         assert!(super::is_auto_collected("x3", "Google \u{2014} me@gmail.com · Other contacts"));
         assert!(!super::is_auto_collected("system-address-book", "On This Computer"));
         assert!(!super::is_auto_collected("x4", "CardDAV \u{2014} alice · Contacts"));
+    }
+
+    #[test]
+    fn the_chosen_book_comes_first() {
+        let book = |uid: &str| Book { uid: uid.into(), name: uid.into() };
+        let mut books = vec![book("a"), book("b"), book("hylki-local")];
+        prefer_book(&mut books, "hylki-local");
+        assert_eq!(books.iter().map(|b| b.uid.as_str()).collect::<Vec<_>>(), ["hylki-local", "a", "b"]);
+        prefer_book(&mut books, "gone");
+        prefer_book(&mut books, "");
+        assert_eq!(books[0].uid, "hylki-local");
     }
 
     #[test]

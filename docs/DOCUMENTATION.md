@@ -421,24 +421,38 @@ of the generated one.
 
 ### The Hylki address book
 
-Contacts can be kept in Hylki itself. The Contacts view lists a book called
-**Hylki** beside the address books Evolution Data Server (EDS) holds, and it
-is there even when EDS is not installed. Contacts in it are created, edited
-and deleted like any other, and its addresses and photos are used for
-suggestions and avatars. If EDS has a writable book, a new contact goes there
-first; the Hylki book is the default only when there is none.
+Hylki keeps an address book of its own, the **Hylki Address Book**, beside
+the address books of GNOME Contacts, which Evolution Data Server (EDS)
+holds. It is there whether EDS is installed or not. Its contacts are
+created, edited and deleted like any other, and their addresses and photos
+are used for suggestions and avatars.
 
-**Import contacts…**, in the Contacts view's header, reads `.vcf` files into
-the Hylki book. A file can hold many contacts, in vCard 2.1, 3.0 or 4.0. A
-contact with the same ID as one already in the book updates it, and one
-without an ID is matched by its content, so importing a file twice adds
-nothing new. Entries with neither a name nor an address, and mailing lists,
-are skipped; truncated or oversized entries (over 5 MB) are counted as
-damaged; a second card with the same ID in one file is skipped, so the first
-is kept. Files over 50 MB are refused, and photos are used only when they are
-inside the file: nothing is fetched from the web. A person who is in both an
-EDS book and the Hylki book appears in each, with the book named, and once in
-the composer's suggestions.
+In the Contacts view, the menu above the list shows **All Address Books** or
+one of them, the Hylki book included. The menu is hidden while there is only
+one book. A new contact, made with the **+** button, has an **Address
+book** row at the top of its form that picks where it is saved; it starts on
+the book the list shows, or on the default book when the list shows them
+all. A contact being edited stays in its book, which the form names.
+
+**Settings → Contacts** manages the Hylki book: how many contacts it holds,
+**Import vCard files**, **Export as a vCard file** (one `.vcf` file with every
+contact, which other apps can import) and **Delete all contacts**, which asks
+first and leaves the GNOME Contacts books alone. **Save new contacts in**
+sets the default book for contacts made in Hylki, from the Contacts view or
+with **Add Sender to Contacts**. Until it is set, a new contact goes to the
+first writable EDS book, or to the Hylki book when there is none.
+
+Importing reads `.vcf` files into the Hylki book, from Settings or from the
+import button in the Contacts view's header. A file can hold many contacts,
+in vCard 2.1, 3.0 or 4.0. A contact with the same ID as one already in the
+book updates it, and one without an ID is matched by its content, so
+importing a file twice adds nothing new. Entries with neither a name nor an
+address, and mailing lists, are skipped; truncated or oversized entries
+(over 5 MB) are counted as damaged; a second card with the same ID in one
+file is skipped, so the first is kept. Files over 50 MB are refused, and
+photos are used only when they are inside the file: nothing is fetched from
+the web. A person who is in both an EDS book and the Hylki book appears in
+each, with the book named, and once in the composer's suggestions.
 
 The book is the file `local_contacts.db` in Hylki's data folder, kept apart
 from the mail cache, so clearing the cache leaves it alone.

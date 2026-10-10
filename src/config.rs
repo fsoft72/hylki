@@ -17,7 +17,7 @@ use serde::{Deserialize, Serialize};
 /// disk with whatever the umask allowed — brief, but these files carry
 /// hostnames, usernames, OAuth client secrets and correspondent lists. Creating
 /// with the mode already set closes it.
-fn write_private(path: &std::path::Path, contents: &str) -> std::io::Result<()> {
+pub(crate) fn write_private(path: &std::path::Path, contents: &str) -> std::io::Result<()> {
     use std::io::Write;
     let mut opts = std::fs::OpenOptions::new();
     opts.write(true).create(true).truncate(true);
@@ -1079,6 +1079,10 @@ pub(crate) struct PrivacyFile {
     /// tag's color (PR #383).
     #[serde(default)]
     pub(crate) tag_row_tint: bool,
+    /// The address book new contacts go to: an EDS source UID, or the
+    /// Hylki book's. Empty picks the first writable EDS book, else Hylki.
+    #[serde(default)]
+    pub(crate) contact_book: String,
     /// How dates are written (#32).
     #[serde(default)]
     pub(crate) date_style: DateStyle,
@@ -1578,6 +1582,7 @@ impl Default for PrivacyFile {
             avatars: true,
             own_mailbox_face: true,
             tag_row_tint: false,
+            contact_book: String::new(),
             sender_logos: false,
             date_style: DateStyle::default(),
             clock_style: ClockStyle::default(),
@@ -3295,6 +3300,11 @@ pub fn load_preview_lines() -> u32 {
 }
 
 
+
+/// The address book chosen for new contacts (empty: automatic).
+pub fn load_contact_book() -> String {
+    load_privacy().contact_book
+}
 
 /// Whether Hylki starts at login (background running only).
 pub fn load_autostart() -> bool {

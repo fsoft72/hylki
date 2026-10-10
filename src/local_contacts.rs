@@ -537,6 +537,36 @@ pub fn delete(uid: &str) -> Result<(), String> {
     Store::open()?.delete(uid)
 }
 
+/// How many contacts the book holds.
+pub fn count() -> usize {
+    Store::open_read()
+        .ok()
+        .flatten()
+        .and_then(|s| s.conn.query_row("SELECT count(*) FROM contact", [], |r| r.get::<_, i64>(0)).ok())
+        .map_or(0, |n| n as usize)
+}
+
+/// Write every contact into one `.vcf` file at `path`, returning how many.
+pub fn export_to(path: &Path) -> Result<usize, String> {
+    let vcards = list_vcards()?;
+    let mut text = String::new();
+    for v in &vcards {
+        text.push_str(v.trim_end_matches(['\r', '\n']));
+        text.push_str("\r\n");
+    }
+    crate::config::write_private(path, &text).map_err(|e| format!("{}: {e}", path.display()))?;
+    Ok(vcards.len())
+}
+
+/// Delete every contact in the book, returning how many there were.
+pub fn delete_all() -> Result<usize, String> {
+    if !exists() {
+        return Ok(0);
+    }
+    let store = Store::open()?;
+    store.conn.execute("DELETE FROM contact", []).map_err(|e| e.to_string())
+}
+
 /// Whether the database file exists yet (nothing to read before the first write).
 pub fn exists() -> bool {
     db_path().is_some_and(|p| p.is_file())

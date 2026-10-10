@@ -53,6 +53,12 @@
   until the folder's next sync put them back. Where the search and the
   index disagree, the message's own flags now decide. A folder list fetched
   just before a tag reached the server no longer takes it off the row.
+- **Added: the Hylki address book is easier to find and manage.** A menu
+  above the Contacts list shows every address book or one of them, the
+  Hylki Address Book included. A new contact's form has an **Address book**
+  row that picks where it is saved. **Settings → Contacts** shows how many
+  contacts the Hylki book holds, imports and exports vCard files, deletes
+  them all, and sets the default book for new contacts.
 
 ## 1.43.1 — 2026-10-09
 

@@ -170,6 +170,40 @@ msgstr "Von {name} abgemeldet."
 msgid "The list's unsubscribe page is open in your browser."
 msgstr "Die Abmeldeseite der Liste ist in Ihrem Browser geöffnet."
 
+#, fuzzy
+msgid "Export Contacts"
+msgstr "Kontakte sortieren"
+
+#, fuzzy
+msgid "{n} contact exported to {path}"
+msgid_plural "{n} contacts exported to {path}"
+msgstr[0] "Protokoll nach {display} exportiert"
+msgstr[1] "Protokoll nach {display} exportiert"
+
+#, fuzzy
+msgid "Could not export contacts: {e}"
+msgstr "Konnte kein Konto importieren: {e}"
+
+#, fuzzy
+msgid "Delete All Contacts?"
+msgstr "Kontakt löschen?"
+
+msgid ""
+"The {n} contact in the Hylki address book is deleted. This cannot be undone; "
+"export the book first to keep a copy."
+msgid_plural ""
+"The {n} contacts in the Hylki address book are deleted. This cannot be "
+"undone; export the book first to keep a copy."
+msgstr[0] ""
+msgstr[1] ""
+
+msgid "Cancel"
+msgstr "Abbrechen"
+
+#, fuzzy
+msgid "Delete All"
+msgstr "Löschen"
+
 msgid "The language applies the next time Hylki starts."
 msgstr "Die Sprache wird beim nächsten Start von Hylki übernommen."
 
@@ -407,9 +441,6 @@ msgstr[1] "{n} Dateien mit Hylki senden"
 
 msgid "{names} ({size}). What should the files go into?"
 msgstr "{names} ({size}). Wo sollen die Dateien eingefügt werden?"
-
-msgid "Cancel"
-msgstr "Abbrechen"
 
 msgid "Reply to a Message…"
 msgstr "Auf eine Nachricht antworten…"
@@ -1073,8 +1104,9 @@ msgstr "Suchen"
 msgid "Print"
 msgstr "Drucken"
 
-msgid "Hylki"
-msgstr "Hylki"
+#, fuzzy
+msgid "Hylki Address Book"
+msgstr "Adressbuch"
 
 msgid "On This Computer"
 msgstr "Auf diesem Computer"
@@ -2047,6 +2079,9 @@ msgstr "POP3-Konten haben keine Serverordner, um eine Kopie zu speichern."
 
 msgid "GOA"
 msgstr "GOA"
+
+msgid "Hylki"
+msgstr "Hylki"
 
 msgid "Imported GNOME Online Account"
 msgstr "Importiertes GNOME Online Konto"
@@ -3226,15 +3261,17 @@ msgstr "GNOME Kontakte öffnen"
 msgid "New contact"
 msgstr "Neuer Kontakt"
 
-#, fuzzy
-msgid "Import contacts…"
-msgstr "Kontakte sortieren"
+msgid "Import vCard files into the Hylki address book"
+msgstr ""
 
 msgid "Loading Contacts…"
 msgstr "Kontakte werden geladen…"
 
-msgid "Contacts you add in GNOME Contacts appear here."
-msgstr "Kontakte, die Sie in GNOME-Kontakte hinzufügen, werden hier angezeigt."
+msgid ""
+"Add a contact with the + button, or import vCard files. Contacts are kept in "
+"Hylki's own address book, and the address books of GNOME Contacts are listed "
+"here too."
+msgstr ""
 
 msgid "Sort contacts"
 msgstr "Kontakte sortieren"
@@ -3248,17 +3285,6 @@ msgstr "Vorname"
 msgid "Last name"
 msgstr "Nachname"
 
-#, fuzzy
-msgid "Import Contacts"
-msgstr "Kontakte sortieren"
-
-#, fuzzy
-msgid "vCard files"
-msgstr "Große Dateien"
-
-msgid "All files"
-msgstr "Alle Dateien"
-
 msgid "Delete Contact?"
 msgstr "Kontakt löschen?"
 
@@ -3266,6 +3292,10 @@ msgid ""
 "{name} is removed from your address book, and for a synced book, from the "
 "server too."
 msgstr ""
+
+#, fuzzy
+msgid "All Address Books"
+msgstr "Adressbuch"
 
 msgid "Edit"
 msgstr "Bearbeiten"
@@ -3293,6 +3323,17 @@ msgstr "Telefonnummer hinzufügen"
 
 msgid "Add website"
 msgstr "Website hinzufügen"
+
+#, fuzzy
+msgid "Import Contacts"
+msgstr "Kontakte sortieren"
+
+#, fuzzy
+msgid "vCard files"
+msgstr "Große Dateien"
+
+msgid "All files"
+msgstr "Alle Dateien"
 
 msgid "LDAP Directories"
 msgstr "LDAP-Verzeichnisse"
@@ -4422,6 +4463,54 @@ msgid ""
 msgstr ""
 "Der Kontoeditor ist geöffnet. Speichern oder verwerfen Sie Ihre Änderungen, "
 "bevor Sie fortfahren."
+
+msgid ""
+"Contacts Hylki keeps itself, in its own data folder. They are listed in "
+"Contacts beside the address books of GNOME Contacts, and work without GNOME."
+msgstr ""
+
+#, fuzzy
+msgid "Contacts in the Hylki book"
+msgstr "Kontakte in der Seitenleiste"
+
+#, fuzzy
+msgid "Import vCard files"
+msgstr "Große Dateien"
+
+msgid ""
+"Adds the contacts in .vcf files to the Hylki book. Importing a file again "
+"updates its contacts."
+msgstr ""
+
+#, fuzzy
+msgid "Export as a vCard file"
+msgstr "Große Dateien"
+
+msgid ""
+"Saves every contact in the Hylki book in one .vcf file, which other apps can "
+"import."
+msgstr ""
+
+#, fuzzy
+msgid "Delete all contacts"
+msgstr "Kontakt löschen?"
+
+msgid ""
+"Empties the Hylki book. The address books of GNOME Contacts are not touched."
+msgstr ""
+
+#, fuzzy
+msgid "New Contacts"
+msgstr "Neuer Kontakt"
+
+#, fuzzy
+msgid "Save new contacts in"
+msgstr "Neuer Kontakt"
+
+msgid ""
+"The address book a contact made in Hylki goes to, unless another is picked "
+"when it is made."
+msgstr ""
 
 msgid "Check for new mail"
 msgstr "Auf neue Nachrichten prüfen"
@@ -6786,6 +6875,14 @@ msgstr "Der einheitliche Posteingang im Lichtmodus"
 
 msgid "Hyprlab"
 msgstr "Hyprlab"
+
+#, fuzzy
+#~ msgid "Import contacts…"
+#~ msgstr "Kontakte sortieren"
+
+#~ msgid "Contacts you add in GNOME Contacts appear here."
+#~ msgstr ""
+#~ "Kontakte, die Sie in GNOME-Kontakte hinzufügen, werden hier angezeigt."
 
 #~ msgid "Dictionaries the app can see"
 #~ msgstr "Verfügbare Wörterbücher"

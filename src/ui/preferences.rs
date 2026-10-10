@@ -313,6 +313,14 @@ impl FactoryComponent for SenderRow {
 // ---- Preferences window -----------------------------------------------------
 
 pub struct Preferences {
+    /// The Contacts page: how many contacts the Hylki book holds, and the
+    /// books new contacts can go to (read off the main thread), chosen
+    /// book first.
+    local_contact_count: usize,
+    contact_books: Vec<crate::contacts::Book>,
+    contact_book_row: Option<adw::ComboRow>,
+    /// Set while the row's model is replaced, which fires selected-notify.
+    contact_book_guard: std::cell::Cell<bool>,
     /// Mirrors the notifications switch, so the "show sender and subject" row
     /// below it can grey out when nothing is being posted at all.
     notifications: bool,
@@ -929,6 +937,7 @@ const SIDE_PAGES: &[(&str, &[SidePage])] = &[
             SidePage { id: "cloud", title: i18n_noop("Cloud Storage"), icon: "cloud-symbolic", accounts: false },
             SidePage { id: "translation", title: i18n_noop("Translation"), icon: "translate-symbolic", accounts: false },
             SidePage { id: "directories", title: i18n_noop("LDAP Directories"), icon: "x-office-address-book-symbolic", accounts: false },
+            SidePage { id: "contacts", title: i18n_noop("Contacts"), icon: "avatar-default-symbolic", accounts: false },
         ],
     ),
     (
@@ -1060,6 +1069,11 @@ fn side_page(id: &str) -> Option<&'static SidePage> {
 
 #[derive(Debug)]
 pub enum PrefInput {
+    /// The Contacts page: the books new contacts can go to, freshly read.
+    SetContactBooks(Vec<crate::contacts::Book>),
+    /// The Hylki book's size changed (an import, a deletion).
+    SetLocalContactCount(usize),
+    ChangeContactBook(u32),
     ToggleAvatars(bool),
     ChangeDateStyle(u32),
     ChangeClockStyle(u32),
@@ -1205,6 +1219,15 @@ pub enum PrefInput {
 
 #[derive(Debug)]
 pub enum PrefOutput {
+    /// The Contacts page's buttons: the app opens the file dialogs and the
+    /// confirmation, and does the work off the main thread.
+    ImportLocalContacts,
+    ExportLocalContacts,
+    DeleteAllLocalContacts,
+    SetContactBook(String),
+    /// The Contacts page is showing: read the books new contacts can go to
+    /// (D-Bus, so off the main thread) and send them back.
+    LoadContactBooks,
     /// A category was shown, so the app can reopen the window on it.
     PageShown(String),
     SetAutoRemoteContent(bool),
@@ -1910,6 +1933,83 @@ impl Component for Preferences {
                             // LDAP directories (#307), their own component.
                             #[name = "directories_slot"]
                             add_named[Some("directories")] = &adw::Bin {},
+
+                            add_named[Some("contacts")] = &adw::PreferencesPage {
+                                // The books are read again each time the page
+                                // shows: one may have been added in GNOME
+                                // Contacts meanwhile.
+                                connect_map[sender] => move |_| {
+                                    let _ = sender.output(PrefOutput::LoadContactBooks);
+                                },
+
+                                add = &adw::PreferencesGroup {
+                                    set_title: &i18n("Hylki Address Book"),
+                                    set_description: Some(&i18n("Contacts Hylki keeps itself, in its own data folder. They are listed in Contacts beside the address books of GNOME Contacts, and work without GNOME.")),
+
+                                    adw::ActionRow {
+                                        set_title: &i18n("Contacts in the Hylki book"),
+                                        add_suffix = &gtk::Label {
+                                            add_css_class: "dim-label",
+                                            #[watch]
+                                            set_label: &model.local_contact_count.to_string(),
+                                        },
+                                    },
+
+                                    adw::ActionRow {
+                                        set_title: &i18n("Import vCard files"),
+                                        set_subtitle: &i18n("Adds the contacts in .vcf files to the Hylki book. Importing a file again updates its contacts."),
+                                        set_activatable: true,
+                                        connect_activated[sender] => move |_| {
+                                            let _ = sender.output(PrefOutput::ImportLocalContacts);
+                                        },
+                                        add_suffix = &gtk::Image {
+                                            set_icon_name: Some("go-next-symbolic"),
+                                        },
+                                    },
+
+                                    adw::ActionRow {
+                                        set_title: &i18n("Export as a vCard file"),
+                                        set_subtitle: &i18n("Saves every contact in the Hylki book in one .vcf file, which other apps can import."),
+                                        set_activatable: true,
+                                        #[watch]
+                                        set_sensitive: model.local_contact_count > 0,
+                                        connect_activated[sender] => move |_| {
+                                            let _ = sender.output(PrefOutput::ExportLocalContacts);
+                                        },
+                                        add_suffix = &gtk::Image {
+                                            set_icon_name: Some("go-next-symbolic"),
+                                        },
+                                    },
+
+                                    adw::ActionRow {
+                                        set_title: &i18n("Delete all contacts"),
+                                        set_subtitle: &i18n("Empties the Hylki book. The address books of GNOME Contacts are not touched."),
+                                        add_css_class: "error",
+                                        set_activatable: true,
+                                        #[watch]
+                                        set_sensitive: model.local_contact_count > 0,
+                                        connect_activated[sender] => move |_| {
+                                            let _ = sender.output(PrefOutput::DeleteAllLocalContacts);
+                                        },
+                                        add_suffix = &gtk::Image {
+                                            set_icon_name: Some("go-next-symbolic"),
+                                        },
+                                    },
+                                },
+
+                                add = &adw::PreferencesGroup {
+                                    set_title: &i18n("New Contacts"),
+
+                                    #[name = "contact_book_row"]
+                                    adw::ComboRow {
+                                        set_title: &i18n("Save new contacts in"),
+                                        set_subtitle: &i18n("The address book a contact made in Hylki goes to, unless another is picked when it is made."),
+                                        connect_selected_notify[sender] => move |row| {
+                                            sender.input(PrefInput::ChangeContactBook(row.selected()));
+                                        },
+                                    },
+                                },
+                            },
 
                             add_named[Some("general")] = &adw::PreferencesPage {
                                 add = &adw::PreferencesGroup {
@@ -3814,6 +3914,10 @@ impl Component for Preferences {
     ) -> ComponentParts<Self> {
         let t_init = std::time::Instant::now();
         let mut model = Preferences {
+            local_contact_count: crate::local_contacts::count(),
+            contact_books: Vec::new(),
+            contact_book_row: None,
+            contact_book_guard: std::cell::Cell::new(false),
             nautilus: crate::nautilus_ext::State::read(),
             nautilus_cmd: crate::platform::nautilus_python_install_command(),
             files: init.files,
@@ -4603,6 +4707,7 @@ impl Component for Preferences {
         narrow.add_setter(&widgets.split, "collapsed", Some(&true.to_value()));
         root.add_breakpoint(narrow);
         model.panels_stack = Some(widgets.panels_stack.clone());
+        model.contact_book_row = Some(widgets.contact_book_row.clone());
         model.accounts_slot = Some(widgets.accounts_slot.clone());
         model.toolbar_editor = Some(ToolbarEditor::build(&widgets.toolbar_editor_box, &sender));
         // The toolbar editor's zones want a row of six chips: the page's
@@ -5160,6 +5265,31 @@ impl Component for Preferences {
             }
             PrefInput::ExportLog => {
                 let _ = sender.output(PrefOutput::ExportLog);
+            }
+            PrefInput::SetContactBooks(books) => {
+                self.contact_books = books;
+                let labels: Vec<String> = self.contact_books.iter().map(|b| b.name.clone()).collect();
+                let labels: Vec<&str> = labels.iter().map(String::as_str).collect();
+                // The book list arrives in default-first order, so what the
+                // row shows is the book a new contact would go to.
+                if let Some(row) = &self.contact_book_row {
+                    self.contact_book_guard.set(true);
+                    row.set_model(Some(&gtk::StringList::new(&labels)));
+                    row.set_selected(0);
+                    row.set_sensitive(self.contact_books.len() > 1);
+                    self.contact_book_guard.set(false);
+                }
+            }
+            PrefInput::SetLocalContactCount(n) => {
+                self.local_contact_count = n;
+            }
+            PrefInput::ChangeContactBook(index) => {
+                if self.contact_book_guard.get() {
+                    return;
+                }
+                if let Some(book) = self.contact_books.get(index as usize) {
+                    let _ = sender.output(PrefOutput::SetContactBook(book.uid.clone()));
+                }
             }
             PrefInput::ExportSettings => {
                 let _ = sender.output(PrefOutput::ExportSettings);
