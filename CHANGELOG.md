@@ -59,11 +59,11 @@
   row that picks where it is saved. **Settings → Contacts** shows how many
   contacts the Hylki book holds, imports and exports vCard files, deletes
   them all, and sets the default book for new contacts.
-- **Changed: an account with a picture is ringed in its color in the
-  sidebar.** A picture or Gravatar covers the circle that otherwise shows the
-  account's color, so the color now rings it, as the message list's avatars
-  are ringed in All Inboxes, in the account header and in the rows under
-  All Inboxes.
+- **Changed: account circles in the sidebar are ringed in the account's
+  color**, as the message list's avatars are in All Inboxes, in the account
+  header and in the rows under All Inboxes. A picture or Gravatar covered
+  the color the circle otherwise shows. The ring stands a pixel off the
+  circle, so every account looks the same, picture or not.
 
 ## 1.43.1 — 2026-10-09
 

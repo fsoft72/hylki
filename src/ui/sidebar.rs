@@ -2372,6 +2372,9 @@ impl Sidebar {
             let circle = gtk::Box::new(gtk::Orientation::Horizontal, 0);
             circle.add_css_class("account-circle");
             circle.add_css_class(&format!("acct-color-{id}"));
+            // Ringed in the account's color, as the list's avatars are in
+            // All Inboxes: a picture covers the color the disc would show.
+            circle.add_css_class(&format!("acct-ring-{id}"));
             circle.set_valign(gtk::Align::Center);
             // Keep it a perfect circle: a fixed square that never stretches with
             // the row. (Without this the glyph's hexpand propagates up and the
@@ -2388,16 +2391,12 @@ impl Sidebar {
             let glyph: gtk::Widget = match (&gravatar, &section.avatar, &section.emoji) {
                 (Some(texture), ..) => {
                     circle.set_overflow(gtk::Overflow::Hidden);
-                    circle.add_css_class(&format!("acct-ring-{id}"));
                     crate::ui::initials::picture_from_texture(texture, 30).upcast()
                 }
                 (None, Some(path), _) => {
                     // A picture fills the disc; the disc's rounded corners
-                    // clip it into a circle. It hides the account's color,
-                    // so the color rings it instead, as the list's
-                    // avatars are ringed in All Inboxes.
+                    // clip it into a circle.
                     circle.set_overflow(gtk::Overflow::Hidden);
-                    circle.add_css_class(&format!("acct-ring-{id}"));
                     crate::ui::initials::avatar_picture(path, 30).upcast()
                 }
                 (None, None, Some(em)) if !em.is_empty() => {
@@ -2967,7 +2966,9 @@ impl Sidebar {
         }
 
         // Per-account avatar colors (background + readable text), and the
-        // ring a picture wears in the color it covers.
+        // ring every account circle wears. The ring stands a pixel off the
+        // disc: flush against a disc of its own color it would only make
+        // the disc bigger.
         let mut css = String::new();
         for s in &sections {
             let text = crate::color::readable_text(&s.color);
@@ -2975,7 +2976,7 @@ impl Sidebar {
                 ".acct-color-{0} {{ background-color: {1}; }} \
                  .acct-color-{0} label {{ color: {2}; }} \
                  .acct-tint-{0} {{ color: {1}; }} \
-                 .acct-ring-{0} {{ box-shadow: 0 0 0 2px {1}; }}\n",
+                 .acct-ring-{0} {{ outline: 2px solid {1}; outline-offset: 1px; }}\n",
                 s.account.id, s.color, text
             ));
         }
@@ -5357,6 +5358,7 @@ fn build_unified_inbox_row(
     let circle = gtk::Box::new(gtk::Orientation::Horizontal, 0);
     circle.add_css_class("account-circle-sm");
     circle.add_css_class(&format!("acct-color-{id}"));
+    circle.add_css_class(&format!("acct-ring-{id}"));
     circle.set_valign(gtk::Align::Center);
     circle.set_halign(gtk::Align::Center);
     circle.set_hexpand(false);
@@ -5365,12 +5367,10 @@ fn build_unified_inbox_row(
     let glyph: gtk::Widget = match (&gravatar, &section.avatar, &section.emoji) {
         (Some(texture), ..) => {
             circle.set_overflow(gtk::Overflow::Hidden);
-            circle.add_css_class(&format!("acct-ring-{id}"));
             crate::ui::initials::picture_from_texture(texture, 21).upcast()
         }
         (None, Some(path), _) => {
             circle.set_overflow(gtk::Overflow::Hidden);
-            circle.add_css_class(&format!("acct-ring-{id}"));
             crate::ui::initials::avatar_picture(path, 21).upcast()
         }
         (None, None, Some(em)) if !em.is_empty() => {
