@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- **Fixed: right-click menus do nothing on X11.** On an X11 session every
+  entry of a right-click menu only closed the menu: releasing the right
+  button took the menu's hold on the mouse away, so the next click never
+  reached it. The menu now opens once the button is up, and every entry acts
+  again. Wayland is unchanged.
 - **Changed: Hylki's icons look the same on every desktop.** Every icon is
   drawn from copies built into the app, including those GTK and libadwaita
   draw for their own buttons, arrows and checkmarks; the desktop's icon theme
