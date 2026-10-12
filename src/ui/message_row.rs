@@ -48,6 +48,8 @@ pub enum RowAction {
     /// Save the message whole, as a .eml file (#398).
     SaveAsFile,
     AddContact,
+    /// Start a new filter from the message's sender and subject.
+    CreateFilter,
 }
 
 /// A full swipe (#swipe): also `AdwSwipeable`'s reported `distance`, the px

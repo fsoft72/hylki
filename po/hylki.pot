@@ -447,6 +447,9 @@ msgstr ""
 msgid "Add Sender to Contacts"
 msgstr ""
 
+msgid "Create a filter from this email"
+msgstr ""
+
 msgid "Block Remote Content"
 msgstr ""
 

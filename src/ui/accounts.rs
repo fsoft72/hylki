@@ -412,6 +412,9 @@ pub enum AccountsInput {
     AddBlacklistText(String),
     RemoveBlacklistRow(String),
     AddFilter,
+    /// Open the filter page on a new rule started from this draft, as the
+    /// "Create a filter from this email" entry does.
+    AddFilterFrom(crate::config::FilterRule),
     /// Run the rules over the mail already in the inboxes (#198).
     ApplyFilters,
     /// The app says whether that run is still going (#198).
@@ -3009,7 +3012,10 @@ impl Component for AccountsWindow {
                 }
             }
             AccountsInput::AddFilter => {
-                self.open_filter_page(&widgets.nav, &sender, None);
+                self.open_filter_page(&widgets.nav, &sender, None, None);
+            }
+            AccountsInput::AddFilterFrom(rule) => {
+                self.open_filter_page(&widgets.nav, &sender, None, Some(rule));
             }
             AccountsInput::ApplyFilters => {
                 if !self.filters_applying {
@@ -3020,7 +3026,7 @@ impl Component for AccountsWindow {
             AccountsInput::FiltersApplying(on) => self.set_filters_applying(on),
             AccountsInput::EditFilter(i) => {
                 if let Some(rule) = self.filter_rules.get(i).cloned() {
-                    self.open_filter_page(&widgets.nav, &sender, Some((i, rule)));
+                    self.open_filter_page(&widgets.nav, &sender, Some((i, rule)), None);
                 }
             }
             AccountsInput::FilterEdited(i, rule) => {
@@ -6186,6 +6192,7 @@ impl AccountsWindow {
         nav: &adw::NavigationView,
         sender: &ComponentSender<Self>,
         edit: Option<(usize, crate::config::FilterRule)>,
+        prefill: Option<crate::config::FilterRule>,
     ) {
         use crate::config::{FilterField, FilterMatch, FilterRule};
         let emails: Vec<String> = self.accounts.iter().map(|a| a.email.clone()).collect();
@@ -6463,9 +6470,12 @@ impl AccountsWindow {
         action_group.add(&tag_row);
         action_group.add(&count_row);
 
-        // Editing: every field starts from the rule as it stands.
+        // Editing: every field starts from the rule as it stands. A new
+        // rule started from a message starts from its draft the same way,
+        // and is added, not saved over another.
         let edit_index = edit.as_ref().map(|(i, _)| *i);
-        if let Some((_, rule)) = &edit {
+        let source = edit.as_ref().map(|(_, rule)| rule).or(prefill.as_ref());
+        if let Some(rule) = source {
             name_row.set_text(&rule.name);
             if let Some(idx) = emails
                 .iter()
@@ -6490,8 +6500,8 @@ impl AccountsWindow {
         page_box.append(&action_group);
         // The condition groups slot in above Add Condition: the rule's own
         // when editing, one blank one otherwise.
-        match &edit {
-            Some((_, rule)) => {
+        match source {
+            Some(rule) => {
                 for c in rule.conditions() {
                     add_cond(Some(&c));
                 }

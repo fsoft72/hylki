@@ -7083,6 +7083,17 @@ impl SimpleComponent for AppModel {
                     RowAction::AddContact => {
                         self.show_add_contact_dialog(&m.from_name, &m.from_addr, &sender);
                     }
+                    RowAction::CreateFilter => {
+                        let Some(email) = self.email_of(m.account_id) else { return };
+                        let rule = config::FilterRule::draft_from_message(&email, &m.from_addr, &m.subject);
+                        self.open_settings_window(&sender, true, false);
+                        if let Some(p) = &self.prefs {
+                            p.emit(PrefInput::ShowPageById("filters".to_string()));
+                        }
+                        if let Some(acc) = &self.accounts_win {
+                            acc.emit(crate::ui::accounts::AccountsInput::AddFilterFrom(rule));
+                        }
+                    }
                 }
             }
 
@@ -15127,7 +15138,10 @@ impl AppModel {
         acts.push(item(RowAction::Archive, i18n("Archive"), "mail-archive"));
         acts.push(item(RowAction::Delete, i18n("Delete"), "user-trash"));
         sections.push(acts);
-        sections.push(vec![item(RowAction::AddContact, i18n("Add Sender to Contacts"), "contact-new")]);
+        sections.push(vec![
+            item(RowAction::AddContact, i18n("Add Sender to Contacts"), "contact-new"),
+            item(RowAction::CreateFilter, i18n("Create a filter from this email"), "filter-folder"),
+        ]);
         // Remote content, per message. The banner offers the same thing, but
         // it can be switched off (Settings → Privacy) and then there is
         // nothing to click — so the choice lives here too, and here it goes

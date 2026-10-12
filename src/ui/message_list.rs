@@ -2922,11 +2922,10 @@ impl MessageList {
                 section.push(item(RowAction::Delete, &i18n("Delete"), "user-trash-symbolic"));
                 section
             },
-            vec![item(
-                RowAction::AddContact,
-                &i18n("Add Sender to Contacts"),
-                "contact-new-symbolic",
-            )],
+            vec![
+                item(RowAction::AddContact, &i18n("Add Sender to Contacts"), "contact-new-symbolic"),
+                item(RowAction::CreateFilter, &i18n("Create a filter from this email"), "filter-folder-symbolic"),
+            ],
             vec![
                 item(RowAction::ViewSource, &i18n("View Source"), "code-symbolic"),
                 item(RowAction::SaveAsFile, &i18n("Save as File…"), "document-save-symbolic"),

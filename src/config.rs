@@ -2173,6 +2173,20 @@ fn is_false(b: &bool) -> bool {
     !*b
 }
 
+/// The subject with any leading "Re:", "Fwd:" or "Fw:" (any case, repeated)
+/// taken off, and the whitespace around it.
+fn strip_reply_prefixes(subject: &str) -> &str {
+    const PREFIXES: [&str; 3] = ["re:", "fwd:", "fw:"];
+    let mut rest = subject.trim();
+    while let Some(next) = PREFIXES.iter().find_map(|p| {
+        let head = rest.get(..p.len())?;
+        head.eq_ignore_ascii_case(p).then(|| rest[p.len()..].trim_start())
+    }) {
+        rest = next;
+    }
+    rest.trim()
+}
+
 /// One condition of a [`FilterRule`]: what to look at, how, and for what.
 #[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(from = "FilterConditionDisk", into = "FilterConditionDisk")]
@@ -2461,6 +2475,41 @@ fn mailboxes(list: &str) -> Vec<String> {
 }
 
 impl FilterRule {
+    /// The rule the "Create a filter from this email" entry starts the
+    /// editor with: the sender's address, and the subject without its
+    /// leading "Re:" / "Fwd:" so a whole thread matches. Both have to match;
+    /// what the rule does is left for the user to pick. A blank subject
+    /// leaves the sender as the only condition.
+    pub fn draft_from_message(account_email: &str, from_addr: &str, subject: &str) -> FilterRule {
+        let mut conditions = vec![FilterCondition {
+            field: FilterField::FromAddress,
+            matcher: FilterMatch::Equals,
+            value: from_addr.trim().to_string(),
+        }];
+        let subject = strip_reply_prefixes(subject);
+        if !subject.is_empty() {
+            conditions.push(FilterCondition {
+                field: FilterField::Subject,
+                matcher: FilterMatch::Contains,
+                value: subject.to_string(),
+            });
+        }
+        let mut rule = FilterRule {
+            name: String::new(),
+            account_email: account_email.to_string(),
+            field: FilterField::FromAddress,
+            matcher: FilterMatch::Equals,
+            value: String::new(),
+            more: Vec::new(),
+            any: false,
+            dest_path: String::new(),
+            tag: String::new(),
+            count_unread: count_unread_default(),
+        };
+        rule.set_conditions(conditions);
+        rule
+    }
+
     /// Every condition, the first included.
     pub fn conditions(&self) -> Vec<FilterCondition> {
         let mut all = Vec::with_capacity(1 + self.more.len());
@@ -4736,6 +4785,51 @@ mod filter_tests {
         recipients: &'a str,
     ) -> FilterInput<'a> {
         FilterInput { from_addr, from_name, subject, recipients, ..Default::default() }
+    }
+
+    #[test]
+    fn draft_filter_matches_sender_and_subject() {
+        let rule = FilterRule::draft_from_message("me@x.org", "billing@shop.example", "Your invoice");
+        assert_eq!(rule.account_email, "me@x.org");
+        assert!(!rule.any, "both conditions have to match");
+        assert!(rule.dest_path.is_empty() && rule.tag.is_empty(), "the user picks what the rule does");
+        assert_eq!(
+            rule.conditions(),
+            vec![
+                FilterCondition {
+                    field: FilterField::FromAddress,
+                    matcher: FilterMatch::Equals,
+                    value: "billing@shop.example".into(),
+                },
+                FilterCondition {
+                    field: FilterField::Subject,
+                    matcher: FilterMatch::Contains,
+                    value: "Your invoice".into(),
+                },
+            ]
+        );
+    }
+
+    #[test]
+    fn draft_filter_strips_reply_and_forward_prefixes() {
+        let subject_of = |subject| {
+            FilterRule::draft_from_message("me@x.org", "a@b.org", subject).conditions()[1].value.clone()
+        };
+        assert_eq!(subject_of("Re: Invoice"), "Invoice");
+        assert_eq!(subject_of("RE: Fwd: re:  Invoice"), "Invoice");
+        assert_eq!(subject_of("Fw: Invoice"), "Invoice");
+        // Only a leading prefix goes; one inside the subject is the subject's own.
+        assert_eq!(subject_of("Invoice re: March"), "Invoice re: March");
+        assert_eq!(subject_of("Reminder: Invoice"), "Reminder: Invoice");
+    }
+
+    #[test]
+    fn draft_filter_skips_an_empty_subject() {
+        for subject in ["", "   ", "Re: ", "Fwd:"] {
+            let rule = FilterRule::draft_from_message("me@x.org", "a@b.org", subject);
+            assert_eq!(rule.conditions().len(), 1, "subject {subject:?} leaves the sender alone");
+            assert_eq!(rule.field, FilterField::FromAddress);
+        }
     }
 
     #[test]

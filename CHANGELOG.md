@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- **Added: "Create a filter from this email" in the message menus.** Right-click
+  a message in the list or in the reader and the filter editor opens with the
+  sender's address and the subject already filled in, without any leading
+  "Re:" or "Fwd:", so a whole thread matches. Pick where the mail goes, or
+  which tag it gets, and save.
 - **Changed: Hylki's icons look the same on every desktop.** Every icon is
   drawn from copies built into the app, including those GTK and libadwaita
   draw for their own buttons, arrows and checkmarks; the desktop's icon theme
