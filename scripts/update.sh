@@ -14,5 +14,8 @@ cd "$ROOT"
 echo "==> Pulling $BRANCH from $REMOTE"
 git pull "$REMOTE" "$BRANCH"
 
+echo "==> pushing to local main"
+git push
+
 echo "==> Running install.sh"
 ./install.sh
