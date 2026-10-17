@@ -8,7 +8,7 @@
 use adw::prelude::*;
 use relm4::prelude::*;
 
-use crate::config::{split_identity, AccountConfig, AliasConfig, OAuthSettings, Protocol};
+use crate::config::{split_identity, AccountConfig, AliasConfig, NamedSignature, OAuthSettings, Protocol};
 use crate::ui::rich_editor::{self, RichEditor};
 use crate::ui::preferences::{SenderRow, SenderRowOutput};
 use crate::worker::{self, ConnTest};
@@ -201,6 +201,9 @@ pub struct AccountsWindow {
     /// Tags (#71), managed on this tab too — the rules' "Tag with" names them.
     tags: Vec<crate::config::Tag>,
     tags_list: Option<gtk::ListBox>,
+    /// Smart folders (#417): saved searches the sidebar lists.
+    smart_folders: Vec<crate::config::SmartFolder>,
+    smart_list: Option<gtk::ListBox>,
     /// The tag finder's button: its spinner turns while the mailboxes are
     /// being read, and its label says so.
     find_tags_spinner: Option<gtk::Spinner>,
@@ -245,6 +248,24 @@ pub struct AccountsWindow {
     /// The signature's rich editor — a WebKit view, so it is created when
     /// an account's editor first opens rather than with the panel.
     sig_editor: Option<RichEditor>,
+    /// "Edit HTML" / "Preview" at the end of the signature editor's
+    /// toolbar, put there when the editor is made.
+    sig_source_btn: gtk::Button,
+    /// The account's signatures as edited (#445). The one shown is in
+    /// `sig_editor` and is read back into its entry when another is shown
+    /// or the account is saved.
+    sig_edits: Vec<NamedSignature>,
+    /// Index into `sig_edits` of the signature in the editor.
+    sig_shown: usize,
+    /// Which signature new messages start with.
+    sig_default: Option<usize>,
+    /// A signature was added, deleted, renamed, made the default, or had
+    /// its text changed before another was shown: the WebView's own dirty
+    /// flag only knows about the one it holds now.
+    sig_touched: bool,
+    /// The shown signature is being read back: the editor still holds it,
+    /// so another switch waits for that to land.
+    sig_reading: bool,
     /// The email value the label field currently mirrors, so the label auto-fills
     /// from the email until the user customizes it.
     label_synced: String,
@@ -252,6 +273,27 @@ pub struct AccountsWindow {
     goa: Vec<crate::goa::GoaMailAccount>,
     /// Refresh token captured from a successful OAuth sign-in, applied on save.
     pending_oauth_refresh: Option<String>,
+    /// Counts the times the editor opened, so a keyring answer for an
+    /// editor since replaced is dropped.
+    editor_session: u64,
+    /// The keyring's answer for the account in the editor, once it came:
+    /// Save fills the fields left empty from it.
+    editor_secrets: Option<AccountSecrets>,
+    /// A keyring read for the editor is out.
+    secrets_reading: bool,
+    /// Save was pressed before the keyring answered, and runs again when it
+    /// does: the keyring may be waiting on its user (#466).
+    save_waiting: bool,
+    /// The editor's Microsoft sign-in may search the organization's
+    /// directory (#410): saved with those scopes, or just approved for them.
+    /// Save keeps asking for them, or the next sign-in would drop them.
+    directory_granted: bool,
+    /// What the directory switch is known to show, so the notify that
+    /// filling the editor sets off is not taken for the user turning it on.
+    directory_on: bool,
+    /// The same two for the sensitivity label names (#411).
+    labels_granted: bool,
+    labels_on: bool,
     /// The send-as aliases being edited for the account in the editor (#34).
     /// Committed to the account on Save.
     alias_edits: Vec<AliasConfig>,
@@ -284,6 +326,9 @@ struct AliasDialog {
 
 #[derive(Debug)]
 pub enum AccountsInput {
+    /// Read GNOME Online Accounts again, for accounts added there since the
+    /// list was made: the refresh button, and GOA saying one was added.
+    RefreshGoa,
     /// An account's folder order was changed from the sidebar: this copy of
     /// the account, and its editor if open, follow, so saving the editor
     /// later doesn't put the old order back.
@@ -340,6 +385,10 @@ pub enum AccountsInput {
     ProtocolChanged,
     /// Start the OAuth browser sign-in flow.
     OAuthSignIn,
+    /// The "Search the organization directory" switch moved (#410).
+    SetGraphDirectory(bool),
+    /// The "Show sensitivity label names" switch moved (#411).
+    SetGraphLabels(bool),
     /// Open GNOME Settings → Online Accounts (the Google path).
     OpenOnlineAccounts,
     SetEmoji(String),
@@ -358,16 +407,32 @@ pub enum AccountsInput {
     Save,
     /// Second phase of Save, once the signature HTML has been read from the editor.
     SaveWithSig(String),
-    /// "Edit HTML…" under the signature: read the editor, then open the source dialog.
-    SignatureEditSource,
-    /// The editor's current HTML, for the source dialog.
-    SignatureSourceLoaded(String),
-    /// The source dialog's Apply: sanitize the text and load it into the editor.
-    SignatureApplySource(String),
+    /// "Edit HTML" in the signature editor's toolbar: show the signature
+    /// as its HTML source, or ("Preview") as rich text again.
+    SignatureSourceToggle,
+    /// The signature as HTML, read out of the rich editor: show it as source.
+    SignatureToSource(String),
+    /// The signature's source, read out of the editor: show it as rich text.
+    SignatureToRich(String),
     /// "Import File…" under the signature: pick an HTML or text file.
     SignatureImport,
     /// A signature file was chosen.
     SignatureImportFile(std::path::PathBuf),
+    /// The signature chooser moved (#445): show the one it is on.
+    SigShow,
+    /// "Add Signature": a new, empty one, shown for editing.
+    SigAdd,
+    /// Delete the signature shown.
+    SigDelete,
+    /// The name field changed.
+    SigRename,
+    /// The "Start messages with this signature" switch changed.
+    SigDefault,
+    /// The WebView's dirty flag, read as a signature is left.
+    SigTextTouched(bool),
+    /// The shown signature's HTML, read back as it is left; `add` puts a
+    /// new one up next, otherwise the chooser's says which.
+    SigStored { html: String, add: bool },
     /// Clicked "Remove Account" — ask for confirmation first.
     RemoveCurrent,
     /// Confirmed in the dialog — actually remove the account being edited.
@@ -392,6 +457,9 @@ pub enum AccountsInput {
     AddBlacklistText(String),
     RemoveBlacklistRow(String),
     AddFilter,
+    /// Open the filter page on a new rule started from this draft, as the
+    /// "Create Filter from Message…" entry does.
+    AddFilterFrom(crate::config::FilterRule),
     /// Run the rules over the mail already in the inboxes (#198).
     ApplyFilters,
     /// The app says whether that run is still going (#198).
@@ -415,6 +483,13 @@ pub enum AccountsInput {
     MoveTag { from: usize, to: usize },
     TagAdded(crate::config::Tag),
     TagEdited(usize, crate::config::Tag),
+    /// Smart folders (#417): the editor, what it hands back, and the list
+    /// as the app has it (one deleted from the sidebar).
+    AddSmartFolder,
+    EditSmartFolder(usize),
+    RemoveSmartFolder(usize),
+    SmartFolderSaved(Option<usize>, crate::config::SmartFolder),
+    SetSmartFolders(Vec<crate::config::SmartFolder>),
     /// The tag finder: "Find Tags…" was pressed (the app scans every
     /// account and answers with `TagFindings`).
     FindTags,
@@ -470,6 +545,7 @@ pub enum AccountsOutput {
     /// Apply the rules to mail that is already there (#198).
     ApplyFilters,
     SetTags(Vec<crate::config::Tag>),
+    SetSmartFolders(Vec<crate::config::SmartFolder>),
     /// The tag finder wants every account scanned for keywords in use.
     FindTags,
     /// An account's page opened: ask its server for the storage in use.
@@ -527,13 +603,22 @@ const SENT_COPY_HINT: &str =
     "Any folder, inbox included. Only applies to mail sent from this Hylki client \
      going forward. Not recursive.";
 
+const REPLY_COPIES_HINT: &str =
+    "Where the message replied to is when the reply is sent. Replies to mail in Sent, \
+     Drafts, Trash or Junk go with sent mail.";
+
 /// GNOME Online Accounts mail accounts not (properly) configured in Hylki.
 /// A configured entry counts when it has an IMAP host or runs over Graph — an
 /// entry with neither is a broken pre-#36 Microsoft 365 import, so its GOA
 /// account is offered again and re-importing repairs it. Accounts GOA can
 /// neither serve IMAP nor Graph mail for can never connect and aren't listed.
 fn importable_goa_accounts(configured: &[AccountConfig]) -> Vec<crate::goa::GoaMailAccount> {
-    crate::goa::list_mail_accounts()
+    importable_of(crate::goa::list_mail_accounts(), configured)
+}
+
+/// The importable ones among `listed` (see [`importable_goa_accounts`]).
+fn importable_of(listed: Vec<crate::goa::GoaMailAccount>, configured: &[AccountConfig]) -> Vec<crate::goa::GoaMailAccount> {
+    listed
         .into_iter()
         .filter(|g| {
             !configured.iter().any(|a| {
@@ -555,10 +640,18 @@ pub enum AccountsCmd {
     /// A browser sign-in finished: the refresh token, and who signed in
     /// when the provider says (Microsoft).
     OAuth(Result<(String, Option<(String, String)>), String>),
+    /// The sign-in that asked for the directory's scopes (#410) finished,
+    /// as [`AccountsCmd::OAuth`].
+    DirectoryConsent(Result<(String, Option<(String, String)>), String>),
+    /// The one that asked for the label scope (#411).
+    LabelsConsent(Result<(String, Option<(String, String)>), String>),
     /// Alias SMTP test result (#34).
     AliasTested(Result<(), String>),
+    /// GNOME Online Accounts read again: its mail accounts, for the import
+    /// list.
+    GoaListed(Vec<crate::goa::GoaMailAccount>),
     /// An account's secrets, read from the keyring for its editor.
-    Secrets(AccountSecrets),
+    Secrets(u64, AccountSecrets),
     /// The Gravatar looked up for the address in the editor (#189).
     OwnGravatar {
         email: String,
@@ -658,6 +751,7 @@ pub struct AccountsInit {
     pub blacklist: Vec<String>,
     pub filters: Vec<crate::config::FilterRule>,
     pub tags: Vec<crate::config::Tag>,
+    pub smart_folders: Vec<crate::config::SmartFolder>,
 }
 
 #[relm4::component(pub)]
@@ -702,10 +796,20 @@ impl Component for AccountsWindow {
                                     // Cloud Storage panels place theirs.
                                     #[wrap(Some)]
                                     set_header_suffix = &gtk::Box {
-                                        set_orientation: gtk::Orientation::Vertical,
+                                        set_orientation: gtk::Orientation::Horizontal,
+                                        set_spacing: 6,
                                         set_valign: gtk::Align::Start,
                                         set_halign: gtk::Align::End,
                                         set_margin_start: 24,
+                                        // An account just added in GNOME
+                                        // Settings, without waiting for GOA
+                                        // to say so.
+                                        #[name = "goa_refresh_btn"]
+                                        gtk::Button {
+                                            set_icon_name: "view-refresh-symbolic",
+                                            set_tooltip_text: Some(&i18n("Check GNOME Online Accounts for new accounts")),
+                                            connect_clicked => AccountsInput::RefreshGoa,
+                                        },
                                         gtk::Button {
                                             set_label: &i18n("Add Account…"),
                                             set_size_request: (130, -1),
@@ -794,6 +898,32 @@ impl Component for AccountsWindow {
                                     },
 
                                     #[name = "tags_list"]
+                                    gtk::ListBox {
+                                        add_css_class: "boxed-list",
+                                        set_selection_mode: gtk::SelectionMode::None,
+                                    },
+                                },
+                            },
+
+                            add_named[Some("smart")] = &adw::PreferencesPage {
+                                // Smart folders (#417): saved searches.
+                                add = &adw::PreferencesGroup {
+                                    set_title: &i18n("Smart Folders"),
+                                    set_description: Some(
+                                        i18n("A smart folder lists the messages that match its conditions, \
+                                         from every folder or one kind of folder, in one account or all \
+                                         of them. It searches the mail on this computer and appears in \
+                                         the sidebar under the unified rows.").as_str()
+                                    ),
+                                    #[wrap(Some)]
+                                    set_header_suffix = &gtk::Button {
+                                        set_label: &i18n("Add Smart Folder…"),
+                                        set_valign: gtk::Align::Start,
+                                        set_margin_start: 24,
+                                        connect_clicked => AccountsInput::AddSmartFolder,
+                                    },
+
+                                    #[name = "smart_list"]
                                     gtk::ListBox {
                                         add_css_class: "boxed-list",
                                         set_selection_mode: gtk::SelectionMode::None,
@@ -1479,33 +1609,67 @@ impl Component for AccountsWindow {
                             },
 
                             add = &adw::PreferencesGroup {
-                                set_title: &i18n("Signature"),
+                                set_title: &i18n("Signatures"),
                                 set_description: Some(
-                                    i18n("Appended to new messages sent from this account.").as_str()
+                                    i18n("Put in messages sent from this account. With more than one, \
+                                          the composer's signature button lists them.")
+                                        .as_str()
                                 ),
                                 // A designed signature usually exists as HTML
-                                // already (#120): bring it in from its file, or
-                                // paste and edit the source directly.
+                                // already (#120): bring it in from its file.
+                                // Its source is edited in place, from the
+                                // editor's own toolbar. Stacked and 130px
+                                // wide, like Add Alias… and the other
+                                // groups' buttons.
                                 #[wrap(Some)]
                                 set_header_suffix = &gtk::Box {
+                                    set_orientation: gtk::Orientation::Vertical,
                                     set_spacing: 6,
-                                    set_valign: gtk::Align::Center,
+                                    set_valign: gtk::Align::Start,
+                                    set_halign: gtk::Align::End,
+                                    set_margin_start: 24,
                                     gtk::Button {
-                                        set_label: &i18n("Edit HTML…"),
-                                        add_css_class: "flat",
-                                        connect_clicked => AccountsInput::SignatureEditSource,
+                                        set_label: &i18n("Add Signature"),
+                                        set_size_request: (130, -1),
+                                        connect_clicked => AccountsInput::SigAdd,
                                     },
                                     gtk::Button {
                                         set_label: &i18n("Import File…"),
-                                        add_css_class: "flat",
+                                        set_size_request: (130, -1),
                                         connect_clicked => AccountsInput::SignatureImport,
                                     },
+                                },
+
+                                // Which signature the editor below holds,
+                                // and its name: shown once there are two.
+                                #[name = "sig_choice_row"]
+                                adw::ComboRow {
+                                    set_title: &i18n("Signature"),
+                                    set_visible: false,
+                                    connect_selected_notify => AccountsInput::SigShow,
+                                },
+                                #[name = "sig_name_row"]
+                                adw::EntryRow {
+                                    set_title: &i18n("Name"),
+                                    set_visible: false,
+                                    connect_changed => AccountsInput::SigRename,
+                                    add_suffix = &gtk::Button {
+                                        set_icon_name: "user-trash-symbolic",
+                                        set_valign: gtk::Align::Center,
+                                        set_tooltip_text: Some(&i18n("Delete Signature")),
+                                        add_css_class: "flat",
+                                        connect_clicked => AccountsInput::SigDelete,
+                                    },
+                                },
+                                #[name = "sig_default_row"]
+                                adw::SwitchRow {
+                                    set_title: &i18n("Start messages with this signature"),
+                                    connect_active_notify => AccountsInput::SigDefault,
                                 },
 
                                 #[name = "sig_holder"]
                                 gtk::Box {
                                     set_orientation: gtk::Orientation::Vertical,
-                                    set_height_request: 180,
                                     set_margin_top: 6,
                                 },
                             },
@@ -1535,6 +1699,61 @@ impl Component for AccountsWindow {
                                     set_title: &i18n("Empty Trash automatically"),
                                     set_subtitle: &i18n("Delete mail in the Trash older than this for \
                                                    good, checked at each sync."),
+                                },
+                                // Mailing-list mail past the chosen age goes
+                                // to the Trash (#407).
+                                #[name = "clean_lists_row"]
+                                adw::ComboRow {
+                                    set_title: &i18n("Move list mail to Trash"),
+                                    set_subtitle: &i18n("Inbox mail from mailing lists and newsletters \
+                                                   (anything with an unsubscribe link) older than this, \
+                                                   unless starred. Checked at each sync."),
+                                },
+                            },
+
+                            // What a Microsoft 365 account can use from
+                            // Microsoft Graph, in one place: the
+                            // directory's suggestions (#410) and names for
+                            // sensitivity labels (#411). Each asks for its
+                            // own access when turned on.
+                            #[name = "graph_group"]
+                            add = &adw::PreferencesGroup {
+                                set_visible: false,
+                                set_title: &i18n("Microsoft 365"),
+
+                                #[name = "graph_directory_row"]
+                                adw::SwitchRow {
+                                    set_title: &i18n("Search the organization directory"),
+                                    set_subtitle: &i18n("Suggest people from your organization as you type a recipient."),
+                                    connect_active_notify[sender] => move |row| {
+                                        sender.input(AccountsInput::SetGraphDirectory(row.is_active()));
+                                    },
+                                },
+                                #[name = "directory_only_row"]
+                                adw::SwitchRow {
+                                    set_title: &i18n("Suggest only from this account"),
+                                    set_subtitle: &i18n("Writing from this account, suggest people from the \
+                                                   directory and from its own mail, not from Contacts, \
+                                                   LDAP directories or other accounts."),
+                                },
+                                #[name = "graph_labels_row"]
+                                adw::SwitchRow {
+                                    set_title: &i18n("Show sensitivity label names"),
+                                    set_subtitle: &i18n("Name a message's label from your organization's list \
+                                                   when the message gives only its ID."),
+                                    connect_active_notify[sender] => move |row| {
+                                        sender.input(AccountsInput::SetGraphLabels(row.is_active()));
+                                    },
+                                },
+                                // How the last request for access went.
+                                #[name = "graph_status"]
+                                gtk::Label {
+                                    set_visible: false,
+                                    set_halign: gtk::Align::Start,
+                                    set_xalign: 0.0,
+                                    set_wrap: true,
+                                    set_selectable: true,
+                                    set_margin_top: 8,
                                 },
                             },
 
@@ -1577,6 +1796,15 @@ impl Component for AccountsWindow {
                                     set_title: &i18n("Save a copy of sent mail in"),
                                     set_subtitle: &i18n(SENT_COPY_HINT),
                                 },
+                                // Replies beside what they answer (#468), as
+                                // Evolution offers. Microsoft 365 files its
+                                // own copy and POP3 has no folders, so the
+                                // row is for IMAP and JMAP only.
+                                #[name = "reply_copies_row"]
+                                adw::ComboRow {
+                                    set_title: &i18n("Save a copy of replies in"),
+                                    set_subtitle: &i18n(REPLY_COPIES_HINT),
+                                },
                                 // Gmail files a copy of anything sent through
                                 // its SMTP, so Hylki's append makes a second
                                 // one. Off by default: a server that does not
@@ -1586,7 +1814,7 @@ impl Component for AccountsWindow {
                                 adw::SwitchRow {
                                     set_title: &i18n("Server saves its own copy of sent mail"),
                                     set_subtitle: &i18n("For Gmail and others that file sent mail \
-                                                   themselves. Disables above Save a copy."),
+                                                   themselves. Disables both Save a copy rows above."),
                                     connect_active_notify[sender] => move |row| {
                                         sender.input(AccountsInput::SetServerSavesSent(row.is_active()));
                                     },
@@ -1684,6 +1912,16 @@ impl Component for AccountsWindow {
     ) -> ComponentParts<Self> {
         let t_init = std::time::Instant::now();
         let goa = importable_goa_accounts(&init.accounts);
+        let sig_source_btn = gtk::Button::with_label(&i18n("Edit HTML"));
+        sig_source_btn.add_css_class("flat");
+        sig_source_btn.set_valign(gtk::Align::Center);
+        sig_source_btn.set_tooltip_text(Some(&i18n("Edit the signature's HTML source")));
+        {
+            let s = sender.input_sender().clone();
+            sig_source_btn.connect_clicked(move |_| {
+                let _ = s.send(AccountsInput::SignatureSourceToggle);
+            });
+        }
 
         let senders = relm4::factory::FactoryVecDeque::builder()
             .launch(gtk::ListBox::new())
@@ -1706,9 +1944,23 @@ impl Component for AccountsWindow {
             picture_mode: false,
             editor_seed: None,
             sig_editor: None,
+            sig_source_btn,
+            sig_edits: Vec::new(),
+            sig_shown: 0,
+            sig_default: None,
+            sig_touched: false,
+            sig_reading: false,
             label_synced: String::new(),
             goa,
             pending_oauth_refresh: None,
+            editor_session: 0,
+            editor_secrets: None,
+            secrets_reading: false,
+            save_waiting: false,
+            directory_granted: false,
+            directory_on: false,
+            labels_granted: false,
+            labels_on: false,
             alias_edits: Vec::new(),
             server_identities: Vec::new(),
             hidden_edits: Vec::new(),
@@ -1728,6 +1980,8 @@ impl Component for AccountsWindow {
             senders_query: Default::default(),
             tags: init.tags,
             tags_list: None,
+            smart_folders: init.smart_folders,
+            smart_list: None,
             find_tags_spinner: None,
             apply_filters_spinner: None,
             apply_filters_label: None,
@@ -1757,9 +2011,16 @@ impl Component for AccountsWindow {
         senders_box.set_visible(!model.sender_addrs.is_empty());
         blacklist_box.set_visible(!model.blacklist_addrs.is_empty());
         let widgets = view_output!();
+        // Narrowing to the directory means nothing without it.
+        widgets
+            .graph_directory_row
+            .bind_property("active", &widgets.directory_only_row, "sensitive")
+            .sync_create()
+            .build();
         // Long enough for the hint, short enough that the combo's own value
         // is not what gets shortened instead.
         wrap_subtitle(&widgets.folder_sent_copy_row, 34);
+        wrap_subtitle(&widgets.reply_copies_row, 30);
         // Left-justify the editor's wrapping labels (its group descriptions):
         // libadwaita 1.9 renders a group description fill-justified when its
         // text does not naturally fill the label's width, stretching the word
@@ -1796,6 +2057,8 @@ impl Component for AccountsWindow {
         model.apply_filters_label = Some(widgets.apply_filters_label.clone());
         model.find_tags_label = Some(widgets.find_tags_label.clone());
         model.rebuild_tag_rows(&sender);
+        model.smart_list = Some(widgets.smart_list.clone());
+        model.rebuild_smart_rows(&sender);
         let t_list = std::time::Instant::now();
         model.rebuild_account_list(&widgets.accounts_list, &sender);
         tracing::debug!("settings window: accounts list built in {:?}", t_list.elapsed());
@@ -1834,6 +2097,15 @@ impl Component for AccountsWindow {
             row.set_model(Some(&gtk::StringList::new(&empty_labels)));
             row.set_list_factory(Some(&non_ellipsizing_factory()));
         }
+        let list_labels = age_labels(CLEAN_LISTS_DAYS);
+        let list_labels: Vec<&str> = list_labels.iter().map(String::as_str).collect();
+        widgets.clean_lists_row.set_model(Some(&gtk::StringList::new(&list_labels)));
+        widgets.clean_lists_row.set_list_factory(Some(&non_ellipsizing_factory()));
+        let reply_labels: Vec<String> = crate::config::ReplyCopies::ALL.iter().map(|c| c.label()).collect();
+        let reply_labels: Vec<&str> = reply_labels.iter().map(String::as_str).collect();
+        widgets.reply_copies_row.set_model(Some(&gtk::StringList::new(&reply_labels)));
+        widgets.reply_copies_row.set_list_factory(Some(&non_ellipsizing_factory()));
+        widgets.reply_copies_row.set_factory(Some(&non_ellipsizing_factory()));
 
         // Show the SMTP credential fields only when the toggle is on.
         widgets
@@ -1881,9 +2153,10 @@ impl Component for AccountsWindow {
                     Some("editor") => Some("accounts"),
                     Some("filter") => Some("filters"),
                     Some("tag") => Some("tags"),
+                    Some("smart") => Some("smart"),
                     _ => None,
                 };
-                if !matches!(editor, Some("filters") | Some("tags")) {
+                if !matches!(editor, Some("filters") | Some("tags") | Some("smart")) {
                     form_save.borrow_mut().take();
                 }
                 let _ = s.send(AccountsOutput::EditorOpen(editor));
@@ -1905,6 +2178,15 @@ impl Component for AccountsWindow {
             AccountsInput::ShowPage(id) => {
                 widgets.list_stack.set_visible_child_name(&id);
             }
+            AccountsInput::RefreshGoa => {
+                // Off the main thread: GOA answers over D-Bus, and a busy
+                // goa-daemon is slow to.
+                widgets.goa_refresh_btn.set_sensitive(false);
+                sender.oneshot_command(async move {
+                    let listed = tokio::task::spawn_blocking(crate::goa::list_mail_accounts).await.unwrap_or_default();
+                    AccountsCmd::GoaListed(listed)
+                });
+            }
             AccountsInput::CloseEditor => {
                 if widgets
                     .nav
@@ -1919,6 +2201,8 @@ impl Component for AccountsWindow {
                 let editing = widgets.nav.visible_page().and_then(|p| p.tag()).is_some_and(|t| t == "editor");
                 if !editing {
                     if let Some(editor) = self.sig_editor.take() {
+                        // Kept for the next editor, which takes it in.
+                        editor.toolbar_end().remove(&self.sig_source_btn);
                         widgets.sig_holder.remove(&editor.widget);
                     }
                 }
@@ -1988,6 +2272,7 @@ impl Component for AccountsWindow {
             }
             AccountsInput::AddAccount => {
                 self.editing = None;
+                self.new_editor_session();
                 self.emoji = None;
                 self.avatar = None;
                 widgets.gravatar_row.set_active(false);
@@ -1995,6 +2280,10 @@ impl Component for AccountsWindow {
                 widgets.mode_glyph_btn.set_active(true);
                 self.label_synced = String::new();
                 self.pending_oauth_refresh = None;
+                self.directory_granted = false;
+                self.directory_on = false;
+                self.labels_granted = false;
+                self.labels_on = false;
                 self.close_alias_dialog();
                 self.alias_edits.clear();
                 self.server_identities.clear();
@@ -2006,7 +2295,7 @@ impl Component for AccountsWindow {
                 widgets.goa_banner.set_visible(false);
                 widgets.keyring_note.set_visible(true);
                 self.apply_provider(widgets);
-                self.sig_editor(widgets).set_html("");
+                self.load_signatures(widgets, Vec::new(), None);
                 widgets.color_btn.set_rgba(&parse_color(DEFAULT_COLOR));
                 self.refresh_preview(widgets);
                 widgets.remove_btn.set_visible(false);
@@ -2042,7 +2331,25 @@ impl Component for AccountsWindow {
                     return;
                 };
                 self.editing = Some(i);
+                self.new_editor_session();
                 self.pending_oauth_refresh = None;
+                self.directory_granted = acc.goa_id.is_none()
+                    && acc.oauth
+                    && acc
+                        .oauth_settings
+                        .as_ref()
+                        .is_some_and(|s| crate::oauth::has_directory_scopes(&s.scopes));
+                // On without the scopes would only be refused.
+                self.directory_on = acc.graph_directory && self.directory_granted;
+                widgets.graph_directory_row.set_active(self.directory_on);
+                widgets.directory_only_row.set_active(acc.graph_directory_only);
+                self.labels_granted = acc.goa_id.is_none()
+                    && acc.oauth
+                    && acc.oauth_settings.as_ref().is_some_and(|s| {
+                        crate::oauth::has_scopes(&s.scopes, &crate::oauth::MICROSOFT_LABEL_SCOPES)
+                    });
+                self.labels_on = acc.graph_label_names && self.labels_granted;
+                widgets.graph_labels_row.set_active(self.labels_on);
                 self.close_alias_dialog();
                 self.alias_edits = acc.aliases.clone();
                 self.server_identities.clear();
@@ -2057,29 +2364,17 @@ impl Component for AccountsWindow {
                 let _ = sender.output(AccountsOutput::WantQuota(acc.email.clone()));
                 let _ = sender.output(AccountsOutput::WantIdentities(acc.email.clone()));
                 // The secrets come from the keyring now, off the main thread,
-                // and land in the fields when they arrive (Save reads the
-                // keyring itself should it come first).
+                // and land in the fields when they arrive (Save waits for
+                // them should it come first).
                 if AccountSecrets::needed(&acc) {
-                    let acc = acc.clone();
-                    sender.oneshot_command(async move {
-                        let email = acc.email.clone();
-                        let secrets = tokio::task::spawn_blocking(move || AccountSecrets::load(&acc))
-                            .await
-                            .unwrap_or(AccountSecrets {
-                                email,
-                                password: String::new(),
-                                smtp_password: String::new(),
-                                aliases: Vec::new(),
-                            });
-                        AccountsCmd::Secrets(secrets)
-                    });
+                    self.read_secrets(&acc, &sender);
                 }
                 self.populate_folder_combos(widgets, Some(&acc));
                 self.apply_provider(widgets);
                 // Label mirrors the email until customized.
                 self.label_synced = acc.email.clone();
-                self.sig_editor(widgets)
-                    .set_html(&rich_editor::signature_to_html(acc.signature.as_deref().unwrap_or("")));
+                let (signatures, default) = acc.signature_set();
+                self.load_signatures(widgets, signatures, default);
                 widgets
                     .color_btn
                     .set_rgba(&parse_color(acc.color.as_deref().unwrap_or(DEFAULT_COLOR)));
@@ -2246,6 +2541,7 @@ impl Component for AccountsWindow {
 
             AccountsInput::SetServerSavesSent(on) => {
                 widgets.folder_sent_copy_row.set_sensitive(!on);
+                widgets.reply_copies_row.set_sensitive(!on);
             }
 
             AccountsInput::SetFolderSort { email, sort } => {
@@ -2368,49 +2664,75 @@ impl Component for AccountsWindow {
                 widgets.oauth_signin_btn.set_sensitive(false);
                 widgets.oauth_status.set_visible(true);
                 widgets.oauth_status.set_css_classes(&["dim-label"]);
-                // A redirect Hylki cannot listen on (#329): the sign-in runs
-                // in a window of its own, which catches it.
-                if !settings.redirect_uri.trim().is_empty() {
-                    widgets.oauth_status.set_label(&i18n("Complete the sign-in in the window that opened."));
-                    let parent = root.root().and_downcast::<gtk::Window>();
-                    let s = sender.clone();
-                    // The address typed so far names the identity broker's
-                    // account, where one is in charge of sign-ins.
-                    let user = Some(widgets.email_row.text().trim().to_string()).filter(|u| !u.is_empty());
-                    crate::ui::web_signin::run(parent.as_ref(), &settings.clone(), user.clone(), move |answer| {
-                        s.oneshot_command(async move {
-                            let r = tokio::task::spawn_blocking(move || {
-                                let (request, code) = answer?;
-                                let refresh = crate::oauth::exchange_code(&settings, &request, &code)?.refresh_token;
-                                let (name, address, refresh) =
-                                    crate::oauth::microsoft_whoami(&settings, &refresh, user.as_deref())?;
-                                Ok((refresh, Some((name, address))))
-                            })
-                            .await
-                            .unwrap_or_else(|_| Err("sign-in task failed".into()));
-                            AccountsCmd::OAuth(r)
-                        });
-                    });
+                let in_window = !settings.redirect_uri.trim().is_empty();
+                widgets.oauth_status.set_label(&if in_window {
+                    i18n("Complete the sign-in in the window that opened.")
+                } else {
+                    i18n("Opening browser… complete sign-in there.")
+                });
+                // The address typed so far names the identity broker's
+                // account, where one is in charge of sign-ins.
+                let user = Some(widgets.email_row.text().trim().to_string()).filter(|u| !u.is_empty());
+                sign_in(root, &sender, settings, user, false, AccountsCmd::OAuth);
+            }
+
+            AccountsInput::SetGraphDirectory(on) => {
+                if on == self.directory_on {
                     return;
                 }
-                widgets
-                    .oauth_status
-                    .set_label(&i18n("Opening browser… complete sign-in there."));
-                sender.oneshot_command(async move {
-                    let r = tokio::task::spawn_blocking(move || {
-                        let refresh = crate::oauth::run_flow(&settings)?.refresh_token;
-                        // Microsoft says who signed in, so the account is named
-                        // for the mailbox reached (#329).
-                        if settings.token_url.contains("microsoftonline") {
-                            let (name, address, refresh) = crate::oauth::microsoft_whoami(&settings, &refresh, None)?;
-                            return Ok((refresh, Some((name, address))));
-                        }
-                        Ok((refresh, None))
-                    })
-                    .await
-                    .unwrap_or_else(|_| Err("sign-in task failed".into()));
-                    AccountsCmd::OAuth(r)
+                self.directory_on = on;
+                widgets.graph_status.set_visible(false);
+                // Turning it off keeps the scopes: they cost nothing, and
+                // turning it on again then asks nothing.
+                if !on || self.directory_granted {
+                    return;
+                }
+                let mut settings = self.oauth_settings_from_form(widgets);
+                if settings.client_id.trim().is_empty() || !settings.token_url.contains("microsoftonline") {
+                    return;
+                }
+                settings.scopes = crate::oauth::with_directory_scopes(&settings.scopes);
+                widgets.graph_directory_row.set_sensitive(false);
+                widgets.oauth_signin_btn.set_sensitive(false);
+                widgets.graph_status.set_visible(true);
+                widgets.graph_status.set_css_classes(&["dim-label"]);
+                widgets.graph_status.set_label(&if settings.redirect_uri.trim().is_empty() {
+                    i18n("Opening browser… approve access to the directory there.")
+                } else {
+                    i18n("Approve access to the directory in the window that opened.")
                 });
+                // Straight to the account being edited: Microsoft then asks
+                // only for what it has not approved yet.
+                let user = Some(widgets.email_row.text().trim().to_string()).filter(|u| !u.is_empty());
+                sign_in(root, &sender, settings, user, true, AccountsCmd::DirectoryConsent);
+            }
+
+            AccountsInput::SetGraphLabels(on) => {
+                if on == self.labels_on {
+                    return;
+                }
+                self.labels_on = on;
+                widgets.graph_status.set_visible(false);
+                // Off keeps the scope, as the directory's does.
+                if !on || self.labels_granted {
+                    return;
+                }
+                let mut settings = self.oauth_settings_from_form(widgets);
+                if settings.client_id.trim().is_empty() || !settings.token_url.contains("microsoftonline") {
+                    return;
+                }
+                settings.scopes = crate::oauth::with_scopes(&settings.scopes, &crate::oauth::MICROSOFT_LABEL_SCOPES);
+                widgets.graph_labels_row.set_sensitive(false);
+                widgets.oauth_signin_btn.set_sensitive(false);
+                widgets.graph_status.set_visible(true);
+                widgets.graph_status.set_css_classes(&["dim-label"]);
+                widgets.graph_status.set_label(&if settings.redirect_uri.trim().is_empty() {
+                    i18n("Opening browser… approve access to the sensitivity labels there.")
+                } else {
+                    i18n("Approve access to the sensitivity labels in the window that opened.")
+                });
+                let user = Some(widgets.email_row.text().trim().to_string()).filter(|u| !u.is_empty());
+                sign_in(root, &sender, settings, user, true, AccountsCmd::LabelsConsent);
             }
 
             AccountsInput::OpenOnlineAccounts => open_online_accounts(),
@@ -2419,59 +2741,35 @@ impl Component for AccountsWindow {
                 // Pull the signature HTML out of the editor first (async), then
                 // finish saving in SaveWithSig.
                 let s = sender.clone();
-                self.sig_editor(widgets)
-                    .extract_html(move |html| s.input(AccountsInput::SaveWithSig(html)));
+                self.read_signature(widgets, move |html| s.input(AccountsInput::SaveWithSig(html)));
             }
 
             AccountsInput::SetFolderChoices(map) => {
                 self.folders_by_email = map;
             }
 
-            AccountsInput::SignatureEditSource => {
+            AccountsInput::SignatureSourceToggle => {
+                if self.sig_reading {
+                    return;
+                }
+                // The view loads a new document either way, which forgets
+                // that the old one was edited.
                 let s = sender.clone();
-                self.sig_editor(widgets)
-                    .extract_html(move |html| s.input(AccountsInput::SignatureSourceLoaded(html)));
-            }
-            AccountsInput::SignatureSourceLoaded(html) => {
-                let host = root.root().and_downcast::<gtk::Window>();
-                let dialog = adw::MessageDialog::new(
-                    host.as_ref(),
-                    Some(i18n("Signature HTML").as_str()),
-                    Some(
-                        i18n("Paste or edit the signature's HTML. Scripts and style sheets are \
-                              removed; inline styles, tables and images are kept.")
-                            .as_str(),
-                    ),
-                );
-                dialog.add_response("cancel", &i18n("Cancel"));
-                dialog.add_response("apply", &i18n("Apply"));
-                dialog.set_response_appearance("apply", adw::ResponseAppearance::Suggested);
-                dialog.set_default_response(Some("apply"));
-                let view = gtk::TextView::new();
-                view.set_monospace(true);
-                view.set_wrap_mode(gtk::WrapMode::WordChar);
-                view.set_top_margin(8);
-                view.set_bottom_margin(8);
-                view.set_left_margin(8);
-                view.set_right_margin(8);
-                view.buffer().set_text(&html);
-                let scroller = gtk::ScrolledWindow::new();
-                scroller.set_child(Some(&view));
-                scroller.set_size_request(620, 320);
-                scroller.add_css_class("card");
-                dialog.set_extra_child(Some(&scroller));
+                self.sig_editor(widgets).is_dirty(move |dirty| s.input(AccountsInput::SigTextTouched(dirty)));
                 let s = sender.clone();
-                dialog.connect_response(None, move |_, resp| {
-                    if resp == "apply" {
-                        let b = view.buffer();
-                        let text = b.text(&b.start_iter(), &b.end_iter(), true).to_string();
-                        s.input(AccountsInput::SignatureApplySource(text));
-                    }
-                });
-                dialog.present();
+                if self.sig_editor(widgets).source_kind().is_some() {
+                    self.sig_editor(widgets).extract_source(move |text| s.input(AccountsInput::SignatureToRich(text)));
+                } else {
+                    self.sig_editor(widgets).extract_html(move |html| s.input(AccountsInput::SignatureToSource(html)));
+                }
             }
-            AccountsInput::SignatureApplySource(source) => {
-                self.sig_editor(widgets).set_html(&rich_editor::signature_from_source(&source, None));
+            AccountsInput::SignatureToSource(html) => {
+                self.sig_editor(widgets).set_source(rich_editor::SourceKind::Html, &html);
+                self.sync_source_button(widgets);
+            }
+            AccountsInput::SignatureToRich(text) => {
+                self.sig_editor(widgets).set_html(&rich_editor::signature_from_source(&text, None));
+                self.sync_source_button(widgets);
             }
             AccountsInput::SignatureImport => {
                 let dialog = gtk::FileDialog::new();
@@ -2500,6 +2798,7 @@ impl Component for AccountsWindow {
                     let text = String::from_utf8_lossy(&bytes);
                     self.sig_editor(widgets)
                         .set_html(&rich_editor::signature_from_source(&text, path.parent()));
+                    self.sync_source_button(widgets);
                 }
                 Err(e) => {
                     let host = root.root().and_downcast::<gtk::Window>();
@@ -2513,6 +2812,83 @@ impl Component for AccountsWindow {
                 }
             },
 
+            AccountsInput::SigShow => {
+                let pick = widgets.sig_choice_row.selected() as usize;
+                if self.sig_reading || pick == self.sig_shown || pick >= self.sig_edits.len() {
+                    return;
+                }
+                self.read_back_signature(widgets, &sender, false);
+            }
+            AccountsInput::SigAdd => {
+                if !self.sig_reading {
+                    self.read_back_signature(widgets, &sender, true);
+                }
+            }
+            AccountsInput::SigDelete => {
+                if self.sig_reading || self.sig_edits.len() < 2 {
+                    return;
+                }
+                let gone = self.sig_shown;
+                self.sig_edits.remove(gone);
+                self.sig_default = match self.sig_default {
+                    Some(d) if d == gone => None,
+                    Some(d) if d > gone => Some(d - 1),
+                    d => d,
+                };
+                self.sig_touched = true;
+                self.show_signature(widgets, gone.saturating_sub(1));
+            }
+            AccountsInput::SigRename => {
+                let name = widgets.sig_name_row.text().to_string();
+                let shown = self.sig_shown;
+                let Some(sig) = self.sig_edits.get_mut(shown) else { return };
+                if sig.name == name {
+                    return;
+                }
+                sig.name = name;
+                self.sig_touched = true;
+                // Setting the model's entry moves the chooser off it; its
+                // notify finds it back on the shown one and does nothing.
+                let label = signature_label(&self.sig_edits, shown);
+                if let Some(list) = widgets.sig_choice_row.model().and_downcast::<gtk::StringList>() {
+                    list.splice(shown as u32, 1, &[label.as_str()]);
+                    widgets.sig_choice_row.set_selected(shown as u32);
+                }
+            }
+            AccountsInput::SigDefault => {
+                let on = widgets.sig_default_row.is_active();
+                let shown = Some(self.sig_shown);
+                let default = match (on, self.sig_default == shown) {
+                    (true, false) => shown,
+                    (false, true) => None,
+                    _ => return,
+                };
+                self.sig_default = default;
+                self.sig_touched = true;
+            }
+            AccountsInput::SigTextTouched(dirty) => self.sig_touched |= dirty,
+            AccountsInput::SigStored { html, add } => {
+                self.sig_reading = false;
+                if let Some(shown) = self.sig_edits.get_mut(self.sig_shown) {
+                    shown.html = html;
+                }
+                let next = if add {
+                    let n = self.sig_edits.len() + 1;
+                    self.sig_edits.push(NamedSignature {
+                        name: i18n_f("Signature {n}", &[("n", &n.to_string())]),
+                        html: String::new(),
+                    });
+                    self.sig_touched = true;
+                    self.sig_edits.len() - 1
+                } else {
+                    widgets.sig_choice_row.selected() as usize
+                };
+                self.show_signature(widgets, next.min(self.sig_edits.len().saturating_sub(1)));
+                if add {
+                    widgets.sig_name_row.grab_focus();
+                }
+            }
+
             AccountsInput::SaveWithSig(sig_html) => {
                 widgets.host_row.remove_css_class("error");
                 let mut account = read_account(widgets, self.saved_emoji(), self.saved_avatar());
@@ -2521,13 +2897,11 @@ impl Component for AccountsWindow {
                 account.folder_roles = self.read_folder_roles(widgets);
                 account.sent_copy_path = self.read_sent_copy_path(widgets);
                 account.server_saves_sent = widgets.server_saves_row.is_active();
-                let sig = sig_html.trim();
-                account.signature = if signature_is_empty(sig) {
-                    None
-                } else {
-                    Some(sig_html.clone())
-                };
-                account.signature_html = true;
+                if let Some(shown) = self.sig_edits.get_mut(self.sig_shown) {
+                    shown.html = sig_html;
+                }
+                let (signatures, default) = self.saved_signatures();
+                account.set_signatures(signatures, default);
 
                 // Editing preserves the enabled state; GOA accounts keep their
                 // (GOA-driven) OAuth mechanism regardless of the Authentication combo.
@@ -2562,6 +2936,11 @@ impl Component for AccountsWindow {
                         account.security = orig.security.clone();
                     }
                 }
+
+                // Only once Microsoft has approved the scopes; an account from
+                // GNOME Online Accounts cannot have them.
+                account.graph_directory &= account.goa_id.is_none() && self.directory_granted;
+                account.graph_label_names &= account.goa_id.is_none() && self.labels_granted;
 
                 // Native account: authentication comes from the provider dropdown.
                 let is_oauth = provider_at(widgets.provider_row.selected()).is_oauth();
@@ -2603,9 +2982,19 @@ impl Component for AccountsWindow {
                     true
                 };
                 // Saved before the keyring answered, or with the field left
-                // as it was: the stored secrets stand.
+                // as it was: the stored secrets stand. Not read yet, they
+                // are waited for, and Save runs again once they are here.
                 if AccountSecrets::needed(&account) {
-                    AccountSecrets::load(&account).apply(&mut account);
+                    match &self.editor_secrets {
+                        Some(secrets) => secrets.apply(&mut account),
+                        None => {
+                            if !self.secrets_reading {
+                                self.read_secrets(&account, &sender);
+                            }
+                            self.save_waiting = true;
+                            return;
+                        }
+                    }
                 }
                 let password_ok = account.oauth || !account.password.is_empty();
                 // A GOA account's connection fields were all restored from the
@@ -2866,7 +3255,10 @@ impl Component for AccountsWindow {
                 }
             }
             AccountsInput::AddFilter => {
-                self.open_filter_page(&widgets.nav, &sender, None);
+                self.open_filter_page(&widgets.nav, &sender, None, None);
+            }
+            AccountsInput::AddFilterFrom(rule) => {
+                self.open_filter_page(&widgets.nav, &sender, None, Some(rule));
             }
             AccountsInput::ApplyFilters => {
                 if !self.filters_applying {
@@ -2877,7 +3269,7 @@ impl Component for AccountsWindow {
             AccountsInput::FiltersApplying(on) => self.set_filters_applying(on),
             AccountsInput::EditFilter(i) => {
                 if let Some(rule) = self.filter_rules.get(i).cloned() {
-                    self.open_filter_page(&widgets.nav, &sender, Some((i, rule)));
+                    self.open_filter_page(&widgets.nav, &sender, Some((i, rule)), None);
                 }
             }
             AccountsInput::FilterEdited(i, rule) => {
@@ -2902,6 +3294,33 @@ impl Component for AccountsWindow {
                 self.filter_rules.push(rule);
                 self.rebuild_filter_rows(&sender);
                 let _ = sender.output(AccountsOutput::SetFilters(self.filter_rules.clone()));
+            }
+            AccountsInput::AddSmartFolder => self.open_smart_page(&widgets.nav, &sender, None),
+            AccountsInput::EditSmartFolder(i) => {
+                if let Some(f) = self.smart_folders.get(i).cloned() {
+                    self.open_smart_page(&widgets.nav, &sender, Some((i, f)));
+                }
+            }
+            AccountsInput::RemoveSmartFolder(i) => {
+                if i < self.smart_folders.len() {
+                    self.smart_folders.remove(i);
+                    self.rebuild_smart_rows(&sender);
+                    let _ = sender.output(AccountsOutput::SetSmartFolders(self.smart_folders.clone()));
+                }
+            }
+            AccountsInput::SmartFolderSaved(at, folder) => {
+                match at.filter(|i| *i < self.smart_folders.len()) {
+                    Some(i) => self.smart_folders[i] = folder,
+                    None => self.smart_folders.push(folder),
+                }
+                self.rebuild_smart_rows(&sender);
+                let _ = sender.output(AccountsOutput::SetSmartFolders(self.smart_folders.clone()));
+            }
+            AccountsInput::SetSmartFolders(folders) => {
+                if folders != self.smart_folders {
+                    self.smart_folders = folders;
+                    self.rebuild_smart_rows(&sender);
+                }
             }
             AccountsInput::AddTag => self.open_tag_page(&widgets.nav, &sender, None),
             AccountsInput::EditTag(i) => {
@@ -3007,7 +3426,28 @@ impl Component for AccountsWindow {
                 }
             }
 
-            AccountsCmd::Secrets(secrets) => {
+            AccountsCmd::GoaListed(listed) => {
+                widgets.goa_refresh_btn.set_sensitive(true);
+                self.goa = importable_of(listed, &self.accounts);
+                self.rebuild_goa_list(&widgets.goa_list, &sender);
+                widgets.goa_group.set_visible(!self.goa.is_empty());
+            }
+
+            AccountsCmd::Secrets(session, secrets) => {
+                if session != self.editor_session {
+                    return;
+                }
+                self.secrets_reading = false;
+                self.editor_secrets = Some(secrets.clone());
+                let editor_up = widgets
+                    .nav
+                    .visible_page()
+                    .and_then(|p| p.tag())
+                    .is_some_and(|tag| tag == "editor");
+                // Queued, so it runs once the fields below are filled.
+                if std::mem::take(&mut self.save_waiting) && editor_up {
+                    sender.input(AccountsInput::Save);
+                }
                 // Still editing that account: fill in what the user hasn't
                 // typed over meanwhile.
                 let Some(i) = self.editing else { return };
@@ -3095,6 +3535,52 @@ impl Component for AccountsWindow {
                     }
                 }
             }
+            AccountsCmd::DirectoryConsent(result) => {
+                widgets.graph_directory_row.set_sensitive(true);
+                widgets.oauth_signin_btn.set_sensitive(true);
+                widgets.graph_status.set_visible(true);
+                match self.take_consent(widgets, result) {
+                    Ok(()) => {
+                        self.directory_granted = true;
+                        widgets.graph_status.set_css_classes(&["success"]);
+                        widgets
+                            .graph_status
+                            .set_label(&i18n("Access to the directory approved. Save the account to finish."));
+                    }
+                    Err(e) => {
+                        self.directory_on = false;
+                        widgets.graph_directory_row.set_active(false);
+                        widgets.graph_status.set_css_classes(&["error"]);
+                        widgets.graph_status.set_label(&i18n_f(
+                            "Access to the directory was not approved: {e}",
+                            &[("e", &e)],
+                        ));
+                    }
+                }
+            }
+            AccountsCmd::LabelsConsent(result) => {
+                widgets.graph_labels_row.set_sensitive(true);
+                widgets.oauth_signin_btn.set_sensitive(true);
+                widgets.graph_status.set_visible(true);
+                match self.take_consent(widgets, result) {
+                    Ok(()) => {
+                        self.labels_granted = true;
+                        widgets.graph_status.set_css_classes(&["success"]);
+                        widgets
+                            .graph_status
+                            .set_label(&i18n("Access to the sensitivity labels approved. Save the account to finish."));
+                    }
+                    Err(e) => {
+                        self.labels_on = false;
+                        widgets.graph_labels_row.set_active(false);
+                        widgets.graph_status.set_css_classes(&["error"]);
+                        widgets.graph_status.set_label(&i18n_f(
+                            "Access to the sensitivity labels was not approved: {e}",
+                            &[("e", &e)],
+                        ));
+                    }
+                }
+            }
             AccountsCmd::AliasTested(result) => {
                 let Some(d) = self.alias_dialog.as_ref() else { return };
                 d.test_btn.set_sensitive(true);
@@ -3121,11 +3607,102 @@ impl AccountsWindow {
     /// build, for a field most visits never reach.
     fn sig_editor(&mut self, widgets: &AccountsWindowWidgets) -> &RichEditor {
         if self.sig_editor.is_none() {
-            let editor = RichEditor::new("", None);
+            let editor = RichEditor::new("", None, false);
+            // The text keeps its height when the toolbar wraps or is
+            // expanded to a second row; the panel grows instead.
+            editor.set_text_height(130);
+            editor.toolbar_end().append(&self.sig_source_btn);
             widgets.sig_holder.append(&editor.widget);
             self.sig_editor = Some(editor);
         }
         self.sig_editor.as_ref().expect("created above")
+    }
+
+    /// Set "Edit HTML" and the formatting tools to the mode the signature
+    /// editor is in: as source the tools would go nowhere, and the button
+    /// goes back to the rendered signature.
+    fn sync_source_button(&mut self, widgets: &AccountsWindowWidgets) {
+        let source = self.sig_editor(widgets).source_kind().is_some();
+        self.sig_editor(widgets).set_formatting_visible(!source);
+        self.sig_source_btn.set_label(&if source { i18n("Preview") } else { i18n("Edit HTML") });
+    }
+
+    /// The shown signature as HTML, from the rich editor or, while it is
+    /// shown as source, from that source, cleaned as an imported one is.
+    fn read_signature(&mut self, widgets: &AccountsWindowWidgets, cb: impl FnOnce(String) + 'static) {
+        let editor = self.sig_editor(widgets);
+        if editor.source_kind().is_some() {
+            editor.extract_source(move |text| cb(rich_editor::signature_from_source(&text, None)));
+        } else {
+            editor.extract_html(cb);
+        }
+    }
+
+    /// Put an account's signatures in the editor (#445), the first one
+    /// shown. An account without any gets one empty signature to type in,
+    /// which new messages start with once it has text, as before there
+    /// could be several.
+    fn load_signatures(
+        &mut self,
+        widgets: &AccountsWindowWidgets,
+        mut signatures: Vec<NamedSignature>,
+        mut default: Option<usize>,
+    ) {
+        if signatures.is_empty() {
+            signatures.push(NamedSignature { name: i18n("Signature"), html: String::new() });
+            default = Some(0);
+        }
+        self.sig_edits = signatures;
+        self.sig_default = default;
+        self.sig_touched = false;
+        self.sig_reading = false;
+        self.show_signature(widgets, 0);
+    }
+
+    /// Show signature `i` in the editor and set the rows above it to it.
+    /// Their notifies arrive after this and find nothing changed.
+    fn show_signature(&mut self, widgets: &AccountsWindowWidgets, i: usize) {
+        self.sig_shown = i;
+        let html = self.sig_edits.get(i).map(|s| rich_editor::signature_to_html(&s.html)).unwrap_or_default();
+        self.sig_editor(widgets).set_html(&html);
+        self.sync_source_button(widgets);
+        let labels: Vec<String> = (0..self.sig_edits.len()).map(|n| signature_label(&self.sig_edits, n)).collect();
+        let labels: Vec<&str> = labels.iter().map(String::as_str).collect();
+        widgets.sig_choice_row.set_model(Some(&gtk::StringList::new(&labels)));
+        widgets.sig_choice_row.set_selected(i as u32);
+        widgets.sig_name_row.set_text(self.sig_edits.get(i).map(|s| s.name.as_str()).unwrap_or_default());
+        widgets.sig_default_row.set_active(self.sig_default == Some(i));
+        let several = self.sig_edits.len() > 1;
+        widgets.sig_choice_row.set_visible(several);
+        widgets.sig_name_row.set_visible(several);
+    }
+
+    /// Read the shown signature's text back out of the editor before
+    /// another is shown (`add` makes a new one); the answer is
+    /// [`AccountsInput::SigStored`].
+    fn read_back_signature(&mut self, widgets: &AccountsWindowWidgets, sender: &ComponentSender<Self>, add: bool) {
+        self.sig_reading = true;
+        let s = sender.clone();
+        self.sig_editor(widgets).is_dirty(move |dirty| s.input(AccountsInput::SigTextTouched(dirty)));
+        let s = sender.clone();
+        self.read_signature(widgets, move |html| s.input(AccountsInput::SigStored { html, add }));
+    }
+
+    /// The signatures Save writes: the empty ones left out, a missing name
+    /// filled in, and the default followed to where it lands.
+    fn saved_signatures(&self) -> (Vec<NamedSignature>, Option<usize>) {
+        let mut kept = Vec::new();
+        let mut default = None;
+        for (i, sig) in self.sig_edits.iter().enumerate() {
+            if signature_is_empty(sig.html.trim()) {
+                continue;
+            }
+            if self.sig_default == Some(i) {
+                default = Some(kept.len());
+            }
+            kept.push(NamedSignature { name: signature_label(&self.sig_edits, i), html: sig.html.clone() });
+        }
+        (kept, default)
     }
 
     /// Fill the Hidden Folders list (#239): one row per hidden path, with
@@ -3243,7 +3820,7 @@ impl AccountsWindow {
         let window = adw::Window::builder()
             .modal(true)
             .default_width(440)
-            .title(if self.alias_editing.is_some() { "Edit Alias" } else { "Add Alias" })
+            .title(if self.alias_editing.is_some() { i18n("Edit Alias") } else { i18n("Add Alias") })
             .build();
         // Parent to whatever window the embedded panel currently sits in.
         window.set_transient_for(root.root().and_downcast::<gtk::Window>().as_ref());
@@ -3456,6 +4033,7 @@ impl AccountsWindow {
         widgets.server_saves_row.set_active(server_saves);
         row.set_sensitive(unsupported.is_none() && !server_saves);
         row.set_subtitle(&unsupported.unwrap_or_else(|| i18n(SENT_COPY_HINT)));
+        widgets.reply_copies_row.set_sensitive(!server_saves);
     }
 
     /// The "Save a copy of sent mail in" combo's current choice: a folder path,
@@ -3652,9 +4230,9 @@ impl AccountsWindow {
             let toggle = gtk::Switch::new();
             toggle.set_valign(gtk::Align::Center);
             if acc.goa_mail_disabled {
-                toggle.set_tooltip_text(Some(
+                toggle.set_tooltip_text(Some(&i18n(
                     "Paused: Mail is switched off for this account in GNOME Settings",
-                ));
+                )));
                 toggle.set_sensitive(false);
             } else {
                 toggle.set_tooltip_text(Some(i18n("Enable this account").as_str()));
@@ -3736,7 +4314,7 @@ impl AccountsWindow {
             row.set_title(&g.email);
             row.add_prefix(&crate::brand::mark(brand_for_goa(&g.provider), 24, crate::brand::GENERIC_MAIL));
             let mut subtitle = if g.provider.is_empty() {
-                "Mail".to_string()
+                i18n("Mail")
             } else {
                 g.provider.clone()
             };
@@ -3798,6 +4376,49 @@ impl AccountsWindow {
             _ => form_protocol(widgets),
         };
         widgets.push_row.set_visible(matches!(protocol, Protocol::Imap | Protocol::Jmap));
+        // The list-mail search is a server search for a header, which
+        // Microsoft 365 does not offer and POP3 has no folders for.
+        widgets.clean_lists_row.set_visible(matches!(protocol, Protocol::Imap | Protocol::Jmap));
+        widgets.reply_copies_row.set_visible(matches!(protocol, Protocol::Imap | Protocol::Jmap));
+        // GNOME Online Accounts asked Microsoft for its own scopes, and
+        // Hylki cannot add the directory's to a token GNOME holds.
+        let from_goa = self.editing.and_then(|i| self.accounts.get(i)).is_some_and(|a| a.goa_id.is_some());
+        widgets.graph_group.set_visible(protocol == Protocol::Graph);
+        widgets.graph_directory_row.set_sensitive(!from_goa);
+        widgets.graph_labels_row.set_sensitive(!from_goa);
+        widgets.graph_group.set_description(Some(&if from_goa {
+            i18n("Only for an account signed in within Hylki. To use these, add this account with Microsoft 365 / Outlook as the provider, instead of from GNOME Online Accounts.")
+        } else {
+            i18n("Turning one of these on asks Microsoft for access; some organizations need an administrator to approve it.")
+        }));
+    }
+
+    /// A fresh editor: answers from the keyring for the last one no longer
+    /// apply.
+    fn new_editor_session(&mut self) {
+        self.editor_session += 1;
+        self.editor_secrets = None;
+        self.secrets_reading = false;
+        self.save_waiting = false;
+    }
+
+    /// Read `acc`'s secrets off the main thread; they arrive as
+    /// [`AccountsCmd::Secrets`].
+    fn read_secrets(&mut self, acc: &AccountConfig, sender: &ComponentSender<Self>) {
+        self.secrets_reading = true;
+        let (acc, session) = (acc.clone(), self.editor_session);
+        sender.oneshot_command(async move {
+            let email = acc.email.clone();
+            let secrets = tokio::task::spawn_blocking(move || AccountSecrets::load(&acc))
+                .await
+                .unwrap_or(AccountSecrets {
+                    email,
+                    password: String::new(),
+                    smtp_password: String::new(),
+                    aliases: Vec::new(),
+                });
+            AccountsCmd::Secrets(session, secrets)
+        });
     }
 
     fn apply_provider(&self, widgets: &AccountsWindowWidgets) {
@@ -3887,6 +4508,40 @@ impl AccountsWindow {
 
     /// Build the OAuth client config from the form. Google/Microsoft use built-in
     /// endpoints + credentials; "Custom OAuth" uses the user-entered fields.
+    /// A sign-in that asked for more scopes (#410, #411) finished: its
+    /// refresh token is the one to save, and a new account takes its
+    /// address and name from it.
+    fn take_consent(
+        &mut self,
+        widgets: &AccountsWindowWidgets,
+        result: Result<(String, Option<(String, String)>), String>,
+    ) -> Result<(), String> {
+        // A saved account signs in as itself: another mailbox picked in
+        // the browser would swap the account's token.
+        let saved = self
+            .editing
+            .and_then(|i| self.accounts.get(i))
+            .filter(|a| a.oauth && a.goa_id.is_none())
+            .map(|a| a.email.clone());
+        let (refresh, who) = result.and_then(|(refresh, who)| match (&saved, &who) {
+            (Some(email), Some((_, address))) if !address.is_empty() && !address.eq_ignore_ascii_case(email) => {
+                Err(i18n_f("Signed in as {address}, not {email}.", &[("address", address), ("email", email)]))
+            }
+            _ => Ok((refresh, who)),
+        })?;
+        self.pending_oauth_refresh = Some(refresh);
+        // A new account was signed in by this as well.
+        if let Some((name, address)) = who {
+            if !address.is_empty() {
+                widgets.email_row.set_text(&address);
+            }
+            if !name.is_empty() && widgets.name_row.text().trim().is_empty() {
+                widgets.name_row.set_text(&name);
+            }
+        }
+        Ok(())
+    }
+
     fn oauth_settings_from_form(&self, widgets: &AccountsWindowWidgets) -> OAuthSettings {
         let provider = provider_at(widgets.provider_row.selected()).oauth_name();
         if let Some(name) = provider {
@@ -3908,6 +4563,14 @@ impl AccountsWindow {
                     &trimmed(&widgets.ms_scopes_row),
                     &trimmed(&widgets.ms_redirect_row),
                 );
+                // Built from the preset, the scopes would lose the
+                // directory's at the next sign-in or refresh (#410).
+                if self.directory_granted {
+                    settings.scopes = crate::oauth::with_directory_scopes(&settings.scopes);
+                }
+                if self.labels_granted {
+                    settings.scopes = crate::oauth::with_scopes(&settings.scopes, &crate::oauth::MICROSOFT_LABEL_SCOPES);
+                }
             }
             settings
         } else {
@@ -3921,6 +4584,55 @@ impl AccountsWindow {
             }
         }
     }
+}
+
+/// The editor's sign-in: in a window of Hylki's own for a redirect Hylki
+/// cannot listen on (#329), otherwise in the browser. `user` is the address
+/// typed, which picks the identity broker's account and, with `hint`, the
+/// account Microsoft signs in (#410). The answer comes back through `wrap`.
+fn sign_in(
+    root: &adw::Bin,
+    sender: &ComponentSender<AccountsWindow>,
+    settings: OAuthSettings,
+    user: Option<String>,
+    hint: bool,
+    wrap: fn(Result<(String, Option<(String, String)>), String>) -> AccountsCmd,
+) {
+    if !settings.redirect_uri.trim().is_empty() {
+        let parent = root.root().and_downcast::<gtk::Window>();
+        let s = sender.clone();
+        crate::ui::web_signin::run(parent.as_ref(), &settings.clone(), user.clone(), hint, move |answer| {
+            s.oneshot_command(async move {
+                let r = tokio::task::spawn_blocking(move || {
+                    let (request, code) = answer?;
+                    let refresh = crate::oauth::exchange_code(&settings, &request, &code)?.refresh_token;
+                    let (name, address, refresh) =
+                        crate::oauth::microsoft_whoami(&settings, &refresh, user.as_deref())?;
+                    Ok((refresh, Some((name, address))))
+                })
+                .await
+                .unwrap_or_else(|_| Err("sign-in task failed".into()));
+                wrap(r)
+            });
+        });
+        return;
+    }
+    sender.oneshot_command(async move {
+        let r = tokio::task::spawn_blocking(move || {
+            let hint = user.as_deref().filter(|_| hint);
+            let refresh = crate::oauth::run_flow_as(&settings, hint)?.refresh_token;
+            // Microsoft says who signed in, so the account is named
+            // for the mailbox reached (#329).
+            if settings.token_url.contains("microsoftonline") {
+                let (name, address, refresh) = crate::oauth::microsoft_whoami(&settings, &refresh, None)?;
+                return Ok((refresh, Some((name, address))));
+            }
+            Ok((refresh, None))
+        })
+        .await
+        .unwrap_or_else(|_| Err("sign-in task failed".into()));
+        wrap(r)
+    });
 }
 
 /// A list-item factory whose labels never ellipsize, so a `ComboRow` popup grows
@@ -4091,9 +4803,11 @@ impl AccountsWindow {
     /// with nothing recorded, assume it was touched rather than risk
     /// dropping an edit.
     fn editor_touched(&self, widgets: &AccountsWindowWidgets) -> bool {
-        self.editor_seed
-            .as_ref()
-            .is_none_or(|seed| *seed != self.editor_fingerprint(widgets))
+        self.sig_touched
+            || self
+                .editor_seed
+                .as_ref()
+                .is_none_or(|seed| *seed != self.editor_fingerprint(widgets))
     }
 
     fn refresh_preview(&self, widgets: &AccountsWindowWidgets) {
@@ -4226,6 +4940,8 @@ fn read_account(
         // Filled in by SaveWithSig from the rich-text editor.
         signature: None,
         signature_html: true,
+        signatures: Vec::new(),
+        default_signature: None,
         // Only store a custom label; blank or same-as-email falls back to email.
         label: {
             let l = trimmed(&widgets.label_row);
@@ -4259,12 +4975,20 @@ fn read_account(
         folders_seeded: false,
         sent_copy_path: None,
         server_saves_sent: false,
+        reply_copies: crate::config::ReplyCopies::ALL
+            .get(widgets.reply_copies_row.selected() as usize)
+            .copied()
+            .unwrap_or_default(),
         empty_junk_days: AUTO_EMPTY_DAYS
             .get(widgets.empty_junk_row.selected() as usize)
             .copied()
             .unwrap_or(0),
         empty_trash_days: AUTO_EMPTY_DAYS
             .get(widgets.empty_trash_row.selected() as usize)
+            .copied()
+            .unwrap_or(0),
+        clean_lists_days: CLEAN_LISTS_DAYS
+            .get(widgets.clean_lists_row.selected() as usize)
             .copied()
             .unwrap_or(0),
         // Row 0 is Automatic; the rest follow PGP_KEY_CHOICES. Until gpg
@@ -4285,6 +5009,9 @@ fn read_account(
             .checked_sub(1)
             .and_then(|i| crate::config::FolderSort::ALL.get(i as usize).copied()),
         sign_by_default: widgets.sign_default_row.is_active(),
+        graph_directory: protocol == Protocol::Graph && widgets.graph_directory_row.is_active(),
+        graph_directory_only: protocol == Protocol::Graph && widgets.directory_only_row.is_active(),
+        graph_label_names: protocol == Protocol::Graph && widgets.graph_labels_row.is_active(),
     }
 }
 
@@ -4381,9 +5108,17 @@ fn auto_empty_index(days: u32) -> u32 {
     AUTO_EMPTY_DAYS.iter().position(|d| *d == days).unwrap_or(0) as u32
 }
 
+/// Moving list mail to the Trash (#407): never, then the ages.
+const CLEAN_LISTS_DAYS: &[u32] = &[0, 30, 60, 90, 180];
+
 /// The combo's labels, translated.
 fn auto_empty_labels() -> Vec<String> {
-    AUTO_EMPTY_DAYS
+    age_labels(AUTO_EMPTY_DAYS)
+}
+
+/// "Never", then "After N days" for each age.
+fn age_labels(days: &[u32]) -> Vec<String> {
+    days
         .iter()
         .map(|d| {
             if *d == 0 {
@@ -4393,6 +5128,15 @@ fn auto_empty_labels() -> Vec<String> {
             }
         })
         .collect()
+}
+
+/// What signature `i` is called in the chooser and the composer: its name,
+/// or its place in the list when it has none.
+fn signature_label(signatures: &[NamedSignature], i: usize) -> String {
+    match signatures.get(i).map(|s| s.name.trim()) {
+        Some(name) if !name.is_empty() => name.to_string(),
+        _ => i18n_f("Signature {n}", &[("n", &(i + 1).to_string())]),
+    }
 }
 
 /// Whether the editor's HTML is effectively empty (no visible content).
@@ -4483,10 +5227,14 @@ fn fill_editor(widgets: &AccountsWindowWidgets, acc: &AccountConfig) {
     });
     widgets.empty_junk_row.set_selected(auto_empty_index(acc.empty_junk_days));
     widgets.empty_trash_row.set_selected(auto_empty_index(acc.empty_trash_days));
+    widgets
+        .clean_lists_row
+        .set_selected(CLEAN_LISTS_DAYS.iter().position(|d| *d == acc.clean_lists_days).unwrap_or(0) as u32);
     fill_pgp_key_row(widgets, acc.pgp_key.as_deref());
     widgets.in_unified_row.set_active(acc.in_unified);
     widgets.folder_sort_row.set_selected(acc.folder_sort.map_or(0, |s| s.index() + 1));
     widgets.sign_default_row.set_active(acc.sign_by_default);
+    widgets.reply_copies_row.set_selected(acc.reply_copies.index());
     // Show the effective label (custom, or the email address).
     widgets
         .label_row
@@ -4577,10 +5325,16 @@ fn clear_editor(widgets: &AccountsWindowWidgets) {
     widgets.push_row.set_selected(0);
     widgets.empty_junk_row.set_selected(0);
     widgets.empty_trash_row.set_selected(0);
+    widgets.clean_lists_row.set_selected(0);
     fill_pgp_key_row(widgets, None);
     widgets.in_unified_row.set_active(true);
     widgets.folder_sort_row.set_selected(0);
     widgets.sign_default_row.set_active(false);
+    widgets.reply_copies_row.set_selected(0);
+    widgets.graph_directory_row.set_active(false);
+    widgets.directory_only_row.set_active(false);
+    widgets.graph_status.set_visible(false);
+    widgets.graph_labels_row.set_active(false);
     widgets.smtp_user_row.set_text("");
     widgets.smtp_pass_row.set_text("");
     widgets.label_row.set_text("");
@@ -5125,6 +5879,362 @@ impl AccountsWindow {
         dialog.present();
     }
 
+    /// The Smart Folders list (#417): a row per folder, saying where it
+    /// looks, activating to edit, with a remove button.
+    fn rebuild_smart_rows(&self, sender: &ComponentSender<Self>) {
+        let Some(list) = &self.smart_list else { return };
+        while let Some(row) = list.first_child() {
+            list.remove(&row);
+        }
+        list.set_visible(!self.smart_folders.is_empty());
+        for (i, f) in self.smart_folders.iter().enumerate() {
+            let row = adw::ActionRow::new();
+            row.set_activatable(true);
+            let s = sender.clone();
+            row.connect_activated(move |_| s.input(AccountsInput::EditSmartFolder(i)));
+            row.set_title(&gtk::glib::markup_escape_text(&f.name));
+            let account = if f.account_email.is_empty() { i18n("All accounts") } else { f.account_email.clone() };
+            let folder = f.folder.map_or_else(|| i18n("All but Trash and Junk"), Self::smart_kind_label);
+            row.set_subtitle(&gtk::glib::markup_escape_text(&format!("{account} · {folder}")));
+            row.add_prefix(&gtk::Image::from_icon_name("folder-saved-search-symbolic"));
+            let rm = gtk::Button::from_icon_name("user-trash-symbolic");
+            rm.add_css_class("flat");
+            rm.set_valign(gtk::Align::Center);
+            rm.set_tooltip_text(Some(i18n("Remove smart folder").as_str()));
+            let s = sender.clone();
+            rm.connect_clicked(move |_| s.input(AccountsInput::RemoveSmartFolder(i)));
+            row.add_suffix(&rm);
+            list.append(&row);
+        }
+    }
+
+    fn smart_kind_label(k: crate::config::SmartFolderKind) -> String {
+        use crate::config::SmartFolderKind::*;
+        match k {
+            Inbox => i18n("Inbox"),
+            Sent => i18n("Sent"),
+            Drafts => i18n("Drafts"),
+            Archive => i18n("Archive"),
+            Junk => i18n("Junk"),
+            Trash => i18n("Trash"),
+        }
+    }
+
+    fn smart_field_label(f: crate::config::SmartField) -> String {
+        use crate::config::SmartField::*;
+        match f {
+            Starred => i18n("Starred"),
+            NotStarred => i18n("Not starred"),
+            Unread => i18n("Unread"),
+            Read => i18n("Read"),
+            Attachment => i18n("Has attachments"),
+            Tagged => i18n("Tagged"),
+            Body => i18n("Message preview"),
+            other => other.filter_field().map(Self::field_label).unwrap_or_default(),
+        }
+    }
+
+    /// The smart folder editor (#417): a name, where it looks, and its
+    /// conditions, each a group of its own as in the filter editor. With
+    /// `edit` it opens on that folder and saves over it.
+    fn open_smart_page(
+        &self,
+        nav: &adw::NavigationView,
+        sender: &ComponentSender<Self>,
+        edit: Option<(usize, crate::config::SmartFolder)>,
+    ) {
+        use crate::config::{FilterMatch, SmartCondition, SmartField, SmartFolder, SmartFolderKind};
+        let (title, verb) = if edit.is_some() {
+            (i18n("Edit Smart Folder"), i18n("Save"))
+        } else {
+            (i18n("Add Smart Folder"), i18n("Add Smart Folder"))
+        };
+        let emails: Vec<String> = self.accounts.iter().map(|a| a.email.clone()).collect();
+
+        let page_box = gtk::Box::new(gtk::Orientation::Vertical, 24);
+        page_box.set_margin_top(24);
+        page_box.set_margin_bottom(24);
+        page_box.set_margin_start(12);
+        page_box.set_margin_end(12);
+        let clamp = adw::Clamp::new();
+        clamp.set_maximum_size(600);
+        clamp.set_tightening_threshold(400);
+        clamp.set_child(Some(&page_box));
+        let scrolled = gtk::ScrolledWindow::new();
+        scrolled.set_policy(gtk::PolicyType::Never, gtk::PolicyType::Automatic);
+        scrolled.set_vexpand(true);
+        scrolled.set_child(Some(&clamp));
+
+        let where_group = adw::PreferencesGroup::new();
+        let name_row = adw::EntryRow::new();
+        name_row.set_title(&i18n("Name"));
+        where_group.add(&name_row);
+        let account_row = adw::ComboRow::new();
+        account_row.set_title(&i18n("Account"));
+        {
+            let all = i18n("All accounts");
+            let mut names: Vec<&str> = vec![all.as_str()];
+            names.extend(emails.iter().map(|e| e.as_str()));
+            account_row.set_model(Some(&gtk::StringList::new(&names)));
+        }
+        account_row.set_subtitle(&i18n("All accounts means those in the unified section"));
+        where_group.add(&account_row);
+        let folder_row = adw::ComboRow::new();
+        folder_row.set_title(&i18n("Folders"));
+        {
+            let mut names = vec![i18n("All but Trash and Junk")];
+            names.extend(SmartFolderKind::ALL.iter().map(|k| Self::smart_kind_label(*k)));
+            let refs: Vec<&str> = names.iter().map(|s| s.as_str()).collect();
+            folder_row.set_model(Some(&gtk::StringList::new(&refs)));
+        }
+        where_group.add(&folder_row);
+
+        // The conditions: Where, then Match and Text for the fields that
+        // look at text, or the tag for Tagged.
+        let conds: std::rc::Rc<std::cell::RefCell<Vec<SmartCondRows>>> = Default::default();
+        let field_names: Vec<String> = SmartField::ALL.iter().map(|f| Self::smart_field_label(*f)).collect();
+        let match_names: Vec<String> = FilterMatch::ALL.iter().map(|m| Self::match_label(*m)).collect();
+        let tags = self.tags.clone();
+        let tag_names: Vec<String> =
+            std::iter::once(i18n("Any tag")).chain(tags.iter().map(|t| t.name.clone())).collect();
+        let make_cond = {
+            let tags = tags.clone();
+            move |init: Option<&SmartCondition>| -> SmartCondRows {
+                let group = adw::PreferencesGroup::new();
+                let remove = gtk::Button::from_icon_name("user-trash-symbolic");
+                remove.add_css_class("flat");
+                remove.set_valign(gtk::Align::Center);
+                remove.set_tooltip_text(Some(i18n("Remove condition").as_str()));
+                group.set_header_suffix(Some(&remove));
+                let field = adw::ComboRow::new();
+                field.set_title(&i18n("Where"));
+                let refs: Vec<&str> = field_names.iter().map(|s| s.as_str()).collect();
+                field.set_model(Some(&gtk::StringList::new(&refs)));
+                let matcher = adw::ComboRow::new();
+                matcher.set_title(&i18n("Match"));
+                matcher.set_subtitle(&i18n("Commas separate alternatives; any one of them counts"));
+                let refs: Vec<&str> = match_names.iter().map(|s| s.as_str()).collect();
+                matcher.set_model(Some(&gtk::StringList::new(&refs)));
+                let value = adw::EntryRow::new();
+                value.set_title(&i18n("Text to match"));
+                let tag = adw::ComboRow::new();
+                tag.set_title(&i18n("Tag"));
+                let refs: Vec<&str> = tag_names.iter().map(|s| s.as_str()).collect();
+                tag.set_model(Some(&gtk::StringList::new(&refs)));
+                if let Some(c) = init {
+                    if let Some(i) = SmartField::ALL.iter().position(|f| *f == c.field) {
+                        field.set_selected(i as u32);
+                    }
+                    if let Some(i) = FilterMatch::ALL.iter().position(|m| *m == c.matcher) {
+                        matcher.set_selected(i as u32);
+                    }
+                    if c.field == SmartField::Tagged {
+                        if let Some(i) = tags.iter().position(|t| t.keyword.eq_ignore_ascii_case(&c.value)) {
+                            tag.set_selected(i as u32 + 1);
+                        }
+                    } else {
+                        value.set_text(&c.value);
+                    }
+                }
+                let explain = {
+                    let (matcher, value, tag) = (matcher.clone(), value.clone(), tag.clone());
+                    move |field: &adw::ComboRow| {
+                        let chosen = SmartField::ALL.get(field.selected() as usize).copied();
+                        let text = chosen.is_some_and(|f| f.takes_text());
+                        let body = chosen == Some(SmartField::Body);
+                        if body {
+                            matcher.set_selected(0);
+                        }
+                        matcher.set_visible(text);
+                        matcher.set_sensitive(!body);
+                        value.set_visible(text);
+                        tag.set_visible(chosen == Some(SmartField::Tagged));
+                        field.set_subtitle(&match chosen {
+                            Some(SmartField::Body) => i18n("The preview each message has in the list"),
+                            Some(SmartField::ReplyTo) => i18n("From address when no Reply-To is set"),
+                            Some(SmartField::FromInContacts | SmartField::FromNotInContacts) => {
+                                i18n("Looks in the system address books and the Hylki book")
+                            }
+                            _ => String::new(),
+                        });
+                    }
+                };
+                explain(&field);
+                field.connect_selected_notify(explain);
+                group.add(&field);
+                group.add(&matcher);
+                group.add(&value);
+                group.add(&tag);
+                SmartCondRows { group, remove, field, matcher, value, tag }
+            }
+        };
+
+        let add_group = adw::PreferencesGroup::new();
+        let add_row = adw::ActionRow::new();
+        add_row.set_title(&i18n("Add Condition"));
+        add_row.set_activatable(true);
+        add_row.add_prefix(&gtk::Image::from_icon_name("list-add-symbolic"));
+        add_group.add(&add_row);
+        let combine_row = adw::ComboRow::new();
+        combine_row.set_title(&i18n("Condition matching"));
+        combine_row.set_model(Some(&gtk::StringList::new(&[
+            i18n("All must match").as_str(),
+            i18n("Any one may match").as_str(),
+        ])));
+        let combine_group = adw::PreferencesGroup::new();
+        combine_group.add(&combine_row);
+        combine_group.set_visible(false);
+
+        let relabel = {
+            let (conds, combine_row, combine_group) = (conds.clone(), combine_row.clone(), combine_group.clone());
+            move || {
+                let conds = conds.borrow();
+                let any = combine_row.selected() == 1;
+                let several = conds.len() > 1;
+                for (i, c) in conds.iter().enumerate() {
+                    c.group.set_title(&i18n_f("Condition {n}", &[("n", &(i + 1).to_string())]));
+                    c.field.set_title(&if i == 0 {
+                        i18n("Where")
+                    } else if any {
+                        i18n("Or where")
+                    } else {
+                        i18n("And where")
+                    });
+                    c.remove.set_visible(several);
+                }
+                combine_group.set_visible(several);
+            }
+        };
+        {
+            let relabel = relabel.clone();
+            combine_row.connect_selected_notify(move |_| relabel());
+        }
+        let add_cond = {
+            let (conds, page_box, where_group, relabel) =
+                (conds.clone(), page_box.clone(), where_group.clone(), relabel.clone());
+            let (form_save, nav) = (self.form_save.clone(), nav.clone());
+            move |init: Option<&SmartCondition>| {
+                let c = make_cond(init);
+                let after: gtk::Widget = conds
+                    .borrow()
+                    .last()
+                    .map(|last| last.group.clone().upcast())
+                    .unwrap_or_else(|| where_group.clone().upcast());
+                page_box.insert_child_after(&c.group, Some(&after));
+                {
+                    let (conds, page_box, relabel, group) =
+                        (conds.clone(), page_box.clone(), relabel.clone(), c.group.clone());
+                    c.remove.connect_clicked(move |_| {
+                        let gone = {
+                            let mut conds = conds.borrow_mut();
+                            if conds.len() < 2 {
+                                return;
+                            }
+                            conds.iter().position(|c| c.group == group).map(|i| conds.remove(i))
+                        };
+                        if let Some(gone) = gone {
+                            page_box.remove(&gone.group);
+                            relabel();
+                        }
+                    });
+                }
+                {
+                    let (form_save, nav) = (form_save.clone(), nav.clone());
+                    c.value.connect_entry_activated(move |_| {
+                        if form_save.borrow().as_ref().is_some_and(|save| save()) {
+                            nav.pop();
+                        }
+                    });
+                }
+                conds.borrow_mut().push(c);
+                relabel();
+            }
+        };
+        {
+            let add_cond = add_cond.clone();
+            add_row.connect_activated(move |_| add_cond(None));
+        }
+
+        let edit_index = edit.as_ref().map(|(i, _)| *i);
+        let id = edit.as_ref().map_or_else(crate::config::new_smart_folder_id, |(_, f)| f.id.clone());
+        if let Some((_, f)) = &edit {
+            name_row.set_text(&f.name);
+            if let Some(i) = emails.iter().position(|e| e.eq_ignore_ascii_case(&f.account_email)) {
+                account_row.set_selected(i as u32 + 1);
+            }
+            if let Some(i) = f.folder.and_then(|k| SmartFolderKind::ALL.iter().position(|x| *x == k)) {
+                folder_row.set_selected(i as u32 + 1);
+            }
+            combine_row.set_selected(u32::from(f.any));
+        }
+
+        page_box.append(&where_group);
+        page_box.append(&add_group);
+        page_box.append(&combine_group);
+        match &edit {
+            Some((_, f)) if !f.conditions.is_empty() => {
+                for c in &f.conditions {
+                    add_cond(Some(c));
+                }
+            }
+            _ => add_cond(None),
+        }
+
+        let s = sender.clone();
+        self.push_form_content(nav, "smart", &title, &verb, scrolled.upcast_ref(), vec![name_row.clone()], move || {
+            let name = name_row.text().trim().to_string();
+            // A text condition with no text says nothing and is dropped;
+            // the others need none.
+            let conditions: Vec<SmartCondition> = conds
+                .borrow()
+                .iter()
+                .filter_map(|c| {
+                    let field = SmartField::ALL[c.field.selected() as usize % SmartField::ALL.len()];
+                    let value = if field == SmartField::Tagged {
+                        match c.tag.selected() {
+                            0 => String::new(),
+                            i => tags.get(i as usize - 1).map(|t| t.keyword.clone()).unwrap_or_default(),
+                        }
+                    } else if field.takes_text() {
+                        let v = c.value.text().trim().to_string();
+                        if v.is_empty() {
+                            return None;
+                        }
+                        v
+                    } else {
+                        String::new()
+                    };
+                    Some(SmartCondition {
+                        field,
+                        matcher: FilterMatch::ALL[c.matcher.selected() as usize % FilterMatch::ALL.len()],
+                        value,
+                    })
+                })
+                .collect();
+            if name.is_empty() || conditions.is_empty() {
+                return false;
+            }
+            let account_email = match account_row.selected() {
+                0 => String::new(),
+                i => emails.get(i as usize - 1).cloned().unwrap_or_default(),
+            };
+            let folder = match folder_row.selected() {
+                0 => None,
+                i => SmartFolderKind::ALL.get(i as usize - 1).copied(),
+            };
+            let folder = SmartFolder {
+                id: id.clone(),
+                name,
+                account_email,
+                folder,
+                any: combine_row.selected() == 1,
+                conditions,
+            };
+            s.input(AccountsInput::SmartFolderSaved(edit_index, folder));
+            true
+        });
+    }
+
     /// The Tags list (#71): a row per tag — its color as a disc, its name,
     /// its keyword — activating to edit, with a remove button.
     fn rebuild_tag_rows(&self, sender: &ComponentSender<Self>) {
@@ -5489,6 +6599,7 @@ impl AccountsWindow {
         nav: &adw::NavigationView,
         sender: &ComponentSender<Self>,
         edit: Option<(usize, crate::config::FilterRule)>,
+        prefill: Option<crate::config::FilterRule>,
     ) {
         use crate::config::{FilterField, FilterMatch, FilterRule};
         let emails: Vec<String> = self.accounts.iter().map(|a| a.email.clone()).collect();
@@ -5766,9 +6877,12 @@ impl AccountsWindow {
         action_group.add(&tag_row);
         action_group.add(&count_row);
 
-        // Editing: every field starts from the rule as it stands.
+        // Editing: every field starts from the rule as it stands. A new
+        // rule started from a message starts from its draft the same way,
+        // and is added, not saved over another.
         let edit_index = edit.as_ref().map(|(i, _)| *i);
-        if let Some((_, rule)) = &edit {
+        let source = edit.as_ref().map(|(_, rule)| rule).or(prefill.as_ref());
+        if let Some(rule) = source {
             name_row.set_text(&rule.name);
             if let Some(idx) = emails
                 .iter()
@@ -5793,8 +6907,8 @@ impl AccountsWindow {
         page_box.append(&action_group);
         // The condition groups slot in above Add Condition: the rule's own
         // when editing, one blank one otherwise.
-        match &edit {
-            Some((_, rule)) => {
+        match source {
+            Some(rule) => {
                 for c in rule.conditions() {
                     add_cond(Some(&c));
                 }
@@ -5904,6 +7018,17 @@ impl AccountsWindow {
             true
         });
     }
+}
+
+/// One condition of the smart folder editor (#417): the filter editor's
+/// rows, and a tag chooser for Tagged.
+struct SmartCondRows {
+    group: adw::PreferencesGroup,
+    remove: gtk::Button,
+    field: adw::ComboRow,
+    matcher: adw::ComboRow,
+    value: adw::EntryRow,
+    tag: adw::ComboRow,
 }
 
 /// One condition of the filter editor (#192): its own titled group with a

@@ -404,7 +404,7 @@ impl Component for AttachmentsGallery {
                                 connect_clicked => GalleryInput::SortColumn(0),
                                 gtk::Label {
                                     #[watch]
-                                    set_label: &column_header("Name", model.sort, GallerySort::Name, GallerySort::NameDesc),
+                                    set_label: &column_header(&i18n("Name"), model.sort, GallerySort::Name, GallerySort::NameDesc),
                                     set_xalign: 0.0,
                                 },
                             },
@@ -415,7 +415,7 @@ impl Component for AttachmentsGallery {
                                 connect_clicked => GalleryInput::SortColumn(1),
                                 gtk::Label {
                                     #[watch]
-                                    set_label: &column_header("Sender", model.sort, GallerySort::Sender, GallerySort::SenderDesc),
+                                    set_label: &column_header(&i18n("Sender"), model.sort, GallerySort::Sender, GallerySort::SenderDesc),
                                     set_xalign: 0.0,
                                 },
                             },
@@ -426,7 +426,7 @@ impl Component for AttachmentsGallery {
                                 connect_clicked => GalleryInput::SortColumn(4),
                                 gtk::Label {
                                     #[watch]
-                                    set_label: &column_header("Type", model.sort, GallerySort::Type, GallerySort::TypeDesc),
+                                    set_label: &column_header(&i18n("Type"), model.sort, GallerySort::Type, GallerySort::TypeDesc),
                                     set_xalign: 0.0,
                                 },
                             },
@@ -437,7 +437,7 @@ impl Component for AttachmentsGallery {
                                 connect_clicked => GalleryInput::SortColumn(2),
                                 gtk::Label {
                                     #[watch]
-                                    set_label: &column_header("Date", model.sort, GallerySort::Oldest, GallerySort::Newest),
+                                    set_label: &column_header(&i18n("Date"), model.sort, GallerySort::Oldest, GallerySort::Newest),
                                     set_xalign: 0.0,
                                 },
                             },
@@ -452,7 +452,7 @@ impl Component for AttachmentsGallery {
                                 connect_clicked => GalleryInput::SortColumn(3),
                                 gtk::Label {
                                     #[watch]
-                                    set_label: &column_header("Size", model.sort, GallerySort::Smallest, GallerySort::Largest),
+                                    set_label: &column_header(&i18n("Size"), model.sort, GallerySort::Smallest, GallerySort::Largest),
                                     set_xalign: 1.0,
                                 },
                             },
@@ -1756,12 +1756,12 @@ fn build_cell(
         b
     };
     if item.data.is_some() {
-        let download = action_btn("folder-download-symbolic", "Download");
+        let download = action_btn("folder-download-symbolic", &i18n("Download"));
         let s = sender.clone();
         download.connect_clicked(move |_| s.input(GalleryInput::DownloadItem(index)));
         actions.append(&download);
 
-        let open = action_btn("document-open-symbolic", "Open");
+        let open = action_btn("document-open-symbolic", &i18n("Open"));
         let s = sender.clone();
         open.connect_clicked(move |_| s.input(GalleryInput::OpenItem(index)));
         actions.append(&open);
@@ -1911,7 +1911,8 @@ pub(crate) fn fade_out(widget: &impl IsA<gtk::Widget>, done: impl Fn() + 'static
 }
 
 fn caption(item: &GalleryItem) -> String {
-    let who = if item.from_name.trim().is_empty() { "Unknown" } else { item.from_name.trim() };
+    let unknown = i18n("Unknown");
+    let who = if item.from_name.trim().is_empty() { unknown.as_str() } else { item.from_name.trim() };
     let subject = item.subject.trim();
     let mut parts = vec![who.to_string()];
     if !subject.is_empty() {
@@ -2000,7 +2001,7 @@ fn build_row(
     };
     // No extension: say so, rather than showing the name again.
     let ext = ext_of(&item.name);
-    let kind_text = if ext.is_empty() { "File".to_string() } else { ext.to_ascii_uppercase() };
+    let kind_text = if ext.is_empty() { i18n("File") } else { ext.to_ascii_uppercase() };
     let kind = fixed(&kind_text, 90, 0.0);
     line.append(&kind);
 
@@ -2023,11 +2024,11 @@ fn build_row(
         b
     };
     if item.data.is_some() {
-        let download = act("folder-download-symbolic", "Download");
+        let download = act("folder-download-symbolic", &i18n("Download"));
         let s = sender.clone();
         download.connect_clicked(move |_| s.input(GalleryInput::DownloadItem(index)));
         actions.append(&download);
-        let open = act("document-open-symbolic", "Open");
+        let open = act("document-open-symbolic", &i18n("Open"));
         let s = sender.clone();
         open.connect_clicked(move |_| s.input(GalleryInput::OpenItem(index)));
         actions.append(&open);

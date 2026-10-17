@@ -24,7 +24,7 @@ use tokio::sync::mpsc;
 
 use crate::backend::{MailBackend, MockBackend};
 use crate::cache::Cache;
-use crate::config::AccountConfig;
+use crate::config::{AccountConfig, ReplyCopies};
 use crate::models::{Account, Folder, FolderKind, KeywordFinding, MailboxQuota, Message, ThreadSummary};
 use crate::i18n::{i18n, i18n_f, ni18n_f};
 
@@ -140,6 +140,36 @@ static PREVIEW_RETRIED: std::sync::LazyLock<
 static PREVIEW_ITEMS_REJECTED: std::sync::LazyLock<
     std::sync::Mutex<std::collections::HashSet<u32>>,
 > = std::sync::LazyLock::new(Default::default);
+
+/// Gmail accounts whose labels are read (#374): `true` while they are,
+/// `false` once the server has refused `X-GM-LABELS` or answered it with
+/// something the parser cannot read, for the rest of the session. A server
+/// that only looks like Gmail by its folder names (a mailbox migrated with
+/// its `[Gmail]/` folders) refuses the item, and an unreadable reply would
+/// otherwise fail every sync after it.
+static GMAIL_LABELS: std::sync::LazyLock<
+    std::sync::Mutex<std::collections::HashMap<u32, bool>>,
+> = std::sync::LazyLock::new(Default::default);
+
+/// Start reading the account's Gmail labels if it is Gmail, unless the
+/// server has already refused them this session.
+fn note_gmail_account(account_id: u32, account: &AccountConfig, folders: &[Folder]) {
+    if has_gmail_labels(account, folders) {
+        if let Ok(mut g) = GMAIL_LABELS.lock() {
+            g.entry(account_id).or_insert(true);
+        }
+    }
+}
+
+fn gmail_labels_wanted(account_id: u32) -> bool {
+    GMAIL_LABELS.lock().map(|g| g.get(&account_id) == Some(&true)).unwrap_or(false)
+}
+
+fn refuse_gmail_labels(account_id: u32) {
+    if let Ok(mut g) = GMAIL_LABELS.lock() {
+        g.insert(account_id, false);
+    }
+}
 
 /// Whether the server has rejected the preview items for this account.
 fn previews_rejected(account_id: u32) -> bool {
@@ -302,6 +332,9 @@ const WATCH_LEASE: Duration = Duration::from_secs(3600);
 /// SEARCH per watcher per minute; the ceiling on a watched folder's staleness
 /// whatever the server chooses to say.
 const WATCH_VERIFY: Duration = Duration::from_secs(60);
+/// How often a watcher waiting out a network outage looks again: no network
+/// traffic, only a flag read, so it can be short (#442).
+const NETWORK_WAIT: Duration = Duration::from_secs(5);
 
 /// How long ending an IDLE (the DONE handshake) may take before the connection
 /// is declared wedged and dropped (#91). Unbounded, a server that never answers
@@ -446,6 +479,10 @@ pub enum MailRequest {
     Send {
         message: Box<OutgoingMessage>,
         sent_path: Option<String>,
+        /// Echoed back in [`WorkerEvent::SendDone`], so the app can tell
+        /// which of its messages on their way out this was (#434). 0 for a
+        /// send nobody is watching.
+        ticket: u64,
     },
     /// Try the Outbox again now (a queued message, or every one of them).
     FlushOutbox { id: Option<u32> },
@@ -542,6 +579,9 @@ pub struct OutgoingMessage {
     /// including Hylki.
     pub in_reply_to: String,
     pub references: String,
+    /// The Message-ID of the message this forwards, normalized; empty for
+    /// anything else. Marked forwarded once this has gone (#454).
+    pub forwards: String,
     /// When editing an existing draft, the draft being replaced (removed from the
     /// Drafts folder after this message is saved or sent).
     pub draft_origin: Option<crate::models::DraftOrigin>,
@@ -643,6 +683,11 @@ pub enum WorkerEvent {
     /// A `SetSeen` has been stored (or failed): the app stops holding its own
     /// read state for that message over what the server reports.
     SeenSettled { path: String, uid: u32 },
+    /// A message was replied to or forwarded from here, and is marked so
+    /// (#454).
+    Answered { path: String, uid: u32, forwarded: bool },
+    /// A `SetKeyword` has been stored (or failed), the same for a tag.
+    TagSettled { path: String, uid: u32, keyword: String },
     /// The answer to [`MailRequest::Settle`]: whatever took these messages
     /// out of `path` has been done or has failed.
     MovesSettled { path: String, uids: Vec<u32> },
@@ -661,7 +706,8 @@ pub enum WorkerEvent {
     /// its folder, so without it a background prefetch's body can be applied to a
     /// different message that happens to share the number.
     /// A chunk of a folder's threading references was repaired, so what the list
-    /// is showing may now group differently.
+    /// is showing may now group differently; or its Gmail labels were filled
+    /// in (#374).
     RefsRepaired { folder_id: u32 },
     Body { message_id: u32, path: String, body: String },
     /// A message the cache listed is no longer in `path` on the server; its
@@ -686,6 +732,10 @@ pub enum WorkerEvent {
     /// UI should show the paperclip and offer the files.
     HasAttachments { path: String, message_id: u32 },
     Sent,
+    /// The worker is done with the `MailRequest::Send` carrying `ticket`:
+    /// `sent` if it went out, otherwise it was queued in the Outbox or
+    /// handed back with `Unsent` (#434).
+    SendDone { ticket: u64, sent: bool },
     /// A message that could be neither sent, queued nor saved as a draft, handed
     /// back so the app can open it in a composer again (#340): its composer
     /// closed when Send or Save was pressed, so this is the only copy left.
@@ -719,6 +769,12 @@ impl WorkerEvent {
     pub fn net_error(text: impl Into<String>) -> Self {
         WorkerEvent::Error { text: text.into(), connectivity: true }
     }
+}
+
+/// What a connection that was never tried, because the network is down,
+/// reports (#442).
+pub(crate) fn offline_text() -> String {
+    i18n("no network connection")
 }
 
 type ImapSession = Session<ImapIo<TlsStream<TcpStream>>>;
@@ -1199,6 +1255,7 @@ async fn run_imap(
         .map(|c| c.load_folders(account_id))
         .unwrap_or_default();
     let have_cached_folders = !cached_folders.is_empty();
+    note_gmail_account(account_id, &account, &cached_folders);
     if have_cached_folders {
         emit(WorkerEvent::Folders(cached_folders));
     }
@@ -1232,6 +1289,10 @@ async fn run_imap(
     // older build carries only its In-Reply-To, and threading reads References.
     let mut refs_repair: std::collections::VecDeque<(u32, String)> =
         std::collections::VecDeque::new();
+    // Folders queued for the one-time Gmail label fill (see
+    // [`run_one_label_fill`]).
+    let mut label_fill: std::collections::VecDeque<(u32, String)> =
+        std::collections::VecDeque::new();
     // Requests already queued when one was taken, reordered so the reader's
     // loads come before list syncs (see `reorder_reader_loads`).
     let mut backlog: std::collections::VecDeque<MailRequest> = std::collections::VecDeque::new();
@@ -1244,6 +1305,7 @@ async fn run_imap(
     let mut last_unread_sweep: Option<std::time::Instant> = None;
     // When the Junk / Trash auto-empty (#140) last ran for this connection.
     let mut last_auto_empty: Option<std::time::Instant> = None;
+    let mut last_list_clean: Option<std::time::Instant> = None;
     // Whether the Inbox's permanent IDLE watcher has been spawned. It waits for
     // the main session to be up first — its connection must win the first slot
     // on servers with a per-user cap — and needs the folder list in the cache.
@@ -1295,6 +1357,11 @@ async fn run_imap(
                 .is_some_and(|c| !c.refs_repair_state(account_id, &f.path).1)
             {
                 refs_repair.push_back((f.id, f.path.clone()));
+            }
+            if gmail_labels_wanted(account_id)
+                && cache.as_ref().is_some_and(|c| !c.label_fill_state(account_id, &f.path).1)
+            {
+                label_fill.push_back((f.id, f.path.clone()));
             }
             backfill.push_back(Backfill {
                 folder_id: f.id,
@@ -1360,7 +1427,12 @@ async fn run_imap(
             Ok(req) => req,
             Err(mpsc::error::TryRecvError::Disconnected) => break,
             Err(mpsc::error::TryRecvError::Empty) => {
-                if !body_prefetch.is_empty() {
+                // Offline, the queues keep for when the network is back; on
+                // a metered connection the work done ahead of the user waits
+                // for an unmetered one (#442).
+                let net = crate::power::reaches(&account.imap_host);
+                let ahead = net && !crate::power::saving_data();
+                if !body_prefetch.is_empty() && ahead {
                     // Highest priority: get new mail's body cached so opening it is
                     // instant (no network wait).
                     let interrupted_body = body_prefetch.front().cloned();
@@ -1382,13 +1454,13 @@ async fn run_imap(
                         tracing::debug!(account_id, "body prefetch yielded to the reader");
                     }
                     continue;
-                } else if folder_refresh_due && session.is_some() {
+                } else if folder_refresh_due && session.is_some() && net {
                     folder_refresh_due = false;
                     refresh_folder_names(
                         account_id, &account, session.as_mut().unwrap(), cache.as_ref(), &emit,
                     ).await;
                     continue;
-                } else if sweep_due && session.is_some() {
+                } else if sweep_due && session.is_some() && net {
                     // The unread chips' re-count, owed since IDLE last woke
                     // (or left half done by a request): folder by folder,
                     // yielding to whatever arrives, its place kept.
@@ -1411,9 +1483,12 @@ async fn run_imap(
                         auto_empty_imap(
                             account_id, &account, sess, cache.as_ref(), &mut last_auto_empty, &emit,
                         ).await;
+                        clean_lists_imap(
+                            account_id, &account, sess, cache.as_ref(), &mut last_list_clean, &emit,
+                        ).await;
                     }
                     continue;
-                } else if !prefetch.is_empty() {
+                } else if !prefetch.is_empty() && ahead {
                     run_one_prefetch(
                         &mut prefetch,
                         &mut session,
@@ -1425,7 +1500,7 @@ async fn run_imap(
                     .await;
                     pending_resync = true;
                     continue;
-                } else if !refs_repair.is_empty() && session.is_some() && backfill.is_empty() {
+                } else if !refs_repair.is_empty() && session.is_some() && backfill.is_empty() && ahead {
                     // Lower priority than indexing new mail: repair the threading
                     // references of already-indexed replies, a chunk at a time.
                     run_one_refs_repair(
@@ -1437,7 +1512,11 @@ async fn run_imap(
                     )
                     .await;
                     continue;
-                } else if !backfill.is_empty() {
+                } else if !label_fill.is_empty() && session.is_some() && backfill.is_empty() && ahead {
+                    run_one_label_fill(&mut label_fill, &mut session, account_id, cache.as_ref(), &emit)
+                        .await;
+                    continue;
+                } else if !backfill.is_empty() && ahead {
                     // Index the rest of the mailbox in the background. Connect first
                     // for cached-folder accounts (which connect lazily); if still
                     // offline, wait for a request instead of spinning.
@@ -1496,7 +1575,7 @@ async fn run_imap(
                         }
                         continue;
                     }
-                } else if push_enabled && session.is_some() && idle_folder.is_some() {
+                } else if push_enabled && session.is_some() && idle_folder.is_some() && net {
                     let (fid, fpath) = idle_folder.clone().unwrap();
                     // Catch mail delivered while the connection was busy prefetching.
                     if pending_resync {
@@ -1686,7 +1765,12 @@ async fn run_imap(
             _ => {}
         }
 
-        // Everything below needs a live session.
+        // Everything below needs a live session. One left from before the
+        // network went is dead, and a request on it would wait out the
+        // socket's timeout (#442).
+        if session.is_some() && !crate::power::reaches(&account.imap_host) {
+            session = None;
+        }
         if session.is_none() {
             session = connect_and_list(account_id, &account, cache.as_ref(), &emit).await;
             if session.is_none() {
@@ -1701,6 +1785,27 @@ async fn run_imap(
                 | MailRequest::SyncFolder { folder_id, .. } = &req
                 {
                     emit(WorkerEvent::BackfillDone { folder_id: *folder_id });
+                }
+                // A message sent or scheduled with the server out of reach
+                // waits in the Outbox; dropped here it was lost (#442).
+                if let MailRequest::Send { mut message, sent_path, ticket } = req {
+                    restore_msgid_case(cache.as_ref(), &mut message);
+                    match message.send_at.filter(|t| *t > crate::datefmt::now()) {
+                        Some(at) => schedule_send(
+                            cache.as_ref(), account_id, &account, &message, sent_path.as_deref(), at, &emit,
+                        ),
+                        None => {
+                            let e = if crate::power::reaches(&account.imap_host) {
+                                i18n("could not reach the server")
+                            } else {
+                                offline_text()
+                            };
+                            send_failed(
+                                cache.as_ref(), account_id, &account, &message, sent_path.as_deref(), &e, false, &emit,
+                            );
+                        }
+                    }
+                    emit(WorkerEvent::SendDone { ticket, sent: false });
                 }
                 continue;
             }
@@ -1990,7 +2095,25 @@ async fn run_imap(
 
             MailRequest::SetKeyword { path, uid, message_id, keyword, add } => {
                 let sess = session.as_mut().unwrap();
-                match store_keyword(sess, &path, uid, &keyword, add).await {
+                let stored = store_keyword(sess, &path, uid, &keyword, add).await;
+                // On Gmail a tag is a label too (#374), so Gmail's own apps
+                // show it; the keyword stays for other IMAP clients.
+                if stored.is_ok() && gmail_labels_wanted(account_id) {
+                    let labels = tag_labels(&keyword, add);
+                    match store_gmail_labels(sess, uid, &labels, add).await {
+                        Ok(()) => {
+                            if let Some(c) = cache.as_ref() {
+                                c.set_gmail_label(account_id, &path, uid, &labels, add);
+                            }
+                            // A new label is a new folder on Gmail.
+                            if add {
+                                folder_refresh_due = true;
+                            }
+                        }
+                        Err(e) => tracing::warn!("[account {account_id}] could not set Gmail label: {e}"),
+                    }
+                }
+                match stored {
                     Ok(true) => {
                         if let Some(c) = cache.as_ref() {
                             c.set_keyword(account_id, &path, uid, &keyword, add);
@@ -2018,6 +2141,7 @@ async fn run_imap(
                         lost = true;
                     }
                 }
+                emit(WorkerEvent::TagSettled { path, uid, keyword });
             }
 
             MailRequest::MarkAllRead { folder_id, path } => {
@@ -2517,9 +2641,19 @@ async fn run_imap(
 
             MailRequest::PurgeMessages { path, uids } => {
                 let sess = session.as_mut().unwrap();
-                match purge_messages(sess, &path, &uids).await {
+                // Gmail only takes a label off mail expunged outside Trash,
+                // so the mail would sit on in All Mail (#471).
+                let trash = gmail_trash(cache.as_ref(), account_id, &account).filter(|t| *t != path);
+                let result = match &trash {
+                    Some(trash) => gmail_erase(sess, &path, &uids, trash).await,
+                    None => purge_messages(sess, &path, &uids).await,
+                };
+                match result {
                     Ok(()) => {
                         if let Some(c) = cache.as_ref() {
+                            if let Some(trash) = &trash {
+                                c.drop_label_copies(account_id, &path, &uids, trash);
+                            }
                             for uid in &uids {
                                 c.delete_message(account_id, &path, *uid);
                             }
@@ -2605,12 +2739,13 @@ async fn run_imap(
             }
 
             // Send Later (#145): into the Outbox until its time.
-            MailRequest::Send { mut message, sent_path }
+            MailRequest::Send { mut message, sent_path, ticket }
                 if message.send_at.is_some_and(|t| t > crate::datefmt::now()) =>
             {
                 let at = message.send_at.unwrap_or_default();
                 restore_msgid_case(cache.as_ref(), &mut message);
                 schedule_send(cache.as_ref(), account_id, &account, &message, sent_path.as_deref(), at, &emit);
+                emit(WorkerEvent::SendDone { ticket, sent: false });
                 // The draft it was opened from is superseded by the queued copy.
                 if let Some(o) = message.draft_origin.clone() {
                     if o.account_id == account_id {
@@ -2632,25 +2767,32 @@ async fn run_imap(
                 }
             }
 
-            MailRequest::Send { mut message, sent_path } => {
+            MailRequest::Send { mut message, sent_path, ticket } => {
                 emit(WorkerEvent::Status(i18n("Sending…")));
                 restore_msgid_case(cache.as_ref(), &mut message);
                 match send_smtp(&account, &message).await {
                     Ok(raw) => {
                         emit(WorkerEvent::Status(String::new()));
-                        // Save a copy to the Sent folder; sending still counts as
-                        // success even if this part fails.
-                        if let Some(path) = sent_path {
-                            let sess = session.as_mut().unwrap();
-                            if let Err(e) = append_to_sent(sess, &path, &raw).await {
-                                emit(WorkerEvent::error(i18n_f("Message sent, but saving to Sent failed: {e}", &[("e", &(e).to_string())])));
-                            } else {
+                        mark_answered(
+                            &mut session, cache.as_ref(), account_id,
+                            &message.in_reply_to, &message.forwards, &emit,
+                        )
+                        .await;
+                        // Save a copy to the Sent folder, or beside the
+                        // original for a reply (#468); sending still counts
+                        // as success even if this part fails.
+                        let reply = reply_copy_path(&account, account_id, cache.as_ref(), &message.in_reply_to);
+                        let sess = session.as_mut().unwrap();
+                        match file_sent_copy(sess, reply.as_deref(), sent_path.as_deref(), &raw).await {
+                            Ok(Some(path)) => {
                                 index_sent_copy(
                                     account_id, &mut session, &account, &path,
                                     &mut use_envelope, cache.as_ref(), &emit,
                                 )
                                 .await;
                             }
+                            Ok(None) => {}
+                            Err(e) => emit(WorkerEvent::error(i18n_f("Message sent, but saving to Sent failed: {e}", &[("e", &(e).to_string())]))),
                         }
                         // If sending an edited draft (from this account), remove the
                         // now-obsolete draft and refresh the Drafts folder.
@@ -2679,10 +2821,12 @@ async fn run_imap(
                         // This version replaces the queued one it was edited from.
                         drop_superseded_outbox(cache.as_ref(), account_id, &message, &emit);
                         emit(WorkerEvent::Sent);
+                        emit(WorkerEvent::SendDone { ticket, sent: true });
                     }
                     Err(e) => {
                         emit(WorkerEvent::Status(String::new()));
                         send_failed(cache.as_ref(), account_id, &account, &message, sent_path.as_deref(), &e.to_string(), smtp_refused(&e), &emit);
+                        emit(WorkerEvent::SendDone { ticket, sent: false });
                     }
                 }
             }
@@ -2806,6 +2950,11 @@ async fn connect_and_list(
     cache: Option<&Cache>,
     emit: &impl Fn(WorkerEvent),
 ) -> Option<ImapSession> {
+    // The Refresh button already says the network is down; an error per
+    // account and per attempt would only repeat it (#442).
+    if !crate::power::reaches(&account.imap_host) {
+        return None;
+    }
     emit(WorkerEvent::Status(i18n_f("Connecting to {host}…", &[("host", &account.imap_host)])));
 
     let result = match connect(account).await {
@@ -2825,6 +2974,7 @@ async fn connect_and_list(
                 // 3501). Keep whatever the cache has instead of wiping it.
                 Ok(folders) if folders.is_empty() => {}
                 Ok(folders) => {
+                    note_gmail_account(account_id, account, &folders);
                     let changed = cache
                         .map(|c| !crate::cache::folders_equal(&c.load_folders(account_id), &folders))
                         .unwrap_or(true);
@@ -2963,7 +3113,7 @@ async fn load_bodies_retry(
 
 /// Whether the account is Gmail, where a folder is a label and one message
 /// sits in several of them at once.
-fn has_gmail_labels(account: &AccountConfig, folders: &[Folder]) -> bool {
+pub(crate) fn has_gmail_labels(account: &AccountConfig, folders: &[Folder]) -> bool {
     let host = account.imap_host.to_ascii_lowercase();
     host.ends_with("gmail.com")
         || host.ends_with("googlemail.com")
@@ -3488,6 +3638,11 @@ fn watch_active_folder(
             return false;
         }
     }
+    // A metered connection keeps to the Inbox's own watcher; the sweep still
+    // covers the rest (#442).
+    if crate::power::saving_data() {
+        return false;
+    }
     // Lapsed watchers exited on their own; drop their leftover entries.
     watchers.retain(|_, w| !w.handle.is_finished());
     while watchers.len() >= WATCHER_LIMIT {
@@ -3556,6 +3711,18 @@ async fn watch_folder(
             // just to watch a folder nothing has touched for an hour.
             return;
         }
+        // Offline: wait for the network, neither dialing nor growing the
+        // backoff, so the watcher is back within moments of it (#442).
+        while !crate::power::reaches(&account.imap_host) {
+            tokio::time::sleep(NETWORK_WAIT).await;
+            if lapsed(&lease) {
+                return;
+            }
+        }
+        if lease.is_some() && crate::power::saving_data() {
+            tracing::info!("unwatching {path}: the connection is metered");
+            return;
+        }
         let Ok(mut sess) = connect(&account).await else {
             // Offline, or the server's connection cap is spent (the main
             // session always connects first and is never contended by this).
@@ -3588,6 +3755,14 @@ async fn watch_folder(
                 tracing::info!("unwatching {path}: quiet for the whole lease");
                 let _ = sess.logout().await;
                 return;
+            }
+            if lease.is_some() && crate::power::saving_data() {
+                tracing::info!("unwatching {path}: the connection is metered");
+                let _ = sess.logout().await;
+                return;
+            }
+            if !crate::power::reaches(&account.imap_host) {
+                break; // the socket went with the network
             }
             // A short IDLE round: woken instantly where the server announces
             // changes, and capped at [`WATCH_VERIFY`] so the recount below
@@ -3755,7 +3930,7 @@ pub fn extract_attachments_of(raw: &[u8]) -> Vec<crate::models::Attachment> {
 /// attachments. An encrypted message is decrypted through the user's GnuPG
 /// here, which may raise the agent's passphrase prompt — so this runs only
 /// for an explicit open, never for the background prefetch.
-fn render_raw(raw: &[u8]) -> (String, crate::models::SenderCheck, bool) {
+pub(crate) fn render_raw(raw: &[u8]) -> (String, crate::models::SenderCheck, bool) {
     let mut check = crate::verify::check_sender(raw);
     match crate::pgp::unwrap_message(raw, &crate::pgp::Gpg::system()) {
         Some(u) => {
@@ -4030,14 +4205,22 @@ fn send_failed(
     if let (true, Some(old), Some(c)) = (queued, msg.outbox_origin, cache) {
         c.delete_outbox(old);
     }
-    emit(WorkerEvent::error(if queued {
-        i18n_f(
-            "Send failed: {e}. The message is in the Outbox and will be sent when the connection is back.",
-            &[("e", error)],
-        )
+    if queued && error == offline_text() {
+        // Nothing failed: the message waits for the network, which the
+        // Refresh button already shows is down (#442).
+        emit(WorkerEvent::Notice(i18n(
+            "No network connection. The message is in the Outbox and will be sent when the connection is back.",
+        )));
     } else {
-        i18n_f("Send failed: {e}", &[("e", error)])
-    }));
+        emit(WorkerEvent::error(if queued {
+            i18n_f(
+                "Send failed: {e}. The message is in the Outbox and will be sent when the connection is back.",
+                &[("e", error)],
+            )
+        } else {
+            i18n_f("Send failed: {e}", &[("e", error)])
+        }));
+    }
     if !queued {
         emit(WorkerEvent::Unsent(Box::new(msg.clone())));
     }
@@ -4106,7 +4289,7 @@ fn queue_outbox_message(
         .join(", ");
     let preview: String = msg.body.split_whitespace().collect::<Vec<_>>().join(" ");
     let preview: String = preview.chars().take(160).collect();
-    cache
+    let id = cache
         .queue_outbox(
             account_id,
             envelope.from().map(|f| f.to_string()).unwrap_or_default().as_str(),
@@ -4118,8 +4301,31 @@ fn queue_outbox_message(
             sent_path,
             error,
             send_at,
-        )
-        .is_some()
+        );
+    if let Some(id) = id.filter(|_| !msg.forwards.is_empty()) {
+        cache.set_outbox_forwards(id, &msg.forwards);
+    }
+    id.is_some()
+}
+
+/// Quitting while a message waits out the Undo Send delay (#434): queue it
+/// in the Outbox, due now, for the next launch to send. The exit that
+/// follows would otherwise take the only copy with it.
+pub(crate) fn park_for_next_launch(
+    cache: &Cache,
+    account_id: u32,
+    account: &AccountConfig,
+    msg: &OutgoingMessage,
+    sent_path: Option<&str>,
+) -> bool {
+    let mut msg = msg.clone();
+    restore_msgid_case(Some(cache), &mut msg);
+    let queued =
+        queue_outbox_message(Some(cache), account_id, account, &msg, sent_path, "", Some(crate::datefmt::now()));
+    if let (true, Some(old)) = (queued, msg.outbox_origin) {
+        cache.delete_outbox(old);
+    }
+    queued
 }
 
 /// Try the queue: one message when `id` is given, otherwise all of them, oldest
@@ -4175,6 +4381,145 @@ fn pick_queued_sent_copy(
         })
 }
 
+/// The cached copies a sent message answered, in this account (#454): the
+/// one it replies to, found by its In-Reply-To, then the one it forwards,
+/// each with whether it was forwarded.
+pub(crate) fn answered_copies(
+    cache: Option<&Cache>,
+    account_id: u32,
+    in_reply_to: &str,
+    forwards: &str,
+) -> Vec<(String, u32, bool)> {
+    let Some(cache) = cache else { return Vec::new() };
+    [(in_reply_to, false), (forwards, true)]
+        .into_iter()
+        .filter_map(|(ids, forwarded)| Some((first_msgid(ids)?, forwarded)))
+        .flat_map(|(id, forwarded)| {
+            cache
+                .locate_by_message_id(&id)
+                .into_iter()
+                .filter(|(a, _, _)| *a == account_id)
+                .map(move |(_, path, uid)| (path, uid, forwarded))
+        })
+        .collect()
+}
+
+/// The first Message-ID of a header's worth, as the cache keys it.
+fn first_msgid(ids: &str) -> Option<String> {
+    let id = ids.split_whitespace().next()?.trim_start_matches('<').trim_end_matches('>').to_ascii_lowercase();
+    (!id.is_empty()).then_some(id)
+}
+
+/// Mark what a sent message answered (#454): `\Answered` on the original
+/// of a reply, `$Forwarded` on that of a forward. A mailbox that takes no
+/// keywords has nowhere to keep `$Forwarded`, and the arrow then lasts until
+/// the folder syncs. A failure is only logged: the message went, and that
+/// is what the user asked about.
+async fn mark_answered(
+    session: &mut Option<ImapSession>,
+    cache: Option<&Cache>,
+    account_id: u32,
+    in_reply_to: &str,
+    forwards: &str,
+    emit: &impl Fn(WorkerEvent),
+) {
+    for (path, uid, forwarded) in answered_copies(cache, account_id, in_reply_to, forwards) {
+        if let Some(sess) = session.as_mut() {
+            let stored = if forwarded {
+                store_keyword(sess, &path, uid, FORWARDED_KEYWORD, true).await.map(|_| ())
+            } else {
+                store_flag(sess, &path, uid, "\\Answered", true).await
+            };
+            if let Err(e) = stored {
+                tracing::warn!("[account {account_id}] could not mark {path}/{uid} answered: {e}");
+            }
+        }
+        if let Some(c) = cache {
+            c.set_answered(account_id, &path, uid, forwarded);
+        }
+        emit(WorkerEvent::Answered { path, uid, forwarded });
+    }
+}
+
+/// Where the copy of a reply is filed when the account keeps replies
+/// beside what they answer (#468): the folder its original is in now,
+/// found by Message-ID in the cache, so a message moved or deleted while
+/// the reply was written is followed or let go. `None` files it with the
+/// rest of sent mail: the setting is off, this is no reply, or the original
+/// is in no folder of this account's that a reply belongs in.
+pub(crate) fn reply_copy_path(
+    account: &AccountConfig,
+    account_id: u32,
+    cache: Option<&Cache>,
+    in_reply_to: &str,
+) -> Option<String> {
+    // A server that files its own copy files it in Sent, and a second
+    // copy beside the original would be one more than the user asked for.
+    if account.reply_copies == ReplyCopies::WithSent || account.server_saves_sent {
+        return None;
+    }
+    let cache = cache?;
+    let id = first_msgid(in_reply_to)?;
+    let holding: Vec<String> = cache
+        .locate_by_message_id(&id)
+        .into_iter()
+        .filter(|(a, _, _)| *a == account_id)
+        .map(|(_, path, _)| path)
+        .collect();
+    pick_reply_folder(account.reply_copies, &cache.load_folders(account_id), &holding)
+}
+
+/// [`reply_copy_path`] once it is known which folders hold the original.
+fn pick_reply_folder(choice: ReplyCopies, folders: &[Folder], holding: &[String]) -> Option<String> {
+    holding
+        .iter()
+        // A folder no longer listed was deleted, or hidden and so unsynced.
+        .filter_map(|p| folders.iter().find(|f| f.path == *p))
+        .filter_map(|f| match f.kind {
+            FolderKind::Custom => Some((0, f)),
+            FolderKind::Archive => Some((1, f)),
+            FolderKind::Inbox if choice != ReplyCopies::OriginalNotInbox => Some((2, f)),
+            // Sent takes it anyway; Drafts and Templates hold mail not yet
+            // sent, Trash and Junk mail on its way out, and Starred is a
+            // view of other folders.
+            _ => None,
+        })
+        // Gmail lists one message under each of its labels and All Mail:
+        // the label the user filed it under is where the reply belongs.
+        .min_by_key(|(rank, _)| *rank)
+        .map(|(_, f)| f.path.clone())
+}
+
+/// The In-Reply-To of a message queued as raw bytes, for
+/// [`reply_copy_path`].
+pub(crate) fn raw_in_reply_to(raw: &[u8]) -> String {
+    let parsed = mail_parser::MessageParser::default().parse_headers(raw);
+    match parsed.as_ref().map(|p| p.in_reply_to()) {
+        Some(mail_parser::HeaderValue::Text(t)) => t.to_string(),
+        Some(mail_parser::HeaderValue::TextList(v)) => v.first().map(|t| t.to_string()).unwrap_or_default(),
+        _ => String::new(),
+    }
+}
+
+/// File a sent copy: beside the original when `reply` names a folder, and
+/// in `sent` when there is none or that folder will not take it (one the
+/// user may only read). The folder that took it, or why none did.
+async fn file_sent_copy(
+    session: &mut ImapSession,
+    reply: Option<&str>,
+    sent: Option<&str>,
+    raw: &[u8],
+) -> Result<Option<String>, async_imap::error::Error> {
+    if let Some(path) = reply {
+        match append_to_sent(session, path, raw).await {
+            Ok(()) => return Ok(Some(path.to_string())),
+            Err(e) => tracing::warn!("could not file the reply's copy in {path}, using Sent: {e}"),
+        }
+    }
+    let Some(path) = sent else { return Ok(None) };
+    append_to_sent(session, path, raw).await.map(|()| Some(path.to_string()))
+}
+
 async fn flush_outbox(
     cache: Option<&Cache>,
     account_id: u32,
@@ -4221,20 +4566,25 @@ async fn flush_outbox(
                 sent_any = true;
                 sent += 1;
                 cache.delete_outbox(item.id);
+                mark_answered(session, Some(cache), account_id, &raw_in_reply_to(&item.raw), &item.forwards, emit)
+                    .await;
                 let dest = current_sent_copy_path(
                     account,
                     account_id,
                     Some(cache),
                     item.sent_path.as_deref(),
                 );
-                if let (Some(path), Some(sess)) = (dest.as_deref(), session.as_mut()) {
-                    if let Err(e) = append_to_sent(sess, path, &item.raw).await {
-                        tracing::warn!("outbox: sent, but saving the copy failed: {e}");
-                    } else {
-                        index_sent_copy(
-                            account_id, session, account, path, use_envelope, Some(cache), emit,
-                        )
-                        .await;
+                let reply = reply_copy_path(account, account_id, Some(cache), &raw_in_reply_to(&item.raw));
+                if let Some(sess) = session.as_mut() {
+                    match file_sent_copy(sess, reply.as_deref(), dest.as_deref(), &item.raw).await {
+                        Ok(Some(path)) => {
+                            index_sent_copy(
+                                account_id, session, account, &path, use_envelope, Some(cache), emit,
+                            )
+                            .await;
+                        }
+                        Ok(None) => {}
+                        Err(e) => tracing::warn!("outbox: sent, but saving the copy failed: {e}"),
                     }
                 }
             }
@@ -4652,6 +5002,19 @@ fn build_email(account: &AccountConfig, msg: &OutgoingMessage) -> Result<LettreM
     build_message(account, msg, false)
 }
 
+/// The body the reader will show for `msg` once its copy is read back from
+/// Sent: the bytes a send builds, through the same extraction, so the card a
+/// sent reply gets at once is the card its copy draws later. Attachments
+/// and OpenPGP are left out; neither changes the body shown.
+pub(crate) fn sent_body_preview(account: &AccountConfig, msg: &OutgoingMessage) -> Option<String> {
+    let mut msg = msg.clone();
+    msg.attachments.clear();
+    msg.sign = false;
+    msg.encrypt = false;
+    let email = build_email(account, &msg).ok()?;
+    Some(extract_body(&email.formatted()))
+}
+
 /// Build the same bytes for the Drafts folder. A draft is often saved before
 /// any address is typed (the composer saves on the way out whenever the body
 /// was edited), and lettre refuses to build a message whose envelope has no
@@ -4776,7 +5139,7 @@ fn build_message(
                 Some(name) => Attachment::new_inline_with_name(img.cid, name),
                 None => Attachment::new_inline(img.cid),
             };
-            related = related.singlepart(part.body(img.data, ct));
+            related = related.singlepart(part.body(file_body(img.data), ct));
         }
         related
     });
@@ -4797,7 +5160,9 @@ fn build_message(
     let email = if msg.attachments.is_empty() {
         match content {
             Some(content) => builder.multipart(content)?,
-            None => builder.body(msg.body.clone())?,
+            // A bare body() writes no MIME-Version and no charset, so a
+            // client that doesn't guess UTF-8 garbles every accent (#412).
+            None => builder.singlepart(SinglePart::plain(msg.body.clone()))?,
         }
     } else {
         builder.multipart(attachments_multipart(content, msg)?)?
@@ -4828,9 +5193,18 @@ fn attachments_multipart(
             .unwrap_or_else(|| "attachment".to_string());
         let ct = ContentType::parse(&guess_mime(&name))
             .unwrap_or(ContentType::TEXT_PLAIN);
-        multipart = multipart.singlepart(Attachment::new(name).body(bytes, ct));
+        multipart = multipart.singlepart(Attachment::new(name).body(file_body(bytes), ct));
     }
     Ok(multipart)
+}
+
+/// A file's bytes as base64, whatever they hold. lettre sends ASCII bytes as
+/// 7bit without touching their line endings, so a text file with Unix ones
+/// went out with bare LFs that strict servers refuse (#414); rewriting them
+/// would change the file.
+fn file_body(bytes: Vec<u8>) -> lettre::message::Body {
+    use lettre::message::{header::ContentTransferEncoding, Body};
+    Body::new_with_encoding(bytes, ContentTransferEncoding::Base64).expect("base64 takes any bytes")
 }
 
 /// A message body before OpenPGP wrapping: one MIME entity either way.
@@ -4912,7 +5286,7 @@ fn pgp_wrap(
             .body(String::from("Version: 1\r\n"));
         let payload = SinglePart::builder()
             .header(ContentType::parse("application/octet-stream; name=\"encrypted.asc\"").expect("static content type"))
-            .body(ciphertext);
+            .body(armored(ciphertext));
         return Ok(MultiPart::encrypted("application/pgp-encrypted".into())
             .singlepart(control)
             .singlepart(payload));
@@ -4930,8 +5304,15 @@ fn pgp_wrap(
     };
     let sig_part = SinglePart::builder()
         .header(ContentType::parse("application/pgp-signature; name=\"signature.asc\"").expect("static content type"))
-        .body(signature);
+        .body(armored(signature));
     Ok(signed.singlepart(sig_part))
+}
+
+/// gpg's ASCII armour as text, so lettre gives it CRLF line endings: as raw
+/// bytes its LF-only lines reached the wire and Stalwart refused the whole
+/// message for bare newlines (#414).
+fn armored(bytes: Vec<u8>) -> String {
+    String::from_utf8_lossy(&bytes).into_owned()
 }
 
 /// One image the composer embedded, lifted out of the outgoing HTML: its
@@ -5220,6 +5601,10 @@ async fn send_raw_smtp(
     let alias = envelope
         .from()
         .and_then(|f| alias_with_own_smtp(account, f.as_ref()));
+    let host = alias.map(|a| a.smtp_host.trim().to_string()).unwrap_or_else(|| smtp_host(account));
+    if !crate::power::reaches(&host) {
+        return Err(offline_text().into());
+    }
     let mailer = smtp_transport(account, alias).await?;
     // The SMTP leg for the console: size and recipient count, then the verdict.
     tracing::debug!(
@@ -5267,47 +5652,66 @@ fn oauth_user(account: &AccountConfig) -> String {
 /// Fetch a fresh OAuth access token for this account — from GNOME Online Accounts
 /// (imported) or by refreshing a natively-added account's stored refresh token.
 async fn fetch_oauth_token(account: &AccountConfig) -> Option<String> {
-    if let Some(goa_id) = account.goa_id.clone() {
-        return tokio::task::spawn_blocking(move || crate::goa::oauth_token(&goa_id))
+    // The keyring and the remembered tokens answer at once; only a refresh
+    // goes over the network, and it goes off the async threads.
+    if account.goa_id.is_none() {
+        let settings = account.oauth_settings.clone()?;
+        let refresh = crate::config::load_oauth_refresh(&account.email)?;
+        if let Some(token) = cached_access_token(&refresh) {
+            return Some(token);
+        }
+        let account = account.clone();
+        return tokio::task::spawn_blocking(move || refreshed_access_token(&account, &settings, refresh))
             .await
             .ok()
             .flatten();
+    }
+    let account = account.clone();
+    tokio::task::spawn_blocking(move || oauth_token_blocking(&account)).await.ok().flatten()
+}
+
+/// [`fetch_oauth_token`] for a plain thread (blocking): the composer's
+/// directory search asks from one (#410). It shares the remembered access
+/// tokens, so it seldom costs a refresh of its own.
+pub(crate) fn oauth_token_blocking(account: &AccountConfig) -> Option<String> {
+    if let Some(goa_id) = account.goa_id.as_deref() {
+        return crate::goa::oauth_token(goa_id);
     }
     // Natively-added OAuth account: refresh with the keyring-stored refresh token.
     // The client credentials saved with the account MUST be used — a refresh token
     // is bound to the OAuth client that issued it, so switching clients requires
     // re-adding the account (a fresh sign-in), not swapping creds here.
-    let settings = account.oauth_settings.clone()?;
+    let settings = account.oauth_settings.as_ref()?;
     let refresh = crate::config::load_oauth_refresh(&account.email)?;
     if let Some(token) = cached_access_token(&refresh) {
         return Some(token);
     }
-    let email = account.email.clone();
+    refreshed_access_token(account, settings, refresh)
+}
+
+/// A new access token from the provider for `refresh` (blocking).
+fn refreshed_access_token(account: &AccountConfig, settings: &crate::config::OAuthSettings, refresh: String) -> Option<String> {
+    let email = &account.email;
     let user = oauth_user(account);
-    tokio::task::spawn_blocking(move || {
-        let fresh = crate::oauth::refresh_access_token_as(&settings, &refresh, Some(&user))
-            .map_err(|e| tracing::warn!("OAuth token refresh for {email} failed: {e}"))
-            .ok()?;
-        // The provider spent the old refresh token and handed out another:
-        // that one is what works from now on.
-        let refresh = match fresh.refresh_token {
-            Some(rotated) => match crate::config::store_oauth_refresh(&email, &rotated) {
-                Ok(()) => rotated,
-                Err(e) => {
-                    tracing::warn!("could not keep the new OAuth refresh token for {email}: {e}");
-                    refresh
-                }
-            },
-            None => refresh,
-        };
-        if let Some(secs) = fresh.expires_in {
-            remember_access_token(&refresh, &fresh.access_token, secs);
-        }
-        Some(fresh.access_token)
-    })
-    .await
-    .ok()
-    .flatten()
+    let fresh = crate::oauth::refresh_access_token_as(settings, &refresh, Some(&user))
+        .map_err(|e| tracing::warn!("OAuth token refresh for {email} failed: {e}"))
+        .ok()?;
+    // The provider spent the old refresh token and handed out another:
+    // that one is what works from now on.
+    let refresh = match fresh.refresh_token {
+        Some(rotated) => match crate::config::store_oauth_refresh(email, &rotated) {
+            Ok(()) => rotated,
+            Err(e) => {
+                tracing::warn!("could not keep the new OAuth refresh token for {email}: {e}");
+                refresh
+            }
+        },
+        None => refresh,
+    };
+    if let Some(secs) = fresh.expires_in {
+        remember_access_token(&refresh, &fresh.access_token, secs);
+    }
+    Some(fresh.access_token)
 }
 
 /// Access tokens minted for natively-added OAuth accounts, by the refresh
@@ -5345,7 +5749,7 @@ fn remember_access_token(refresh: &str, token: &str, expires_in: u64) {
 
 /// Stop handing out this account's remembered access token: the server
 /// turned it down, so the next sign-in asks the provider for a new one.
-fn forget_access_token(account: &AccountConfig) {
+pub(crate) fn forget_access_token(account: &AccountConfig) {
     if account.goa_id.is_some() || account.oauth_settings.is_none() {
         return;
     }
@@ -5473,6 +5877,114 @@ async fn purge_messages(
     let set = uid_set(uids);
     sel(session, path).await?;
     flag_deleted_and_expunge(session, &set).await
+}
+
+/// A Gmail account's Trash, where an erase has to happen: expunged from
+/// any other folder, Gmail mail only loses that label. `None` elsewhere.
+fn gmail_trash(cache: Option<&Cache>, account_id: u32, account: &AccountConfig) -> Option<String> {
+    let folders = cache?.load_folders(account_id);
+    if !has_gmail_labels(account, &folders) {
+        return None;
+    }
+    folders.into_iter().find(|f| f.kind == FolderKind::Trash).map(|f| f.path)
+}
+
+/// Erase Gmail mail from outside Trash, the way Gmail's own "Delete
+/// forever" goes: into Trash, then expunged there. The move gives the mail
+/// new UIDs, so it is found again in Trash by `X-GM-MSGID`, which stays the
+/// same under every label. A server that does not know the item (a mailbox
+/// that only looks like Gmail by its folder names) erases where it is.
+async fn gmail_erase(
+    session: &mut ImapSession,
+    path: &str,
+    uids: &[u32],
+    trash: &str,
+) -> Result<(), async_imap::error::Error> {
+    if uids.is_empty() {
+        return Ok(());
+    }
+    sel(session, path).await?;
+    let Some(ids) = fetch_gmail_msgids(session, uids).await? else {
+        return flag_deleted_and_expunge(session, &uid_set(uids)).await;
+    };
+    for chunk in uids.chunks(300) {
+        uid_move(session, &uid_set(chunk), trash).await?;
+    }
+    sel(session, trash).await?;
+    let mut binned = std::collections::HashSet::new();
+    for chunk in ids.chunks(100) {
+        binned.extend(search_uids(session, gmail_msgid_query(chunk)).await?);
+    }
+    if binned.is_empty() {
+        return Ok(());
+    }
+    let binned: Vec<u32> = binned.into_iter().collect();
+    flag_deleted_and_expunge(session, &uid_set(&binned)).await
+}
+
+/// `X-GM-MSGID a`, or `OR X-GM-MSGID a OR X-GM-MSGID b X-GM-MSGID c` for
+/// several: IMAP's OR takes two keys.
+fn gmail_msgid_query(ids: &[u64]) -> String {
+    let mut q = "OR ".repeat(ids.len().saturating_sub(1));
+    q.push_str(&ids.iter().map(|id| format!("X-GM-MSGID {id}")).collect::<Vec<_>>().join(" "));
+    q
+}
+
+/// The `X-GM-MSGID` of each message at `uids` in the selected folder, or
+/// `None` when the server answers `BAD` (it is not Gmail). Run raw for the
+/// same reason as [`fetch_gmail_labels`].
+async fn fetch_gmail_msgids<T>(
+    session: &mut Session<T>,
+    uids: &[u32],
+) -> Result<Option<Vec<u64>>, async_imap::error::Error>
+where
+    T: tokio::io::AsyncRead + tokio::io::AsyncWrite + Unpin + std::fmt::Debug + Send,
+{
+    use async_imap::imap_proto::{AttributeValue, Response, Status};
+    let cmd = format!("UID FETCH {} (UID X-GM-MSGID)", uid_set(uids));
+    wire(&cmd);
+    let id = session.run_command(&cmd).await?;
+    let mut out = Vec::new();
+    loop {
+        let reply = match session.read_response().await {
+            Some(Ok(reply)) => reply,
+            Some(Err(e)) => {
+                let r: Result<(), _> = Err(async_imap::error::Error::Io(e));
+                wired(&cmd, &r);
+                return Err(r.unwrap_err());
+            }
+            None => {
+                wired::<()>(&cmd, &Err(async_imap::error::Error::ConnectionLost));
+                return Err(async_imap::error::Error::ConnectionLost);
+            }
+        };
+        match reply.parsed() {
+            Response::Fetch(_, attrs) => {
+                out.extend(attrs.iter().find_map(|a| match a {
+                    AttributeValue::GmailMsgId(id) => Some(*id),
+                    _ => None,
+                }));
+            }
+            Response::Done { tag, status, information, .. } if *tag == id => {
+                let why = information.as_deref().unwrap_or("");
+                return match status {
+                    Status::Ok => {
+                        tracing::debug!(target: "hylki::imap", "< OK ({})", cmd_head(&cmd));
+                        Ok(Some(out))
+                    }
+                    Status::Bad => {
+                        tracing::warn!(target: "hylki::imap", "< BAD {why} ({cmd})");
+                        Ok(None)
+                    }
+                    _ => {
+                        tracing::warn!(target: "hylki::imap", "< {status:?} {why} ({cmd})");
+                        Err(async_imap::error::Error::No(why.to_string()))
+                    }
+                };
+            }
+            _ => {}
+        }
+    }
 }
 
 /// Flag a UID set `\Deleted` and expunge it: `UID EXPUNGE` where the server
@@ -5966,6 +6478,40 @@ async fn store_keyword(
     Ok(true)
 }
 
+/// The Gmail labels a tag means (#374), as the server writes label names:
+/// the tag's name when it is put on; when it comes off, every label that
+/// stands for it, its name's and its keyword's.
+fn tag_labels(keyword: &str, add: bool) -> Vec<String> {
+    let name = crate::config::load_tags()
+        .into_iter()
+        .find(|t| t.keyword.eq_ignore_ascii_case(keyword))
+        .map(|t| t.name)
+        .filter(|n| !n.trim().is_empty())
+        .unwrap_or_else(|| keyword.to_string());
+    let mut out = vec![crate::mutf7::encode(&name)];
+    if !add && !name.eq_ignore_ascii_case(keyword) {
+        out.push(crate::mutf7::encode(keyword));
+    }
+    out
+}
+
+/// Put Gmail labels on a message in the selected folder, or take them off.
+async fn store_gmail_labels(
+    session: &mut ImapSession,
+    uid: u32,
+    labels: &[String],
+    add: bool,
+) -> Result<(), async_imap::error::Error> {
+    let quoted: Vec<String> =
+        labels.iter().map(|l| format!("\"{}\"", l.replace('\\', "\\\\").replace('"', "\\\""))).collect();
+    let op = if add { "+X-GM-LABELS" } else { "-X-GM-LABELS" };
+    let _: Vec<Fetch> = store_uids(session, uid.to_string(), format!("{op} ({})", quoted.join(" ")))
+        .await?
+        .try_collect()
+        .await?;
+    Ok(())
+}
+
 /// Move a message to `dest`, creating (and subscribing to) the destination
 /// mailbox first if it doesn't exist yet. Returns whether a folder was created,
 /// so the caller can refresh the folder list.
@@ -6264,6 +6810,9 @@ async fn sign_in_password(account: &AccountConfig, smtp: bool) -> Result<String,
 }
 
 async fn connect(account: &AccountConfig) -> Result<ImapSession, Box<dyn std::error::Error>> {
+    if !crate::power::reaches(&account.imap_host) {
+        return Err(offline_text().into());
+    }
     // Read before the connect timeout starts: the keyring's own wait is not
     // the server's, and must not be reported as one.
     let password = sign_in_password(account, false).await?;
@@ -6744,6 +7293,104 @@ async fn auto_empty_imap(
     }
 }
 
+/// Whether moving old list mail (#407) is due, on the same terms as
+/// [`auto_empty_due`]: set for the account, and not run in the last
+/// [`AUTO_EMPTY_MIN`] on this connection.
+fn clean_lists_due(account: &AccountConfig, last: &mut Option<std::time::Instant>) -> bool {
+    if account.clean_lists_days == 0 || last.is_some_and(|t| t.elapsed() < AUTO_EMPTY_MIN) {
+        return false;
+    }
+    *last = Some(std::time::Instant::now());
+    true
+}
+
+/// The candidates for the list clean-up (#407), as an IMAP search: older
+/// than the cut-off and not starred. Which of them are list mail is read
+/// from their headers: a `HEADER List-Unsubscribe ""` search would be one
+/// round trip, but not every server answers it (Stalwart searches only the
+/// headers it indexes, and finds nothing).
+fn clean_lists_query(days: u32) -> String {
+    format!("UNFLAGGED BEFORE {}", imap_before_date(days))
+}
+
+/// Which of `uids` (in the selected folder) carry a List-Unsubscribe
+/// header, read 500 at a time.
+async fn with_list_header(session: &mut ImapSession, uids: &[u32]) -> Result<Vec<u32>, async_imap::error::Error> {
+    let mut out = Vec::new();
+    for chunk in uids.chunks(500) {
+        let fetches: Vec<Fetch> = fetch_uids(session, uid_set(chunk), "(UID BODY.PEEK[HEADER.FIELDS (LIST-UNSUBSCRIBE)])")
+            .await?
+            .try_collect()
+            .await?;
+        out.extend(fetches.iter().filter_map(|f| {
+            let listed = fetched_fields(f).iter().any(|(name, value)| name.eq_ignore_ascii_case("list-unsubscribe") && !value.is_empty());
+            listed.then_some(f.uid?)
+        }));
+    }
+    Ok(out)
+}
+
+/// Move the Inbox's list mail older than the account's chosen age to the
+/// Trash (#407), searched for on the server, so mail never opened counts
+/// too. It rides the unread sweep like auto-empty, and a failure is logged
+/// and tried again next time. The Inbox list is redrawn from the cache.
+async fn clean_lists_imap(
+    account_id: u32,
+    account: &AccountConfig,
+    session: &mut ImapSession,
+    cache: Option<&Cache>,
+    last: &mut Option<std::time::Instant>,
+    emit: &impl Fn(WorkerEvent),
+) {
+    if !clean_lists_due(account, last) {
+        return;
+    }
+    let days = account.clean_lists_days;
+    let folders = cache.map(|c| c.load_folders(account_id)).unwrap_or_default();
+    let Some(inbox) = folders.iter().find(|f| f.kind == FolderKind::Inbox).cloned() else { return };
+    let Some(trash) = role_folder_path(account, &folders, FolderKind::Trash, "trash") else {
+        tracing::info!("list clean-up: account {account_id} has no Trash folder");
+        return;
+    };
+    let found = match sel(session, &inbox.path).await {
+        Ok(_) => search_uids(session, clean_lists_query(days)).await,
+        Err(e) => Err(e),
+    };
+    let found = match found {
+        Ok(set) => {
+            let mut candidates: Vec<u32> = set.into_iter().collect();
+            candidates.sort_unstable();
+            with_list_header(session, &candidates).await
+        }
+        Err(e) => Err(e),
+    };
+    let uids: Vec<u32> = match found {
+        Ok(uids) => uids,
+        Err(e) => {
+            tracing::warn!("list clean-up: could not search {} on account {account_id}: {e}", inbox.path);
+            return;
+        }
+    };
+    if uids.is_empty() {
+        return;
+    }
+    match move_messages(session, &inbox.path, &uids, &trash).await {
+        Ok(_) => {
+            tracing::info!(
+                "list clean-up: moved {} list message(s) older than {days} days to {trash} on account {account_id}",
+                uids.len()
+            );
+            if let Some(c) = cache {
+                for uid in &uids {
+                    c.delete_message(account_id, &inbox.path, *uid);
+                }
+                emit(WorkerEvent::Messages { folder_id: inbox.id, messages: c.load_messages(account_id, &inbox.path, inbox.id) });
+            }
+        }
+        Err(e) => tracing::warn!("list clean-up: could not move list mail on account {account_id}: {e}"),
+    }
+}
+
 async fn refresh_folder_names(
     account_id: u32,
     account: &AccountConfig,
@@ -7097,12 +7744,16 @@ async fn load_messages(
     if cached.is_empty() {
         let mut messages =
             fetch_window(account_id, session, folder_id, total, FIRST_PAGE, use_envelope).await?;
+        let uids: Vec<u32> = messages.iter().map(|m| m.uid).collect();
+        read_gmail_labels(account_id, session, path, &uids, &mut messages).await?;
         reconcile_attachment_flags(cache, account_id, path, &mut messages);
         Ok(messages)
     } else {
         let recent =
             fetch_window(account_id, session, folder_id, total, PAGE_SIZE, use_envelope).await?;
+        let window: Vec<u32> = recent.iter().map(|m| m.uid).collect();
         let mut merged = merge_index(cached, recent);
+        read_gmail_labels(account_id, session, path, &window, &mut merged).await?;
         redecode_garbled_previews(session, &mut merged).await;
         // Reconcile deletions/moves made on the server or another device: drop any
         // message whose UID the server no longer lists (a plain merge would keep it
@@ -7237,6 +7888,148 @@ async fn logged_fetch(
     .await;
     wired(&cmd, &r);
     r
+}
+
+/// Put each message's Gmail labels on it, for the `uids` asked about, on an
+/// account whose labels are read (#374). A message the server said nothing
+/// about keeps the labels it has.
+async fn read_gmail_labels<T>(
+    account_id: u32,
+    session: &mut Session<T>,
+    path: &str,
+    uids: &[u32],
+    messages: &mut [Message],
+) -> Result<(), async_imap::error::Error>
+where
+    T: tokio::io::AsyncRead + tokio::io::AsyncWrite + Unpin + std::fmt::Debug + Send,
+{
+    if uids.is_empty() || !gmail_labels_wanted(account_id) {
+        return Ok(());
+    }
+    let Some(mut labels) = fetch_gmail_labels(account_id, session, path, uids).await? else {
+        return Ok(());
+    };
+    for m in messages.iter_mut() {
+        if let Some(l) = labels.remove(&m.uid) {
+            m.labels = l;
+        }
+    }
+    Ok(())
+}
+
+/// Each message's shown Gmail labels by UID, or `None` when the server
+/// refused to say and the labels already known should stand.
+///
+/// async-imap's `Fetch` keeps its parsed reply private and has no getter for
+/// `X-GM-LABELS`, so the command is run raw and its replies read here. An
+/// unreadable reply leaves the rest of it in the stream, so it is an error
+/// the caller reconnects after, and labels are left off for the session so
+/// the same reply cannot fail the retry too. It is not passed on as a parse
+/// error: that would move the summary fetch down its ladder (#226) for a
+/// fault that is not the summary's.
+async fn fetch_gmail_labels<T>(
+    account_id: u32,
+    session: &mut Session<T>,
+    path: &str,
+    uids: &[u32],
+) -> Result<Option<std::collections::HashMap<u32, Vec<String>>>, async_imap::error::Error>
+where
+    T: tokio::io::AsyncRead + tokio::io::AsyncWrite + Unpin + std::fmt::Debug + Send,
+{
+    use async_imap::imap_proto::{Response, Status};
+    let cmd = format!("UID FETCH {} (UID X-GM-LABELS)", uid_set(uids));
+    wire(&cmd);
+    let id = session.run_command(&cmd).await?;
+    let mut out = std::collections::HashMap::new();
+    loop {
+        let reply = match session.read_response().await {
+            Some(Ok(reply)) => reply,
+            Some(Err(e)) => {
+                let r: Result<(), _> = Err(async_imap::error::Error::Io(e));
+                wired(&cmd, &r);
+                let e = r.unwrap_err();
+                if !is_parse_error(&e) {
+                    return Err(e);
+                }
+                refuse_gmail_labels(account_id);
+                return Err(async_imap::error::Error::Io(std::io::Error::other(
+                    "unreadable X-GM-LABELS reply",
+                )));
+            }
+            None => {
+                wired::<()>(&cmd, &Err(async_imap::error::Error::ConnectionLost));
+                return Err(async_imap::error::Error::ConnectionLost);
+            }
+        };
+        match reply.parsed() {
+            Response::Fetch(_, attrs) => {
+                if let Some((uid, labels)) = gmail_labels_of(attrs, path) {
+                    out.insert(uid, labels);
+                }
+            }
+            Response::Done { tag, status, information, .. } if *tag == id => {
+                let why = information.as_deref().unwrap_or("");
+                return Ok(match status {
+                    Status::Ok => {
+                        tracing::debug!(target: "hylki::imap", "< OK ({})", cmd_head(&cmd));
+                        Some(out)
+                    }
+                    // A server that does not know the item. Gmail itself
+                    // answers NO when a message went while it was being
+                    // read, and what it did send still holds.
+                    Status::Bad => {
+                        tracing::warn!(
+                            target: "hylki::imap",
+                            "< BAD {why} ({cmd}): Gmail labels left off for the session"
+                        );
+                        refuse_gmail_labels(account_id);
+                        None
+                    }
+                    _ => {
+                        tracing::warn!(target: "hylki::imap", "< {status:?} {why} ({cmd})");
+                        Some(out)
+                    }
+                });
+            }
+            // EXISTS, EXPUNGE and the like: the next sync reads them.
+            _ => {}
+        }
+    }
+}
+
+/// The UID and shown labels in one `FETCH` reply's attributes, if it carries
+/// `X-GM-LABELS`.
+fn gmail_labels_of(
+    attrs: &[async_imap::imap_proto::AttributeValue<'_>],
+    folder: &str,
+) -> Option<(u32, Vec<String>)> {
+    use async_imap::imap_proto::AttributeValue;
+    let uid = attrs.iter().find_map(|a| match a {
+        AttributeValue::Uid(uid) => Some(*uid),
+        _ => None,
+    })?;
+    let labels = attrs.iter().find_map(|a| match a {
+        AttributeValue::GmailLabels(labels) => Some(labels),
+        _ => None,
+    })?;
+    Some((uid, shown_gmail_labels(labels.iter().map(|l| l.as_ref()), folder)))
+}
+
+/// The labels worth a pill: not Gmail's system labels (`\Inbox`,
+/// `\Important`, `\Starred`…), which the folder list and the star already
+/// show, and not the one the folder being read is, which every message in
+/// it carries.
+fn shown_gmail_labels<'a>(labels: impl Iterator<Item = &'a str>, folder: &str) -> Vec<String> {
+    let mut out: Vec<String> = Vec::new();
+    for l in labels {
+        if l.is_empty() || l.starts_with('\\') || l.eq_ignore_ascii_case(folder) {
+            continue;
+        }
+        if !out.iter().any(|o| o == l) {
+            out.push(l.to_string());
+        }
+    }
+    out
 }
 
 /// The preview snippet from a fetch that asked for `BODY.PEEK[1]` together with
@@ -7916,7 +8709,9 @@ fn summary_from_headers(account_id: u32, fetch: &Fetch, folder_id: u32) -> Messa
     let flags: Vec<Flag> = fetch.flags().collect();
     let unread = !flags.iter().any(|f| matches!(f, Flag::Seen));
     let starred = flags.iter().any(|f| matches!(f, Flag::Flagged));
+    let answered = flags.iter().any(|f| matches!(f, Flag::Answered));
     let keywords = custom_flags(&flags);
+    let forwarded = keywords.iter().any(|k| k.eq_ignore_ascii_case(FORWARDED_KEYWORD));
 
     let raw = fetch.header().unwrap_or(&[]);
     let parsed = MessageParser::default().parse(raw);
@@ -7998,12 +8793,15 @@ fn summary_from_headers(account_id: u32, fetch: &Fetch, folder_id: u32) -> Messa
         timestamp,
         unread,
         starred,
+        answered,
+        forwarded,
         keywords,
         has_attachment,
         message_id,
         references,
         importance: mp_importance(parsed.as_ref()),
         due: 0,
+        labels: Vec::new(),
     };
     msg.scrub_nuls();
     msg
@@ -8051,9 +8849,15 @@ fn merge_index(cached: Vec<Message>, recent: Vec<Message>) -> Vec<Message> {
     let mut map: std::collections::HashMap<u32, Message> =
         cached.into_iter().map(|m| (m.uid, m)).collect();
     for mut m in recent {
-        if m.preview.is_empty() {
-            if let Some(old) = map.get_mut(&m.uid) {
+        if let Some(old) = map.get_mut(&m.uid) {
+            if m.preview.is_empty() {
                 m.preview = std::mem::take(&mut old.preview);
+            }
+            // The summary fetch carries no Gmail labels: they are read after
+            // the merge, and a message they could not be read for keeps the
+            // ones it had.
+            if m.labels.is_empty() {
+                m.labels = std::mem::take(&mut old.labels);
             }
         }
         map.insert(m.uid, m);
@@ -8142,6 +8946,69 @@ async fn run_one_refs_repair(
     }
 }
 
+/// How many messages one label-fill step asks Gmail about. A label reply is a
+/// line per message, smaller than a References one.
+const LABEL_FILL_CHUNK: usize = 1_000;
+
+/// One step of the one-time Gmail label fill for the folder at the head of
+/// the queue (#374).
+///
+/// Labels come down with the summaries, and a sync asks again only about its
+/// recent window, so mail indexed before Hylki read labels would never get
+/// any. This asks about the rest of each folder once, newest first, resuming
+/// from a watermark like [`run_one_refs_repair`].
+async fn run_one_label_fill(
+    queue: &mut std::collections::VecDeque<(u32, String)>,
+    session: &mut Option<ImapSession>,
+    account_id: u32,
+    cache: Option<&Cache>,
+    emit: &impl Fn(WorkerEvent),
+) {
+    let Some(c) = cache else {
+        queue.clear();
+        return;
+    };
+    if !gmail_labels_wanted(account_id) {
+        // Refused this session: the fill waits for the next one.
+        queue.clear();
+        return;
+    }
+    let Some((folder_id, path)) = queue.pop_front() else { return };
+    let Some(mut s) = session.take() else {
+        queue.push_front((folder_id, path));
+        return;
+    };
+    let (below, _) = c.label_fill_state(account_id, &path);
+    let chunk = c.uids_below(account_id, &path, below, LABEL_FILL_CHUNK);
+    if chunk.is_empty() {
+        c.set_label_fill_state(account_id, &path, 0, true);
+        *session = Some(s);
+        return;
+    }
+    let read = async {
+        sel(&mut s, &path).await?;
+        fetch_gmail_labels(account_id, &mut s, &path, &chunk).await
+    }
+    .await;
+    match read {
+        Ok(Some(found)) => {
+            let changed = c.set_gmail_labels(account_id, &path, &found);
+            let lowest = chunk.iter().copied().min().unwrap_or(0);
+            c.set_label_fill_state(account_id, &path, lowest, false);
+            queue.push_back((folder_id, path));
+            *session = Some(s);
+            if changed > 0 {
+                emit(WorkerEvent::RefsRepaired { folder_id });
+            }
+        }
+        // Refused; the queue is dropped at the next step.
+        Ok(None) => *session = Some(s),
+        // The session may be left mid-reply: drop it, and the main loop
+        // reconnects when it next needs one.
+        Err(_) => queue.push_back((folder_id, path)),
+    }
+}
+
 /// A background job to index the rest of a folder (everything past the fast first
 /// page) so search covers the whole mailbox. `remaining` is the still-to-fetch
 /// UIDs (newest first), computed lazily on the first drain.
@@ -8189,6 +9056,44 @@ async fn backfill_worklist(
     Ok(remaining)
 }
 
+/// The cached rows a listing of a folder's newest mail shows to be gone
+/// (#429), for the Graph and JMAP paths, whose listings no longer replace
+/// the cached folder. A `complete` listing is the whole folder; otherwise it
+/// speaks only for mail newer than the oldest it holds, the rest being the
+/// background index's to reconcile.
+fn window_gone(cached: &std::collections::HashMap<u32, i64>, listed: &[Message], complete: bool) -> Vec<u32> {
+    let seen: std::collections::HashSet<u32> = listed.iter().map(|m| m.uid).collect();
+    let oldest = listed.iter().map(|m| m.timestamp).min();
+    let mut gone: Vec<u32> = cached
+        .iter()
+        .filter(|(uid, ts)| {
+            !seen.contains(uid) && (complete || oldest.is_some_and(|oldest| **ts > oldest))
+        })
+        .map(|(uid, _)| *uid)
+        .collect();
+    gone.sort_unstable();
+    gone
+}
+
+/// The cached rows a complete id listing of a folder shows to be gone
+/// (#429). A row that arrived since the listing began (`since`, less a
+/// margin for the server's clock) is spared: the listing could not know
+/// it, and the next look at the folder's newest mail settles it.
+fn listing_gone(
+    cached: &std::collections::HashMap<u32, i64>,
+    server: &std::collections::HashSet<u32>,
+    since: i64,
+) -> Vec<u32> {
+    let cutoff = since - 600;
+    let mut gone: Vec<u32> = cached
+        .iter()
+        .filter(|(uid, ts)| !server.contains(uid) && **ts < cutoff)
+        .map(|(uid, _)| *uid)
+        .collect();
+    gone.sort_unstable();
+    gone
+}
+
 /// Fetch message summaries for a specific set of UIDs (used by the backfill).
 async fn fetch_summaries_by_uid(
     account_id: u32,
@@ -8209,7 +9114,7 @@ async fn fetch_summaries_by_uid(
         "(UID FLAGS BODY.PEEK[HEADER] INTERNALDATE)".to_string()
     };
     let fetches: Vec<Fetch> = fetch_uids(session, set, items).await?.try_collect().await?;
-    Ok(fetches
+    let mut messages: Vec<Message> = fetches
         .iter()
         .map(|f| {
             if use_envelope {
@@ -8218,7 +9123,9 @@ async fn fetch_summaries_by_uid(
                 summary_from_headers(account_id, f, folder_id)
             }
         })
-        .collect())
+        .collect();
+    read_gmail_labels(account_id, session, path, uids, &mut messages).await?;
+    Ok(messages)
 }
 
 /// Advance one backfill job by a chunk. Fetches the next `BACKFILL_CHUNK` UIDs,
@@ -8393,7 +9300,9 @@ fn build_summary(account_id: u32, fetch: &Fetch, folder_id: u32) -> Message {
     let flags: Vec<Flag> = fetch.flags().collect();
     let unread = !flags.iter().any(|f| matches!(f, Flag::Seen));
     let starred = flags.iter().any(|f| matches!(f, Flag::Flagged));
+    let answered = flags.iter().any(|f| matches!(f, Flag::Answered));
     let keywords = custom_flags(&flags);
+    let forwarded = keywords.iter().any(|k| k.eq_ignore_ascii_case(FORWARDED_KEYWORD));
 
     let env = fetch.envelope();
     let (from_name, from_addr) = env
@@ -8455,12 +9364,15 @@ fn build_summary(account_id: u32, fetch: &Fetch, folder_id: u32) -> Message {
         timestamp,
         unread,
         starred,
+        answered,
+        forwarded,
         keywords,
         has_attachment,
         message_id,
         references,
         importance: importance_of(fetch),
         due: 0,
+        labels: Vec::new(),
     };
     msg.scrub_nuls();
     msg
@@ -8496,6 +9408,10 @@ fn uid_set(uids: &[u32]) -> String {
     }
     out
 }
+
+/// The keyword RFC 5550 gives a forwarded message; servers and clients
+/// differ in its case.
+pub const FORWARDED_KEYWORD: &str = "$Forwarded";
 
 /// The user-defined keywords among a message's flags, verbatim.
 fn custom_flags(flags: &[Flag]) -> Vec<String> {
@@ -8967,7 +9883,7 @@ fn label_from_timestamp(ts: i64) -> String {
 }
 
 /// Build a message summary from a full RFC 822 message (POP3 has no ENVELOPE).
-fn summary_from_raw(account_id: u32, folder_id: u32, uid: u32, raw: &[u8]) -> Message {
+pub(crate) fn summary_from_raw(account_id: u32, folder_id: u32, uid: u32, raw: &[u8]) -> Message {
     use mail_parser::MessageParser;
     let parsed = MessageParser::default().parse(raw);
     let addr = parsed
@@ -9034,12 +9950,15 @@ fn summary_from_raw(account_id: u32, folder_id: u32, uid: u32, raw: &[u8]) -> Me
         timestamp,
         unread: true,
         starred: false,
+        answered: false,
+        forwarded: false,
         keywords: Vec::new(),
         has_attachment,
         message_id,
         references,
         importance: mp_importance(parsed.as_ref()),
         due: 0,
+        labels: Vec::new(),
     };
     msg.scrub_nuls();
     msg
@@ -9316,17 +10235,22 @@ async fn run_pop3(
                 emit(WorkerEvent::error(i18n("POP3 accounts don't support folders")));
             }
 
-            MailRequest::Send { mut message, .. } => {
+            MailRequest::Send { mut message, ticket, .. } => {
                 restore_msgid_case(cache.as_ref(), &mut message);
                 match send_smtp(&account, &message).await {
                     Ok(_) => {
+                        // Kept in the cache only: POP3 has no flags.
+                        mark_answered(&mut None, cache.as_ref(), account_id, &message.in_reply_to, &message.forwards, &emit)
+                            .await;
                         drop_superseded_outbox(cache.as_ref(), account_id, &message, &emit);
                         emit(WorkerEvent::Sent);
+                        emit(WorkerEvent::SendDone { ticket, sent: true });
                     }
                     Err(e) => {
                         // POP3 has no Sent folder to copy to, but the message is held
                         // exactly as it is for IMAP accounts.
                         send_failed(cache.as_ref(), account_id, &account, &message, None, &e.to_string(), smtp_refused(&e), &emit);
+                        emit(WorkerEvent::SendDone { ticket, sent: false });
                     }
                 }
             }
@@ -9716,7 +10640,10 @@ async fn run_mock(
                 emit(WorkerEvent::AttachmentDeleted { message_id, path, uid, new_uid: Some(uid), name, size })
             }
             // Pretend the send succeeded so the compose flow is demoable offline.
-            MailRequest::Send { .. } => emit(WorkerEvent::Sent),
+            MailRequest::Send { ticket, .. } => {
+                emit(WorkerEvent::Sent);
+                emit(WorkerEvent::SendDone { ticket, sent: true });
+            }
         }
     }
 }
@@ -10057,7 +10984,7 @@ pub fn extract_body(raw: &[u8]) -> String {
         }
         match &part.body {
             PartType::Text(text) if !text.trim().is_empty() => {
-                inner.push_str("<div class=\"vireo-plain\">");
+                inner.push_str("<div class=\"hylki-plain\">");
                 inner.push_str(&linkify(text));
                 inner.push_str("</div>");
             }
@@ -10076,7 +11003,7 @@ pub fn extract_body(raw: &[u8]) -> String {
                     if let Some(left) = budget.checked_sub(bytes.len()) {
                         budget = left;
                         inner.push_str(&format!(
-                            "<img class=\"vireo-inline\" src=\"data:{mime};base64,{}\">",
+                            "<img class=\"hylki-inline\" src=\"data:{mime};base64,{}\">",
                             crate::oauth::base64_encode(bytes)
                         ));
                     }
@@ -10322,7 +11249,7 @@ fn consume_url(text: &str, start: usize) -> usize {
 /// light/dark theme — and no padding is baked in: the reader injects the
 /// default inset at render time, so it stays tunable without invalidating
 /// every cached body (bodies are stored rendered; see cache SCHEMA_VERSION).
-fn wrap_plain(text: &str) -> String {
+pub(crate) fn wrap_plain(text: &str) -> String {
     let escaped = linkify(text);
     format!(
         "<!doctype html><html><head><meta charset=\"utf-8\"><style>\
@@ -10338,8 +11265,8 @@ fn wrap_fragment(inner: &str) -> String {
     format!(
         "<!doctype html><html><head><meta charset=\"utf-8\"><style>\
          body{{margin:0;font:14px/1.5 system-ui,sans-serif}}\
-         .vireo-plain{{white-space:pre-wrap;word-wrap:break-word}}\
-         .vireo-inline{{display:block;max-width:100%;height:auto;\
+         .hylki-plain{{white-space:pre-wrap;word-wrap:break-word}}\
+         .hylki-inline{{display:block;max-width:100%;height:auto;\
          margin:12px 0;border-radius:6px}}\
          </style></head><body>{inner}</body></html>"
     )
@@ -10463,12 +11390,17 @@ pub(super) fn sample_account() -> AccountConfig {
         folders_seeded: false,
         sent_copy_path: None,
         server_saves_sent: false,
+        reply_copies: Default::default(),
         empty_junk_days: 0,
         empty_trash_days: 0,
+        clean_lists_days: 0,
         pgp_key: None,
         in_unified: true,
         folder_sort: None,
         sign_by_default: false,
+        graph_directory: false,
+        graph_directory_only: false,
+        graph_label_names: false,
         push: None,
         name: String::new(),
         email: "me@example.com".into(),
@@ -10492,6 +11424,8 @@ pub(super) fn sample_account() -> AccountConfig {
         gravatar: false,
         signature: None,
         signature_html: false,
+        signatures: Vec::new(),
+        default_signature: None,
         label: None,
         aliases: Vec::new(),
         enabled: true,
@@ -10833,6 +11767,95 @@ NIL NIL NIL NIL NIL NIL NIL))\r\n";
         });
     }
 
+    /// #468 against a real server, with `IMAP_LIVE=host,port,user,password`
+    /// and `SMTP_LIVE=host,port` (implicit TLS): a reply goes out, and its
+    /// copy is filed in the folder of the message it answers, or in Sent when
+    /// that folder will not take it.
+    #[test]
+    #[ignore]
+    fn live_reply_is_filed_beside_its_original() {
+        let (Ok(spec), Ok(smtp)) = (std::env::var("IMAP_LIVE"), std::env::var("SMTP_LIVE")) else { return };
+        let p: Vec<&str> = spec.splitn(4, ',').collect();
+        let (smtp_host, smtp_port) = smtp.split_once(',').expect("host,port");
+        let account = AccountConfig {
+            email: p[2].into(),
+            imap_host: p[0].into(),
+            imap_port: p[1].parse().expect("port"),
+            smtp_host: smtp_host.into(),
+            smtp_port: smtp_port.parse().expect("port"),
+            username: p[2].into(),
+            password: p[3].into(),
+            security: Some(crate::config::ServerSecurity {
+                imap_starttls: false,
+                smtp_starttls: false,
+                imap_accept_invalid_certs: true,
+                smtp_accept_invalid_certs: true,
+                ..Default::default()
+            }),
+            reply_copies: crate::config::ReplyCopies::Original,
+            ..sample_account()
+        };
+        let pid = std::process::id();
+        let folder = format!("Project-{pid}");
+        let parent = format!("hylki-468-{pid}@example.test");
+        let original = format!(
+            "From: Ada <ada@example.test>\r\nTo: {}\r\nSubject: Plans {pid}\r\nMessage-ID: <{parent}>\r\n\
+             Date: Fri, 16 Oct 2026 10:00:00 +0000\r\n\r\nShall we plan?\r\n",
+            account.email
+        );
+        let rt = tokio::runtime::Builder::new_current_thread().enable_all().build().unwrap();
+        rt.block_on(async {
+            let cache = Cache::in_memory().unwrap();
+            let mut sess = connect(&account).await.expect("connect");
+            create_box(&mut sess, &folder).await.expect("create");
+            append_to_sent(&mut sess, &folder, original.as_bytes()).await.expect("original filed");
+            let folders = list_folders(1, &mut sess, &account.folder_roles, &account.hidden_folders).await.expect("list");
+            cache.save_folders(1, &folders);
+            let folder_id = folders.iter().find(|f| f.path == folder).expect("listed").id;
+            let sent = folders.iter().find(|f| f.kind == FolderKind::Sent).expect("a Sent folder").path.clone();
+            let listed = load_messages(1, &mut sess, folder_id, &folder, true, Some(&cache)).await.expect("load");
+            cache.upsert_messages(1, &folder, &listed);
+
+            let reply = OutgoingMessage {
+                to: account.email.clone(),
+                subject: format!("Re: Plans {pid}"),
+                body: "Yes.".into(),
+                in_reply_to: parent.to_ascii_uppercase(),
+                references: parent.clone(),
+                ..sample_outgoing()
+            };
+            let raw = send_smtp(&account, &reply).await.expect("sent");
+            let dest = super::reply_copy_path(&account, 1, Some(&cache), &reply.in_reply_to);
+            assert_eq!(dest.as_deref(), Some(folder.as_str()));
+            let took = file_sent_copy(&mut sess, dest.as_deref(), Some(&sent), &raw).await.expect("filed");
+            assert_eq!(took.as_deref(), Some(folder.as_str()));
+            let after = load_messages(1, &mut sess, folder_id, &folder, true, None).await.expect("load");
+            let copy = after.iter().find(|m| m.subject == reply.subject).expect("the copy is beside its original");
+            assert!(copy.references.contains(&parent), "{:?}", copy.references);
+            println!("{folder}: {:?}", after.iter().map(|m| &m.subject).collect::<Vec<_>>());
+
+            // A folder gone from the server since: Sent takes it.
+            let gone = format!("Gone-{pid}");
+            let took = file_sent_copy(&mut sess, Some(&gone), Some(&sent), &raw).await.expect("filed");
+            assert_eq!(took.as_deref(), Some(sent.as_str()));
+            let sent_id = folders.iter().find(|f| f.path == sent).unwrap().id;
+            let in_sent = load_messages(1, &mut sess, sent_id, &sent, true, None).await.expect("load");
+            let fallback = in_sent.iter().find(|m| m.subject == reply.subject).expect("the copy went to Sent");
+            delete_draft(&mut sess, &sent, fallback.uid).await.expect("clean up Sent");
+            // The reply went to the account itself: take it out of the Inbox.
+            for _ in 0..10 {
+                let inbox = load_messages(1, &mut sess, 1, "INBOX", true, None).await.expect("load");
+                if let Some(m) = inbox.iter().find(|m| m.subject == reply.subject) {
+                    delete_draft(&mut sess, "INBOX", m.uid).await.expect("clean up the Inbox");
+                    break;
+                }
+                tokio::time::sleep(Duration::from_millis(500)).await;
+            }
+            let _ = sess.close().await;
+            delete_box(&mut sess, &folder).await.expect("clean up");
+        });
+    }
+
     #[test]
     #[ignore]
     fn live_idle_catches_mail_that_landed_between_commands() {
@@ -11021,13 +12044,38 @@ NIL NIL NIL NIL NIL NIL NIL))\r\n";
             timestamp: 0,
             unread: true,
             starred: false,
+            answered: false,
+            forwarded: false,
             keywords: Vec::new(),
             has_attachment: true,
             message_id: String::new(),
             references: String::new(),
             importance: Default::default(),
             due: 0,
+            labels: Vec::new(),
         }
+    }
+
+    /// A sent message marks what it answers in its own account only, the
+    /// reply's original as replied and the forward's as forwarded (#454).
+    #[test]
+    fn a_sent_message_finds_what_it_answered() {
+        let cache = Cache::in_memory().unwrap();
+        let copy = |account_id: u32, uid: u32, id: &str| Message {
+            account_id,
+            message_id: id.into(),
+            ..flagged_message(uid)
+        };
+        cache.upsert_messages(1, "INBOX", &[copy(1, 1, "a@x"), copy(1, 2, "b@x")]);
+        cache.upsert_messages(1, "Archive", &[copy(1, 7, "a@x")]);
+        cache.upsert_messages(2, "INBOX", &[copy(2, 1, "a@x")]);
+        let mut found = answered_copies(Some(&cache), 1, "<A@x>", "");
+        found.sort();
+        assert_eq!(found, [("Archive".to_string(), 7, false), ("INBOX".to_string(), 1, false)]);
+        assert_eq!(answered_copies(Some(&cache), 1, "", "b@x"), [("INBOX".to_string(), 2, true)]);
+        assert!(answered_copies(Some(&cache), 1, "", "").is_empty());
+        assert!(answered_copies(Some(&cache), 1, "gone@x", "").is_empty());
+        assert!(answered_copies(None, 1, "a@x", "").is_empty());
     }
 
     /// A sync whose recent window came back without some previews must give
@@ -11046,6 +12094,52 @@ NIL NIL NIL NIL NIL NIL NIL))\r\n";
         let previews: Vec<&str> = merged.iter().map(|m| m.preview.as_str()).collect();
         assert_eq!(previews, ["text 3", "new text", "text 1"]);
         assert!(!merged[0].unread, "the server's flags still win");
+    }
+
+    /// The summary fetch never carries Gmail labels (#374): a merge keeps
+    /// the cached ones until the label read replaces them.
+    #[test]
+    fn merging_a_recent_window_keeps_the_cached_labels() {
+        let cached: Vec<Message> = (1..=2)
+            .map(|uid| Message { labels: vec![format!("Label {uid}")], ..flagged_message(uid) })
+            .collect();
+        let merged = merge_index(cached, vec![flagged_message(2), flagged_message(3)]);
+        let labels: Vec<Vec<String>> = merged.iter().map(|m| m.labels.clone()).collect();
+        assert_eq!(labels, [vec![], vec!["Label 2".to_string()], vec!["Label 1".to_string()]]);
+    }
+
+    fn fetch_attrs(raw: &[u8]) -> Vec<async_imap::imap_proto::AttributeValue<'_>> {
+        match async_imap::imap_proto::parser::parse_response(raw) {
+            Ok((_, async_imap::imap_proto::Response::Fetch(_, attrs))) => attrs,
+            other => panic!("not a FETCH reply: {other:?}"),
+        }
+    }
+
+    /// What Gmail answers `X-GM-LABELS` with (#374): system labels and the
+    /// folder's own label stay off the pills, the rest come through as the
+    /// server spells them.
+    #[test]
+    fn gmail_labels_are_read_from_a_fetch_reply() {
+        let attrs = fetch_attrs(
+            b"* 3 FETCH (UID 7 X-GM-LABELS (\\Inbox \\Important \"My Label\" Work &AOk-t&AOk- \"Clients/Acme\" \\Starred))\r\n",
+        );
+        let (uid, labels) = gmail_labels_of(&attrs, "INBOX").expect("labels");
+        assert_eq!(uid, 7);
+        assert_eq!(labels, ["My Label", "Work", "&AOk-t&AOk-", "Clients/Acme"]);
+        // Read in the Work folder, Work is the folder, not a label on top.
+        let (_, labels) = gmail_labels_of(&attrs, "Work").expect("labels");
+        assert_eq!(labels, ["My Label", "&AOk-t&AOk-", "Clients/Acme"]);
+        // Nested labels keep their whole path; the folder match is exact.
+        let (_, labels) = gmail_labels_of(&attrs, "Clients").expect("labels");
+        assert!(labels.contains(&"Clients/Acme".to_string()));
+
+        let none = fetch_attrs(b"* 4 FETCH (UID 8 X-GM-LABELS ())\r\n");
+        assert_eq!(gmail_labels_of(&none, "INBOX"), Some((8, Vec::new())));
+        let system_only = fetch_attrs(b"* 4 FETCH (UID 8 X-GM-LABELS (\\Sent \\Draft))\r\n");
+        assert_eq!(gmail_labels_of(&system_only, "INBOX"), Some((8, Vec::new())));
+        // A flag change Gmail volunteers says nothing about labels.
+        let flags = fetch_attrs(b"* 5 FETCH (UID 9 FLAGS (\\Seen))\r\n");
+        assert_eq!(gmail_labels_of(&flags, "INBOX"), None);
     }
 
     /// The loop behind the 2.6 GB report: a message the attachment prefetch
@@ -11074,7 +12168,7 @@ NIL NIL NIL NIL NIL NIL NIL))\r\n";
     }
 
 
-    fn sample_outgoing() -> OutgoingMessage {
+    pub(super) fn sample_outgoing() -> OutgoingMessage {
         OutgoingMessage {
             from_account_id: 1,
             from_alias: None,
@@ -11088,6 +12182,7 @@ NIL NIL NIL NIL NIL NIL NIL))\r\n";
             attachments: Vec::new(),
             in_reply_to: String::new(),
             references: String::new(),
+            forwards: String::new(),
             draft_origin: None,
             outbox_origin: None,
             sign: false,
@@ -11134,6 +12229,24 @@ NIL NIL NIL NIL NIL NIL NIL))\r\n";
         let events = std::cell::RefCell::new(Vec::new());
         send_failed(Some(&cache), 1, &account, &msg, None, "offline", false, &|e| events.borrow_mut().push(e));
         assert!(!events.into_inner().iter().any(|e| matches!(e, WorkerEvent::Unsent(_))));
+    }
+
+    /// #442: a message sent with no network waits in the Outbox with a
+    /// notice, not an error: nothing failed.
+    #[test]
+    fn an_offline_send_waits_quietly() {
+        let cache = Cache::in_memory().expect("cache");
+        let account = sample_account();
+        let mut msg = sample_outgoing();
+        msg.to = "ann@example.com".into();
+        let events = std::cell::RefCell::new(Vec::new());
+        send_failed(Some(&cache), 1, &account, &msg, None, &offline_text(), false, &|e| {
+            events.borrow_mut().push(e)
+        });
+        let events = events.into_inner();
+        assert!(events.iter().any(|e| matches!(e, WorkerEvent::Notice(_))), "{events:?}");
+        assert!(!events.iter().any(|e| matches!(e, WorkerEvent::Error { .. })), "{events:?}");
+        assert_eq!(cache.outbox_items(1).len(), 1);
     }
 
     /// #368: a recipient the server refuses comes back to the composer and
@@ -11226,6 +12339,7 @@ NIL NIL NIL NIL NIL NIL NIL))\r\n";
         let text = String::from_utf8_lossy(&raw);
         assert!(text.contains("multipart/signed"), "{text}");
         assert!(text.contains("micalg=\"pgp-sha"), "{text}");
+        assert!(!has_bare_lf(&raw), "{text}");
         let u = crate::pgp::unwrap_message(&raw, &gpg).expect("recognised");
         assert!(matches!(u.status.signature, crate::models::PgpSignature::Good { .. }), "{:?}", u.status);
         assert!(!u.status.encrypted);
@@ -11249,6 +12363,7 @@ NIL NIL NIL NIL NIL NIL NIL))\r\n";
         let text = String::from_utf8_lossy(&raw);
         assert!(text.contains("multipart/encrypted"), "{text}");
         assert!(!text.contains("secret body text"), "plaintext must not appear: {text}");
+        assert!(!has_bare_lf(&raw), "{text}");
         let u = crate::pgp::unwrap_message(&raw, &gpg).expect("recognised");
         assert!(u.status.encrypted && u.status.decrypted, "{:?}", u.status);
         assert!(matches!(u.status.signature, crate::models::PgpSignature::Good { .. }), "{:?}", u.status);
@@ -11372,6 +12487,8 @@ NIL NIL NIL NIL NIL NIL NIL))\r\n";
             attempts: 1,
             last_error: String::new(),
             send_at: None,
+            forwards: String::new(),
+            status: String::new(),
         }
     }
 
@@ -11674,6 +12791,99 @@ NIL NIL NIL NIL NIL NIL NIL))\r\n";
         };
         assert_eq!(super::pick_queued_sent_copy(&server_saves, &folders, Some("Sent")), None);
         assert_eq!(super::pick_queued_sent_copy(&server_saves, &[], Some("Sent")), None);
+    }
+
+    #[test]
+    fn a_reply_is_filed_beside_the_message_it_answers() {
+        use crate::config::ReplyCopies;
+        let folder = |id: u32, path: &str, kind: FolderKind| Folder {
+            id,
+            account_id: 1,
+            name: path.to_string(),
+            path: path.to_string(),
+            kind,
+            unread: 0,
+        };
+        let folders = vec![
+            folder(1, "INBOX", FolderKind::Inbox),
+            folder(2, "Sent", FolderKind::Sent),
+            folder(3, "Projects/Hylki", FolderKind::Custom),
+            folder(4, "[Gmail]/All Mail", FolderKind::Archive),
+            folder(5, "Trash", FolderKind::Trash),
+        ];
+        let held = |paths: &[&str]| paths.iter().map(|p| p.to_string()).collect::<Vec<_>>();
+        let pick = |choice, paths: &[&str]| super::pick_reply_folder(choice, &folders, &held(paths));
+        assert_eq!(pick(ReplyCopies::Original, &["Projects/Hylki"]).as_deref(), Some("Projects/Hylki"));
+        assert_eq!(pick(ReplyCopies::Original, &["INBOX"]).as_deref(), Some("INBOX"));
+        assert_eq!(pick(ReplyCopies::OriginalNotInbox, &["INBOX"]), None);
+        // Gmail's copies under a label, All Mail and the Inbox: the label.
+        assert_eq!(
+            pick(ReplyCopies::OriginalNotInbox, &["INBOX", "[Gmail]/All Mail", "Projects/Hylki"]).as_deref(),
+            Some("Projects/Hylki"),
+        );
+        assert_eq!(pick(ReplyCopies::Original, &["INBOX", "[Gmail]/All Mail"]).as_deref(), Some("[Gmail]/All Mail"));
+        // Binned, already in Sent, or in a folder deleted since: with sent mail.
+        assert_eq!(pick(ReplyCopies::Original, &["Trash"]), None);
+        assert_eq!(pick(ReplyCopies::Original, &["Sent"]), None);
+        assert_eq!(pick(ReplyCopies::Original, &["Gone"]), None);
+        assert_eq!(pick(ReplyCopies::Original, &[]), None);
+
+        // Off, or the server files its own copy: nothing is looked up.
+        let account = |reply_copies, server_saves_sent| AccountConfig {
+            reply_copies,
+            server_saves_sent,
+            ..sample_account()
+        };
+        let cache = Cache::in_memory().unwrap();
+        cache.save_folders(1, &folders);
+        assert_eq!(super::reply_copy_path(&account(ReplyCopies::WithSent, false), 1, Some(&cache), "a@b"), None);
+        assert_eq!(super::reply_copy_path(&account(ReplyCopies::Original, true), 1, Some(&cache), "a@b"), None);
+        assert_eq!(super::reply_copy_path(&account(ReplyCopies::Original, false), 1, Some(&cache), ""), None);
+        // On: the original is found by its Message-ID, spelled as the
+        // reply spells it, and only among this account's folders.
+        let original = Message {
+            id: 1,
+            account_id: 1,
+            folder_id: 3,
+            uid: 7,
+            from_name: "Ada".into(),
+            from_addr: "ada@example.com".into(),
+            reply_to: String::new(),
+            to: String::new(),
+            cc: String::new(),
+            subject: "Plans".into(),
+            preview: String::new(),
+            body: String::new(),
+            date: String::new(),
+            timestamp: 1,
+            unread: false,
+            starred: false,
+            answered: false,
+            forwarded: false,
+            keywords: Vec::new(),
+            has_attachment: false,
+            message_id: "parent@example.com".into(),
+            references: String::new(),
+            importance: Default::default(),
+            due: 0,
+            labels: Vec::new(),
+        };
+        cache.upsert_messages(1, "Projects/Hylki", std::slice::from_ref(&original));
+        let on = account(ReplyCopies::Original, false);
+        assert_eq!(
+            super::reply_copy_path(&on, 1, Some(&cache), "<Parent@Example.com>").as_deref(),
+            Some("Projects/Hylki"),
+        );
+        assert_eq!(super::reply_copy_path(&on, 2, Some(&cache), "parent@example.com"), None);
+        assert_eq!(super::reply_copy_path(&on, 1, Some(&cache), "other@example.com"), None);
+    }
+
+    #[test]
+    fn a_queued_reply_names_what_it_answers() {
+        let raw = b"From: a@example.com\r\nTo: b@example.com\r\nIn-Reply-To: <Parent@Example.com>\r\n\
+                    Subject: Re: x\r\n\r\nbody\r\n";
+        assert_eq!(super::raw_in_reply_to(raw), "Parent@Example.com");
+        assert_eq!(super::raw_in_reply_to(b"Subject: x\r\n\r\nbody\r\n"), "");
     }
 
     #[test]
@@ -12091,6 +13301,50 @@ NIL NIL NIL NIL NIL NIL NIL))\r\n";
         std::fs::remove_dir_all(&dir).ok();
     }
 
+    /// Every line on the wire ends CRLF: JMAP servers refuse a message with a
+    /// lone LF anywhere in it (#414).
+    fn has_bare_lf(raw: &[u8]) -> bool {
+        raw.iter().enumerate().any(|(i, &b)| b == b'\n' && (i == 0 || raw[i - 1] != b'\r'))
+    }
+
+    /// #412: plain text with nothing attached still says it is UTF-8 text,
+    /// or a client that doesn't guess garbles every accent.
+    #[test]
+    fn plain_text_declares_its_charset() {
+        let msg = OutgoingMessage {
+            to: "ada@example.com".into(),
+            body: "Plain text with öäü and 🙂\nsecond line".into(),
+            ..sample_outgoing()
+        };
+        let raw = build_email(&sample_account(), &msg).expect("email builds").formatted();
+        let text = String::from_utf8_lossy(&raw);
+        assert!(text.contains("MIME-Version: 1.0\r\n"), "{text}");
+        assert!(text.contains("Content-Type: text/plain; charset=utf-8\r\n"), "{text}");
+        assert!(!has_bare_lf(&raw), "{text}");
+        let parsed = mail_parser::MessageParser::default().parse(&raw).expect("parses");
+        assert_eq!(parsed.body_text(0).as_deref().map(str::trim_end), Some("Plain text with öäü and 🙂\r\nsecond line"));
+    }
+
+    /// #414: a text file with Unix line endings goes out as base64, so its
+    /// bytes arrive unchanged and no lone LF reaches the wire.
+    #[test]
+    fn a_unix_text_attachment_leaves_no_bare_newline() {
+        let dir = std::env::temp_dir().join(format!("hylki-lf-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let file = dir.join("notes.txt");
+        std::fs::write(&file, b"one\ntwo\n").unwrap();
+        let msg = OutgoingMessage {
+            to: "ada@example.com".into(),
+            attachments: vec![file.to_string_lossy().to_string()],
+            ..sample_outgoing()
+        };
+        let raw = build_email(&sample_account(), &msg).expect("email builds").formatted();
+        assert!(!has_bare_lf(&raw), "{}", String::from_utf8_lossy(&raw));
+        let parsed = mail_parser::MessageParser::default().parse(&raw).expect("parses");
+        assert_eq!(parsed.attachment(0).map(|a| a.contents()), Some(&b"one\ntwo\n"[..]));
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
     /// A picture pasted into the composer rides the HTML as a data: URI; the
     /// wire message must carry it as an inline cid: part inside
     /// multipart/related — rendered in place, absent from the recipient's
@@ -12482,6 +13736,20 @@ NIL NIL NIL NIL NIL NIL NIL))\r\n";
         assert!(!auto_empty_due(&acc, &mut last), "just ran");
         last = Some(std::time::Instant::now() - AUTO_EMPTY_MIN - Duration::from_secs(1));
         assert!(auto_empty_due(&acc, &mut last));
+    }
+
+    /// Moving list mail (#407) runs on the same terms: set, and not twice
+    /// within the interval. Its search leaves starred mail out.
+    #[test]
+    fn list_clean_up_is_throttled_and_spares_starred_mail() {
+        let mut acc = sample_account();
+        let mut last = None;
+        assert!(!clean_lists_due(&acc, &mut last), "not set");
+        acc.clean_lists_days = 90;
+        assert!(clean_lists_due(&acc, &mut last));
+        assert!(!clean_lists_due(&acc, &mut last), "just ran");
+        let q = clean_lists_query(90);
+        assert!(q.starts_with("UNFLAGGED BEFORE "), "{q}");
     }
 
     /// IMAP wants "1-Aug-2026" (no zero padding); Graph an RFC 3339 instant.
@@ -13440,5 +14708,157 @@ mod reader_preemption_tests {
             7
         }, &mut rx, &mut Default::default()).await;
         assert_eq!(result, Some(7));
+    }
+}
+
+#[cfg(test)]
+mod gmail_label_tests {
+    use super::*;
+    use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader, DuplexStream};
+
+    async fn session() -> (Session<DuplexStream>, BufReader<DuplexStream>) {
+        let (client, server) = tokio::io::duplex(4096);
+        let login =
+            tokio::spawn(async move { async_imap::Client::new(client).login("test", "test").await.unwrap() });
+        let mut server = BufReader::new(server);
+        let tag = command(&mut server, "LOGIN").await;
+        server.get_mut().write_all(format!("{tag} OK logged in\r\n").as_bytes()).await.unwrap();
+        (login.await.unwrap(), server)
+    }
+
+    async fn command(server: &mut BufReader<DuplexStream>, expected: &str) -> String {
+        let mut line = String::new();
+        server.read_line(&mut line).await.unwrap();
+        assert!(line.contains(expected), "{line:?}");
+        line.split_whitespace().next().unwrap().to_string()
+    }
+
+    fn labelled(uid: u32, labels: &[&str]) -> Message {
+        Message {
+            id: uid,
+            account_id: 7,
+            folder_id: 1,
+            uid,
+            from_name: String::new(),
+            from_addr: String::new(),
+            reply_to: String::new(),
+            to: String::new(),
+            cc: String::new(),
+            subject: String::new(),
+            preview: String::new(),
+            body: String::new(),
+            date: String::new(),
+            timestamp: 0,
+            unread: false,
+            starred: false,
+            answered: false,
+            forwarded: false,
+            keywords: Vec::new(),
+            has_attachment: false,
+            message_id: String::new(),
+            references: String::new(),
+            importance: Default::default(),
+            due: 0,
+            labels: labels.iter().map(|l| l.to_string()).collect(),
+        }
+    }
+
+    /// Each message's X-GM-MSGID is read past the server's other news, and
+    /// a server that is not Gmail says so with BAD (#471).
+    #[tokio::test]
+    async fn gmail_msgids_are_read_or_refused() {
+        for (reply, want) in [
+            (
+                "* 3 FETCH (UID 7 X-GM-MSGID 1278455344230334865)\r\n\
+                 * 12 EXISTS\r\n\
+                 * 4 FETCH (UID 8 X-GM-MSGID 42)\r\n\
+                 {tag} OK Success\r\n",
+                Some(vec![1278455344230334865, 42]),
+            ),
+            ("{tag} BAD Unknown fetch item\r\n", None),
+        ] {
+            let (mut client, mut server) = session().await;
+            let task = tokio::spawn(async move { fetch_gmail_msgids(&mut client, &[7, 8]).await });
+            let tag = command(&mut server, "UID FETCH 7:8 (UID X-GM-MSGID)").await;
+            server.get_mut().write_all(reply.replace("{tag}", &tag).as_bytes()).await.unwrap();
+            let got = tokio::time::timeout(Duration::from_secs(5), task).await.expect("the read finished").unwrap();
+            assert_eq!(got.expect("read"), want);
+        }
+    }
+
+    #[test]
+    fn gmail_msgid_search_pairs_its_keys() {
+        assert_eq!(gmail_msgid_query(&[1]), "X-GM-MSGID 1");
+        assert_eq!(gmail_msgid_query(&[1, 2, 3]), "OR OR X-GM-MSGID 1 X-GM-MSGID 2 X-GM-MSGID 3");
+    }
+
+    /// Read the labels for UIDs 7, 8 and 9 against a server that answers
+    /// with `reply` (`{tag}` standing for the command's tag).
+    async fn read(account_id: u32, reply: &str) -> (Result<(), async_imap::error::Error>, Vec<Message>) {
+        GMAIL_LABELS.lock().unwrap().insert(account_id, true);
+        let (mut client, mut server) = session().await;
+        let mut msgs = vec![labelled(7, &["Old"]), labelled(8, &["Gone"]), labelled(9, &["Kept"])];
+        let task = tokio::spawn(async move {
+            let r = read_gmail_labels(account_id, &mut client, "INBOX", &[7, 8, 9], &mut msgs).await;
+            (r, msgs)
+        });
+        let tag = command(&mut server, "UID FETCH 7:9 (UID X-GM-LABELS)").await;
+        server.get_mut().write_all(reply.replace("{tag}", &tag).as_bytes()).await.unwrap();
+        tokio::time::timeout(Duration::from_secs(5), task).await.expect("the read finished").unwrap()
+    }
+
+    fn labels_of(msgs: &[Message]) -> Vec<Vec<String>> {
+        msgs.iter().map(|m| m.labels.clone()).collect()
+    }
+
+    /// The labels are read past what else the server says in between, a
+    /// message left with none loses its old ones, and one the server said
+    /// nothing about keeps what it had.
+    #[tokio::test]
+    async fn labels_are_read_past_unsolicited_replies() {
+        let account_id = 900_374;
+        let (r, msgs) = read(
+            account_id,
+            "* 3 FETCH (UID 7 X-GM-LABELS (\\Inbox \"My Label\"))\r\n\
+             * 12 EXISTS\r\n\
+             * 4 FETCH (UID 8 X-GM-LABELS ())\r\n\
+             {tag} OK Success\r\n",
+        )
+        .await;
+        r.expect("read");
+        assert_eq!(labels_of(&msgs), [vec!["My Label".to_string()], vec![], vec!["Kept".to_string()]]);
+        assert!(gmail_labels_wanted(account_id));
+    }
+
+    /// A server that only looks like Gmail refuses the item: nothing
+    /// changes, the session carries on, and it is not asked again.
+    #[tokio::test]
+    async fn a_refused_item_leaves_labels_alone_and_is_not_asked_again() {
+        let account_id = 900_375;
+        let (r, msgs) = read(account_id, "{tag} BAD Unknown FETCH item\r\n").await;
+        r.expect("a refusal is no error");
+        assert_eq!(
+            labels_of(&msgs),
+            [vec!["Old".to_string()], vec!["Gone".to_string()], vec!["Kept".to_string()]]
+        );
+        assert!(!gmail_labels_wanted(account_id));
+    }
+
+    /// An unreadable reply wedges the stream: the caller has to reconnect,
+    /// but not move its summary fetch down the ladder (#226), and the retry
+    /// must not ask for labels again. A label sent as a literal is one such
+    /// reply: imap-proto reads labels as atoms and quoted strings only.
+    #[tokio::test]
+    async fn an_unreadable_reply_asks_for_a_reconnect_without_labels() {
+        let account_id = 900_376;
+        let (r, mut msgs) =
+            read(account_id, "* 3 FETCH (UID 7 X-GM-LABELS ({5}\r\nHello))\r\n{tag} OK Success\r\n").await;
+        let e = r.expect_err("the stream cannot be trusted");
+        assert!(!is_parse_error(&e), "{e}");
+        assert_eq!(labels_of(&msgs)[0], ["Old"]);
+        assert!(!gmail_labels_wanted(account_id));
+        // The retry on a fresh connection sends the server nothing.
+        let (mut client, _server) = session().await;
+        read_gmail_labels(account_id, &mut client, "INBOX", &[7], &mut msgs).await.expect("skipped");
     }
 }

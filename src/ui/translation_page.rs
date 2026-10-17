@@ -104,12 +104,27 @@ pub fn build() -> adw::PreferencesPage {
 
     // The key is read from the keyring when the page is first shown, not
     // when the Settings window is built: that is prepared in advance and
-    // must not wait on the keyring.
+    // must not wait on the keyring. It is read off the main thread, as the
+    // keyring may wait on its user (#466); one that arrives after another
+    // was asked for, or after the user typed one, is dropped.
     let key_loaded = Rc::new(std::cell::Cell::new(false));
+    let key_asked = Rc::new(std::cell::Cell::new(0u64));
     let load_key = {
         let key_row = key_row.clone();
         move |service: Service| {
-            key_row.set_text(&translate::load_key(service).unwrap_or_default());
+            let asked = key_asked.get() + 1;
+            key_asked.set(asked);
+            key_row.set_text("");
+            let key_row = key_row.clone();
+            let key_asked = key_asked.clone();
+            crate::config::keyring_then(
+                move || translate::load_key(service).unwrap_or_default(),
+                move |key| {
+                    if key_asked.get() == asked && key_row.text().is_empty() {
+                        key_row.set_text(&key);
+                    }
+                },
+            );
         }
     };
     {
@@ -147,7 +162,8 @@ pub fn build() -> adw::PreferencesPage {
     {
         let settings = settings.clone();
         key_row.connect_apply(move |row| {
-            translate::store_key(settings.borrow().service, &row.text());
+            let (service, key) = (settings.borrow().service, row.text().to_string());
+            crate::config::keyring_later(move || translate::store_key(service, &key));
         });
     }
     {
@@ -189,7 +205,8 @@ pub fn build() -> adw::PreferencesPage {
             let s = settings.borrow().clone();
             let key = key_row.text().to_string();
             // Checking is applying: the key that works is the one kept.
-            translate::store_key(s.service, &key);
+            let (service, kept) = (s.service, key.clone());
+            crate::config::keyring_later(move || translate::store_key(service, &kept));
             b.set_sensitive(false);
             check_row.set_subtitle(&i18n("Checking…"));
             let (tx, rx) = std::sync::mpsc::channel::<Result<(String, String), String>>();

@@ -270,6 +270,19 @@ const DEMO_HEADERS: &[(u32, &str, &str)] = &[
      Subject: This Week in Rust #612\r\n\r\n",
         "",
     ),
+    // A sensitivity label (#411), as Outlook writes one for a tenant that
+    // uses Microsoft Purview: the reader shows it as a pill.
+    (
+        23,
+        "From: Sophie Turner <sophie@studio.dev>\r\n\
+         Subject: Q3 roadmap review\r\n\
+         msip_labels: MSIP_Label_9c2a4f1e-5b3d-4c7a-8e21-0d6f3b9a1c42_Enabled=true;\r\n \
+         MSIP_Label_9c2a4f1e-5b3d-4c7a-8e21-0d6f3b9a1c42_Method=Standard;\r\n \
+         MSIP_Label_9c2a4f1e-5b3d-4c7a-8e21-0d6f3b9a1c42_Name=Confidential\\Internal Use;\r\n \
+         MSIP_Label_9c2a4f1e-5b3d-4c7a-8e21-0d6f3b9a1c42_SiteId=2b7c5e90-1f4d-4a6b-9c3e-8d1a0f2e6b57\r\n\
+         Content-Type: text/plain; charset=utf-8\r\n\r\n",
+        "",
+    ),
     // A meeting request, as a calendar sends one: the readable half that
     // every client shows, and the `text/calendar` part that is the meeting
     // (#223). The event floats — no TZID — so it reads 2:00 PM wherever the
@@ -358,6 +371,8 @@ fn build(s: &Spec) -> Message {
         date: s.date.into(),
         unread: s.unread,
         starred: s.starred,
+        answered: false,
+        forwarded: false,
         keywords: s.keywords.iter().map(|k| k.to_string()).collect(),
         has_attachment: s.has_attachment,
         message_id: format!("<demo-{}@hylki.local>", s.id),
@@ -367,6 +382,22 @@ fn build(s: &Spec) -> Message {
             .unwrap_or_default(),
         importance: Default::default(),
         due: 0,
+        labels: demo_labels(s.id),
+    }
+}
+
+/// Gmail labels on some of the demo's mail, for captures of their pills
+/// (#374). Only with HYLKI_DEMO_LABELS set: the demo the README shows has
+/// none.
+fn demo_labels(id: u32) -> Vec<String> {
+    if std::env::var_os("HYLKI_DEMO_LABELS").is_none() {
+        return Vec::new();
+    }
+    match id % 4 {
+        0 => vec!["Clients/Acme".into(), "Travel".into()],
+        1 => vec!["Receipts".into()],
+        2 => vec!["Newsletters".into(), "Family".into()],
+        _ => Vec::new(),
     }
 }
 
@@ -416,12 +447,15 @@ pub fn seed_demo_cache(cache: &crate::cache::Cache) {
                 timestamp: ts,
                 unread: false,
                 starred: false,
+                answered: false,
+                forwarded: false,
                 keywords: Vec::new(),
                 has_attachment: true,
                 message_id: String::new(),
                 references: String::new(),
                 importance: Default::default(),
                 due: 0,
+                labels: Vec::new(),
             };
             // Insert-or-replace, not save: `save_messages` clears the folder
             // first, so seeding one message at a time would leave only the last.
@@ -478,12 +512,15 @@ pub fn seed_demo_cache(cache: &crate::cache::Cache) {
                     timestamp: ts,
                     unread: false,
                     starred: false,
+                    answered: false,
+                    forwarded: false,
                     keywords: Vec::new(),
                     has_attachment: true,
                     message_id: String::new(),
                     references: String::new(),
                     importance: Default::default(),
                     due: 0,
+                    labels: Vec::new(),
                 };
                 cache.upsert_messages(account.id, folder, std::slice::from_ref(&message));
                 cache.save_attachment_meta(
@@ -797,6 +834,17 @@ fn sample_messages() -> Vec<Message> {
             date: "Sun", unread: true, starred: false, keywords: &[], has_attachment: false, in_reply_to: None },
     ];
     let mut out: Vec<Message> = specs.iter().map(build).collect();
+    // What the demo's own mail answers wears the replied arrow (#454), and a
+    // receipt passed on to the accountant the forwarded one.
+    let answered: std::collections::HashSet<String> = out
+        .iter()
+        .filter(|m| [ME, LAB, PERSONAL].contains(&m.from_addr.as_str()) && !m.references.is_empty())
+        .map(|m| m.references.clone())
+        .collect();
+    for m in out.iter_mut() {
+        m.answered = answered.contains(&m.message_id);
+        m.forwarded = m.id == 11;
+    }
     // HYLKI_DEMO_BULK=N pads every account's Inbox and Sent with N more
     // messages, to exercise the list at a real mailbox's size.
     if let Some(n) = std::env::var("HYLKI_DEMO_BULK").ok().and_then(|v| v.parse::<u32>().ok()) {
@@ -824,12 +872,15 @@ fn sample_messages() -> Vec<Message> {
                         timestamp: base - 3600 * (i as i64 + 1) - account_id as i64,
                         unread: !sent && i % 7 == 0,
                         starred: i % 41 == 0,
+                        answered: false,
+                        forwarded: false,
                         keywords: Vec::new(),
                         has_attachment: false,
                         message_id: format!("<bulk-{id}@hylki.local>"),
                         references: String::new(),
                         importance: Default::default(),
                         due: 0,
+                        labels: Vec::new(),
                     });
                 }
             }

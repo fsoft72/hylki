@@ -301,7 +301,8 @@ impl SimpleComponent for CloudAccounts {
                         self.close_editor();
                     }
                     let a = self.accounts.remove(i);
-                    crate::config::delete_cloud_password(&a.key());
+                    let key = a.key();
+                    crate::config::keyring_later(move || crate::config::delete_cloud_password(&key));
                     cloud::save_accounts(&self.accounts);
                     self.rebuild(&sender);
                     self.toast(&i18n_f("Removed {name}", &[("name", &a.name)]));
@@ -329,17 +330,30 @@ impl SimpleComponent for CloudAccounts {
                 }
             }
             CloudAccountsInput::Save { index, account, password } => {
+                // On the keyring thread, in order: the new entry, then the
+                // old one dropped.
                 if !password.is_empty() && account.has_secret() {
-                    if let Err(e) = crate::config::store_cloud_password(&account.key(), &password) {
-                        self.toast(&i18n_f("Could not store the sign-in in the keyring: {e}", &[("e", &e.to_string())]));
-                    }
+                    let key = account.key();
+                    let s = sender.input_sender().clone();
+                    crate::config::keyring_then(
+                        move || crate::config::store_cloud_password(&key, &password).map_err(|e| e.to_string()),
+                        move |stored| {
+                            if let Err(e) = stored {
+                                s.emit(CloudAccountsInput::Failed(i18n_f(
+                                    "Could not store the sign-in in the keyring: {e}",
+                                    &[("e", &e)],
+                                )));
+                            }
+                        },
+                    );
                 }
                 match index {
                     Some(i) if i < self.accounts.len() => {
                         // A changed server or user name moves the keyring
                         // entry: drop the old one.
                         if self.accounts[i].key() != account.key() {
-                            crate::config::delete_cloud_password(&self.accounts[i].key());
+                            let old = self.accounts[i].key();
+                            crate::config::keyring_later(move || crate::config::delete_cloud_password(&old));
                         }
                         self.accounts[i] = account;
                     }
@@ -890,10 +904,26 @@ fn build_editor(
         let apply_terms = apply_terms.clone();
         check.connect_clicked(move |b| {
             let a = read();
+            /// A typed password, or else the saved one, read on the sign-in's
+            /// thread: the keyring may wait on its user (#466).
+            struct Password {
+                typed: String,
+                saved: Option<String>,
+                missing: String,
+            }
+            impl Password {
+                fn get(self) -> Result<String, String> {
+                    if !self.typed.is_empty() {
+                        return Ok(self.typed);
+                    }
+                    let Some(key) = self.saved else { return Ok(String::new()) };
+                    crate::config::load_cloud_password(&key).filter(|p| !p.is_empty()).ok_or(self.missing)
+                }
+            }
             enum Job {
-                Verify(CloudAccount, String),
+                Verify(CloudAccount, Password),
                 Dropbox(CloudAccount),
-                SeafileCode(CloudAccount, String, String),
+                SeafileCode(CloudAccount, Password, String),
             }
             type Outcome = (String, Option<(String, String, String)>, Option<Option<cloud::LinkTerms>>);
             let job = if a.kind.via_goa() {
@@ -902,7 +932,7 @@ fn build_editor(
                     return;
                 }
                 status.set_label(&i18n("Signing in…"));
-                Job::Verify(a, String::new())
+                Job::Verify(a, Password { typed: String::new(), saved: None, missing: String::new() })
             } else if a.kind == CloudKind::Dropbox {
                 if cloud::dropbox_client_id(&a).is_empty() {
                     status.set_label(&i18n("Enter the app key of a Dropbox app first."));
@@ -911,19 +941,17 @@ fn build_editor(
                 status.set_label(&i18n("Waiting for the sign-in in your browser…"));
                 Job::Dropbox(a)
             } else {
-                let pw = match pass.text().to_string() {
-                    p if !p.is_empty() => p,
-                    _ => crate::config::load_cloud_password(&existing.key()).unwrap_or_default(),
+                let missing = if a.kind == CloudKind::Seafile {
+                    i18n("Fill in the server URL, e-mail and password first.")
+                } else {
+                    i18n("Fill in the server URL, user name and app password first.")
                 };
-                if a.url.is_empty() || a.user.is_empty() || pw.is_empty() {
-                    status.set_label(&if a.kind == CloudKind::Seafile {
-                        i18n("Fill in the server URL, e-mail and password first.")
-                    } else {
-                        i18n("Fill in the server URL, user name and app password first.")
-                    });
+                if a.url.is_empty() || a.user.is_empty() {
+                    status.set_label(&missing);
                     return;
                 }
                 status.set_label(&i18n("Signing in…"));
+                let pw = Password { typed: pass.text().to_string(), saved: Some(existing.key()), missing };
                 let otp = code.text().trim().to_string();
                 if a.kind == CloudKind::Seafile && !otp.is_empty() {
                     Job::SeafileCode(a, pw, otp)
@@ -935,14 +963,18 @@ fn build_editor(
             let (tx, rx) = std::sync::mpsc::channel::<Result<Outcome, String>>();
             std::thread::spawn(move || {
                 let r = match job {
-                    Job::Verify(a, pw) => cloud::verify(&a, &pw).map(|who| {
-                        let terms = cloud::probe_link_terms(&a, &pw).ok();
-                        (who, None, terms)
+                    Job::Verify(a, pw) => pw.get().and_then(|pw| {
+                        cloud::verify(&a, &pw).map(|who| {
+                            let terms = cloud::probe_link_terms(&a, &pw).ok();
+                            (who, None, terms)
+                        })
                     }),
                     Job::Dropbox(a) => cloud::dropbox_connect(&a)
                         .map(|(refresh, email, who)| (format!("{who} ({email})"), Some((refresh, email, who)), None)),
-                    Job::SeafileCode(a, pw, otp) => cloud::seafile_login_with_code(&a, &pw, &otp)
-                        .map(|(token, who)| (who.clone(), Some((token, a.user.clone(), who)), None)),
+                    Job::SeafileCode(a, pw, otp) => pw.get().and_then(|pw| {
+                        cloud::seafile_login_with_code(&a, &pw, &otp)
+                            .map(|(token, who)| (who.clone(), Some((token, a.user.clone(), who)), None))
+                    }),
                 };
                 let _ = tx.send(r);
             });

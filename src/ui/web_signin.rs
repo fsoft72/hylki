@@ -17,15 +17,21 @@ use crate::oauth::Authorization;
 /// Open the sign-in for `settings` and hand `done` the request and the
 /// authorization code once the provider redirects, or why there is none
 /// (the window was closed, or the provider refused). `user` is the address
-/// being signed in, when known: it picks the identity broker's account.
+/// being signed in, when known: it picks the identity broker's account, and
+/// with `hint` Microsoft's sign-in goes straight to it.
 pub fn run(
     parent: Option<&gtk::Window>,
     settings: &OAuthSettings,
     user: Option<String>,
+    hint: bool,
     done: impl FnOnce(Result<(Authorization, String), String>) + 'static,
 ) {
-    let extra = if settings.token_url.contains("microsoftonline") { "&prompt=select_account" } else { "" };
-    let request = match Authorization::new(settings, settings.redirect_uri.trim(), extra) {
+    let extra = if settings.token_url.contains("microsoftonline") {
+        crate::oauth::microsoft_prompt(user.as_deref().filter(|_| hint))
+    } else {
+        String::new()
+    };
+    let request = match Authorization::new(settings, settings.redirect_uri.trim(), &extra) {
         Ok(r) => r,
         Err(e) => return done(Err(e)),
     };

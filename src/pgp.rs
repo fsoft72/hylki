@@ -531,15 +531,15 @@ impl KeyValidity {
     }
 
     pub fn label(self) -> String {
-        i18n(match self {
-            KeyValidity::Revoked => "Revoked",
-            KeyValidity::Expired => "Expired",
-            KeyValidity::Unknown => "Not trusted yet",
-            KeyValidity::Never => "Marked as not trusted",
-            KeyValidity::Marginal => "Marginally trusted",
-            KeyValidity::Full => "Trusted",
-            KeyValidity::Ultimate => "Your own key",
-        })
+        match self {
+            KeyValidity::Revoked => i18n("Revoked"),
+            KeyValidity::Expired => i18n("Expired"),
+            KeyValidity::Unknown => i18n("Not trusted yet"),
+            KeyValidity::Never => i18n("Marked as not trusted"),
+            KeyValidity::Marginal => i18n("Marginally trusted"),
+            KeyValidity::Full => i18n("Trusted"),
+            KeyValidity::Ultimate => i18n("Your own key"),
+        }
     }
 }
 

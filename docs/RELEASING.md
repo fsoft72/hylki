@@ -67,6 +67,15 @@ the site all link into the documentation, so a broken link ships as a broken
 link. It also catches a README that has crept past its budget, and a
 contributor line the About window would silently drop.
 
+## Tags stay
+
+Distribution packages build from a tag's source archive,
+`archive/refs/tags/vX.Y.Z.tar.gz`, so a deleted tag breaks them (#420). Every
+tag of the current stable series stays. Once the next minor's first release is
+out, the old series keeps only its last tag: with 1.44.0 published, 1.43.4 stays
+and 1.43.0 to 1.43.3 go. A beta's tag and release page go once the next beta
+supersedes them, after its release page and notes are up.
+
 ## Every release gets a section
 
 `RELEASE_NOTES.md` needs an entry for every version, betas included: the About

@@ -381,6 +381,7 @@ pub fn message_bytes(m: &Message) -> usize {
         + m.message_id.len()
         + m.references.len()
         + m.keywords.iter().map(|k| std::mem::size_of::<String>() + k.len()).sum::<usize>()
+        + m.labels.iter().map(|l| std::mem::size_of::<String>() + l.len()).sum::<usize>()
 }
 
 /// The records and bytes of a batch of messages.
@@ -530,12 +531,15 @@ mod tests {
             timestamp: 0,
             unread: false,
             starred: false,
+            answered: false,
+            forwarded: false,
             keywords: Vec::new(),
             has_attachment: false,
             message_id: String::new(),
             references: String::new(),
             importance: Default::default(),
             due: 0,
+            labels: Vec::new(),
         };
         let empty = message_bytes(&m);
         assert_eq!(empty, std::mem::size_of::<Message>());

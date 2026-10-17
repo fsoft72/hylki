@@ -125,7 +125,8 @@ pub enum MessageWindowInput {
     /// Reflect a star toggle that happened elsewhere (or came back from the app).
     SetStarred(bool),
     /// The message's keywords changed (#71).
-    SetKeywords(Vec<String>),
+    /// Keywords and Gmail labels (#374).
+    SetKeywords(Vec<String>, Vec<String>),
     /// The tag definitions changed.
     SetTags(Vec<crate::config::Tag>),
     /// A member's downloaded attachments are now available.
@@ -157,8 +158,8 @@ pub enum MessageWindowInput {
     SetReaderMode(bool),
     SetZoom(u32),
     SetZoomDefault(u32),
-    /// The zoom chip was clicked in this window.
-    ZoomReset,
+    /// A zoom step (or the chip's reset, 0) asked for in this window.
+    Zoom(i8),
     SetReaderSwitchShown(bool),
     SetThemeSwitchShown(bool),
     SetReaderDefault(crate::config::ReaderDefault),
@@ -239,8 +240,9 @@ pub enum MessageWindowOutput {
         invite: Box<crate::models::Invite>,
         action: crate::ui::message_view::InviteAction,
     },
-    /// The zoom chip was clicked in this window: back to the default.
-    ZoomReset,
+    /// A zoom step in this window: in (1), out (-1), or back to the
+    /// default (0).
+    Zoom(i8),
     /// A per-message action handled exactly like a list/context-menu action.
     Action { action: RowAction, message: Box<Message> },
     /// Add this sender to Contacts.
@@ -347,7 +349,7 @@ impl Component for MessageWindow {
                 MessageViewOutput::ReloadBody(m) => MessageWindowInput::ReloadBody(m),
                 MessageViewOutput::Notice(text) => MessageWindowInput::Notice(text),
                 MessageViewOutput::ReaderMode(on) => MessageWindowInput::ReaderMode(on),
-                MessageViewOutput::ZoomReset => MessageWindowInput::ZoomReset,
+                MessageViewOutput::Zoom(step) => MessageWindowInput::Zoom(step),
                 MessageViewOutput::Unsubscribe { message, info } => {
                     MessageWindowInput::Unsubscribe { message, info }
                 }
@@ -488,8 +490,8 @@ impl Component for MessageWindow {
             MessageWindowInput::SetZoomDefault(percent) => {
                 self.view.emit(MessageViewInput::SetZoomDefault(percent));
             }
-            MessageWindowInput::ZoomReset => {
-                let _ = sender.output(MessageWindowOutput::ZoomReset);
+            MessageWindowInput::Zoom(step) => {
+                let _ = sender.output(MessageWindowOutput::Zoom(step));
             }
             MessageWindowInput::SetReaderMode(on) => {
                 self.view.emit(MessageViewInput::SetReaderMode(on));
@@ -566,17 +568,20 @@ impl Component for MessageWindow {
                 self.msg.unread = unread;
                 self.sync_toolbar();
             }
-            MessageWindowInput::SetKeywords(keywords) => {
+            MessageWindowInput::SetKeywords(keywords, labels) => {
                 self.msg.keywords = keywords.clone();
+                self.msg.labels = labels.clone();
                 for m in self.thread.iter_mut() {
                     if m.account_id == self.msg.account_id && m.id == self.msg.id {
                         m.keywords = keywords.clone();
+                        m.labels = labels.clone();
                     }
                 }
                 self.view.emit(MessageViewInput::SetCardKeywords {
                     account_id: self.msg.account_id,
                     id: self.msg.id,
                     keywords,
+                    labels,
                 });
             }
             MessageWindowInput::SetTags(tags) => {

@@ -10,6 +10,39 @@ msgstr ""
 "Content-Transfer-Encoding: 8bit\n"
 "Plural-Forms: nplurals=2; plural=(n != 1);\n"
 
+msgid "Date (Newest first)"
+msgstr ""
+
+msgid "Date (Oldest first)"
+msgstr ""
+
+msgid "Sender (A–Z)"
+msgstr ""
+
+msgid "Subject (A–Z)"
+msgstr ""
+
+msgid "Unread first"
+msgstr ""
+
+msgid "Starred first"
+msgstr ""
+
+msgid "Sort by"
+msgstr ""
+
+msgid "Show only"
+msgstr ""
+
+msgid "Clear Filters"
+msgstr ""
+
+msgid "Sort and filter messages"
+msgstr ""
+
+msgid "Filtered: {names}"
+msgstr ""
+
 msgid "Refresh or long-press for Status Bar"
 msgstr ""
 
@@ -26,15 +59,6 @@ msgid "Search messages (Ctrl+F)"
 msgstr ""
 
 msgid "Search, filters and sort"
-msgstr ""
-
-msgid "Show only unread"
-msgstr ""
-
-msgid "Show only starred"
-msgstr ""
-
-msgid "Sort messages"
 msgstr ""
 
 msgid "Edit this message"
@@ -124,24 +148,6 @@ msgstr ""
 msgid "Keyboard Shortcuts"
 msgstr ""
 
-msgid "Date (Newest first)"
-msgstr ""
-
-msgid "Date (Oldest first)"
-msgstr ""
-
-msgid "Sender (A–Z)"
-msgstr ""
-
-msgid "Subject (A–Z)"
-msgstr ""
-
-msgid "Unread first"
-msgstr ""
-
-msgid "Starred first"
-msgstr ""
-
 msgid "Create Folder"
 msgstr ""
 
@@ -190,6 +196,9 @@ msgid "Cancel"
 msgstr ""
 
 msgid "Delete All"
+msgstr ""
+
+msgid "The renderer applies the next time Hylki starts."
 msgstr ""
 
 msgid "The language applies the next time Hylki starts."
@@ -260,6 +269,9 @@ msgstr ""
 msgid "Could not import account: {e}"
 msgstr ""
 
+msgid "Could not save the message: {e}"
+msgstr ""
+
 msgid "No address book available"
 msgstr ""
 
@@ -295,7 +307,108 @@ msgstr ""
 msgid "About"
 msgstr ""
 
+msgid "Select a conversation first."
+msgstr ""
+
 msgid "Remove Tags"
+msgstr ""
+
+msgid "Action"
+msgstr ""
+
+msgid "New Message"
+msgstr ""
+
+msgid "New Message from Template"
+msgstr ""
+
+msgid "Reply to All"
+msgstr ""
+
+msgid "Edit as New Message"
+msgstr ""
+
+msgid "View Source"
+msgstr ""
+
+msgid "Print"
+msgstr ""
+
+msgid "Print Preview"
+msgstr ""
+
+msgid "Find in Message"
+msgstr ""
+
+msgid "Delete"
+msgstr ""
+
+msgid "Delete Permanently"
+msgstr ""
+
+msgid "Star or Remove Star"
+msgstr ""
+
+msgid "Mark as Read or Unread"
+msgstr ""
+
+msgid "Move to Folder"
+msgstr ""
+
+msgid "Open Message File…"
+msgstr ""
+
+msgid "Undo"
+msgstr ""
+
+msgid "Redo"
+msgstr ""
+
+msgid "Check for New Mail"
+msgstr ""
+
+msgid "Search Messages"
+msgstr ""
+
+msgid "Show or Hide the Sidebar"
+msgstr ""
+
+msgid "Mail Accounts"
+msgstr ""
+
+msgid "New Smart Folder…"
+msgstr ""
+
+msgid "About Hylki"
+msgstr ""
+
+msgid "Turn Focus Mode On"
+msgstr ""
+
+msgid "Turn Focus Mode Off"
+msgstr ""
+
+msgid "View"
+msgstr ""
+
+msgid "All accounts"
+msgstr ""
+
+msgid "Contacts"
+msgstr ""
+
+msgid "Outbox"
+msgstr ""
+
+msgid "Tag"
+msgstr ""
+
+msgid "Smart Folder"
+msgstr ""
+
+msgid ""
+"Single-key shortcuts are switched off, and Gmail keys with them. Turn them "
+"on in Settings → System."
 msgstr ""
 
 msgid ""
@@ -305,9 +418,6 @@ msgstr ""
 msgid "Your tags"
 msgstr ""
 
-msgid "Delete"
-msgstr ""
-
 msgid "Move to {name}"
 msgstr ""
 
@@ -315,12 +425,6 @@ msgid "Add Tag {name}"
 msgstr ""
 
 msgid "Remove Tag {name}"
-msgstr ""
-
-msgid "Undo"
-msgstr ""
-
-msgid "Redo"
 msgstr ""
 
 msgid "Restarting Hylki"
@@ -339,19 +443,13 @@ msgstr ""
 msgid "Restart Now"
 msgstr ""
 
-msgid "View Source"
-msgstr ""
-
 msgid "Move to Inbox"
 msgstr ""
 
-msgid "Find in Message"
-msgstr ""
-
-msgid "Print Preview"
-msgstr ""
-
 msgid "Search Messages…"
+msgstr ""
+
+msgid "Filter"
 msgstr ""
 
 msgid "Sort"
@@ -366,10 +464,10 @@ msgstr ""
 msgid "Edit Template"
 msgstr ""
 
-msgid "Edit as New Message"
+msgid "Add Sender to Contacts"
 msgstr ""
 
-msgid "Add Sender to Contacts"
+msgid "Create Filter from Message…"
 msgstr ""
 
 msgid "Block Remote Content"
@@ -384,13 +482,29 @@ msgstr ""
 msgid "Collapse All Messages"
 msgstr ""
 
+msgid "Save as File…"
+msgstr ""
+
 msgid "Print…"
 msgstr ""
 
-msgid "Delete {n} messages"
+msgid "Save Message"
 msgstr ""
 
-msgid "New Message"
+msgid "Open Message File"
+msgstr ""
+
+msgid "Email messages"
+msgstr ""
+
+#. Other programs name files .msg too (Tcl's catalogues).
+msgid "it is not an Outlook message"
+msgstr ""
+
+msgid "Could not open {file}: {e}"
+msgstr ""
+
+msgid "Delete {n} messages"
 msgstr ""
 
 msgid "Could not attach {names}: Hylki cannot read the file."
@@ -442,9 +556,6 @@ msgstr ""
 msgid "Upload to Cloud Storage"
 msgstr ""
 
-msgid "New Message from Template"
-msgstr ""
-
 msgid "The new message starts as a copy of the template you pick."
 msgstr ""
 
@@ -491,6 +602,16 @@ msgstr ""
 msgid ""
 "They are already in Trash, so they will be erased from the server. This "
 "can’t be undone."
+msgstr ""
+
+msgid ""
+"It will be erased from the server instead of going to Trash. This can’t be "
+"undone."
+msgstr ""
+
+msgid ""
+"They will be erased from the server instead of going to Trash. This can’t be "
+"undone."
 msgstr ""
 
 msgid "No {v1} folder available"
@@ -564,10 +685,27 @@ msgstr ""
 msgid "Empty"
 msgstr ""
 
+msgid "Empty Trash in Every Account?"
+msgstr ""
+
+msgid "Empty Junk in Every Account?"
+msgstr ""
+
+msgid ""
+"Every message in them will be erased from the server. This can’t be undone."
+msgstr ""
+
 msgid "No Junk folder available for this account"
 msgstr ""
 
 msgid "No Inbox folder available for this account"
+msgstr ""
+
+msgid "Delete “{name}”?"
+msgstr ""
+
+msgid ""
+"The smart folder goes from the sidebar. The mail it shows stays where it is."
 msgstr ""
 
 msgid "No address book available to add contacts"
@@ -775,6 +913,11 @@ msgstr ""
 msgid "Unsubscribe"
 msgstr ""
 
+msgid "Also delete the message from {addr}"
+msgid_plural "Also delete the {n} messages from {addr}"
+msgstr[0] ""
+msgstr[1] ""
+
 msgid "the message offers no way to unsubscribe"
 msgstr ""
 
@@ -785,6 +928,113 @@ msgid "Full Release Notes on GitHub"
 msgstr ""
 
 msgid "Move around"
+msgstr ""
+
+msgid ""
+"Move down or up the list without opening; while reading, open the next or "
+"previous conversation"
+msgstr ""
+
+msgid "Open the message the cursor is on"
+msgstr ""
+
+msgid "Close the conversation, back to the list"
+msgstr ""
+
+msgid "Next or previous message in the conversation"
+msgstr ""
+
+msgid "Expand or collapse every message of the conversation"
+msgstr ""
+
+msgid "Go to Inbox"
+msgstr ""
+
+msgid "Go to Starred"
+msgstr ""
+
+msgid "Go to Sent"
+msgstr ""
+
+msgid "Go to Drafts"
+msgstr ""
+
+msgid "Go to Archive"
+msgstr ""
+
+msgid "Go to Contacts"
+msgstr ""
+
+msgid "Search"
+msgstr ""
+
+msgid "Act on a message"
+msgstr ""
+
+msgid "Reply to all"
+msgstr ""
+
+msgid "Archive the conversation"
+msgstr ""
+
+msgid "Archive the conversation and open the older one"
+msgstr ""
+
+msgid "Archive the conversation and open the newer one"
+msgstr ""
+
+msgid "Delete permanently, without going to Trash"
+msgstr ""
+
+msgid "Mark as spam"
+msgstr ""
+
+msgid "Star or unstar"
+msgstr ""
+
+msgid "Mark the conversation as read"
+msgstr ""
+
+msgid "Mark the conversation as unread and close it"
+msgstr ""
+
+msgid "Mark as unread from this message on and close it"
+msgstr ""
+
+msgid "Select this row without opening it"
+msgstr ""
+
+msgid "Select every row, or none"
+msgstr ""
+
+msgid "Select the read or the unread conversations"
+msgstr ""
+
+msgid "Select the starred or the unstarred conversations"
+msgstr ""
+
+msgid "Move to a folder"
+msgstr ""
+
+msgid "Undo the last action"
+msgstr ""
+
+msgid "Add or remove a tag (the first nine, in Settings order)"
+msgstr ""
+
+msgid "Reply, or reply to all, in a window"
+msgstr ""
+
+msgid "Forward in a window"
+msgstr ""
+
+msgid "Compose"
+msgstr ""
+
+msgid "Compose in a window"
+msgstr ""
+
+msgid "Check for new mail"
 msgstr ""
 
 msgid "Next message"
@@ -805,28 +1055,10 @@ msgstr ""
 msgid "Previous message in the conversation"
 msgstr ""
 
-msgid "Search"
-msgstr ""
-
-msgid "Act on a message"
-msgstr ""
-
-msgid "Reply to all"
-msgstr ""
-
-msgid "Mark as spam"
-msgstr ""
-
-msgid "Star or unstar"
-msgstr ""
-
 msgid "Mark read or unread"
 msgstr ""
 
 msgid "Select this row (for a bulk action)"
-msgstr ""
-
-msgid "Add or remove a tag (the first nine, in Settings order)"
 msgstr ""
 
 msgid "Remove every tag"
@@ -839,9 +1071,6 @@ msgid "Preview it as a PDF first"
 msgstr ""
 
 msgid "Writing"
-msgstr ""
-
-msgid "Compose"
 msgstr ""
 
 msgid "New message from a template"
@@ -907,6 +1136,12 @@ msgstr ""
 msgid "Quit Hylki entirely"
 msgstr ""
 
+msgid "Command palette: search actions, folders and tags"
+msgstr ""
+
+msgid "Command palette, actions only"
+msgstr ""
+
 msgid "This list"
 msgstr ""
 
@@ -929,6 +1164,15 @@ msgid "Search by sender, subject or account"
 msgstr ""
 
 msgid "(no subject)"
+msgstr ""
+
+msgid "archive"
+msgstr ""
+
+msgid "trash"
+msgstr ""
+
+msgid "destination"
 msgstr ""
 
 msgid "Default"
@@ -958,6 +1202,9 @@ msgid_plural "{n} unread messages"
 msgstr[0] ""
 msgstr[1] ""
 
+msgid "Signature"
+msgstr ""
+
 msgid "Custom Order"
 msgstr ""
 
@@ -968,6 +1215,18 @@ msgid "Name (Z to A)"
 msgstr ""
 
 msgid "Full Path"
+msgstr ""
+
+msgid "With sent mail"
+msgstr ""
+
+msgid "Folder of the original"
+msgstr ""
+
+msgid "Folder of the original, not the Inbox"
+msgstr ""
+
+msgid "Replied"
 msgstr ""
 
 msgid "Sender"
@@ -1009,9 +1268,6 @@ msgstr ""
 msgid "Find"
 msgstr ""
 
-msgid "Print"
-msgstr ""
-
 msgid "Hylki Address Book"
 msgstr ""
 
@@ -1027,10 +1283,40 @@ msgstr ""
 msgid "Evolution Data Server is not available"
 msgstr ""
 
-msgid "The directory needs a password. Add it in Settings → LDAP Directories."
+msgid ""
+"The directory cannot be searched without signing in. Add a sign-in in "
+"Settings → LDAP Directories."
 msgstr ""
 
 msgid "The directory did not accept the password."
+msgstr ""
+
+msgid "The directory's certificate could not be verified."
+msgstr ""
+
+msgid "The directory's certificate could not be verified: {error}"
+msgstr ""
+
+msgid ""
+"Could not connect to {server} over TLS. Check the server, the port and that "
+"it takes LDAPS."
+msgstr ""
+
+msgid "Could not connect to {server}. Check the server and the port."
+msgstr ""
+
+msgid ""
+"Could not start StartTLS with {server}: the server does not offer it, or its "
+"certificate is not trusted."
+msgstr ""
+
+msgid "Could not reach {server}. Check the server's name and the network."
+msgstr ""
+
+msgid "The directory needs a password. Add it in Settings → LDAP Directories."
+msgstr ""
+
+msgid "{name} did not answer: {error}"
 msgstr ""
 
 msgid "A contact needs a name or an email address"
@@ -1052,6 +1338,18 @@ msgid "{used} of {limit} used"
 msgstr ""
 
 msgid "{free} free ({pct}%)"
+msgstr ""
+
+msgid "Verified sender"
+msgstr ""
+
+msgid "Sender not verified"
+msgstr ""
+
+msgid "Check this sender"
+msgstr ""
+
+msgid "Possible forgery"
 msgstr ""
 
 msgid "Encrypted message"
@@ -1139,6 +1437,15 @@ msgstr ""
 msgid "This message hasn't been checked."
 msgstr ""
 
+msgid "just now"
+msgstr ""
+
+msgid "{n} minutes ago"
+msgstr ""
+
+msgid "an hour ago"
+msgstr ""
+
 msgid "{n} hours ago"
 msgstr ""
 
@@ -1170,6 +1477,18 @@ msgid "A new message with {n} file attached is open in Hylki."
 msgid_plural "A new message with {n} files attached is open in Hylki."
 msgstr[0] ""
 msgstr[1] ""
+
+msgid "Sending message…"
+msgstr ""
+
+msgid "Sending “{subject}”…"
+msgstr ""
+
+msgid "Waiting to send"
+msgstr ""
+
+msgid "Sending…"
+msgstr ""
 
 msgid ""
 "{reason} If your organization manages your account, an administrator can "
@@ -1206,6 +1525,27 @@ msgid "Signed with key {id}."
 msgstr ""
 
 msgid "Import the sender's public key to verify it."
+msgstr ""
+
+msgid "Revoked"
+msgstr ""
+
+msgid "Expired"
+msgstr ""
+
+msgid "Not trusted yet"
+msgstr ""
+
+msgid "Marked as not trusted"
+msgstr ""
+
+msgid "Marginally trusted"
+msgstr ""
+
+msgid "Trusted"
+msgstr ""
+
+msgid "Your own key"
 msgstr ""
 
 msgid "No key was found in that file."
@@ -1271,6 +1611,33 @@ msgstr ""
 msgid "Enter the LibreTranslate server's address in Settings → Translation."
 msgstr ""
 
+msgid "Labeled"
+msgstr ""
+
+msgid "Personal"
+msgstr ""
+
+msgid "Private"
+msgstr ""
+
+msgid "Confidential"
+msgstr ""
+
+msgid "The sender marked this message “{label}”."
+msgstr ""
+
+msgid ""
+"The sender's organization labeled this message without naming the label in "
+"it. For a Microsoft 365 account, turning on “Show sensitivity label names” "
+"in its settings shows the name. Hylki shows the label but does not apply its "
+"rules."
+msgstr ""
+
+msgid ""
+"The sender's organization labeled this message “{label}”. Hylki shows the "
+"label but does not apply its rules."
+msgstr ""
+
 msgid "Open Hylki"
 msgstr ""
 
@@ -1322,10 +1689,10 @@ msgstr ""
 msgid "Enable POP/IMAP access in GMX settings first."
 msgstr ""
 
-msgid "Mail Accounts"
+msgid "Drag to set the order they appear in the sidebar."
 msgstr ""
 
-msgid "Drag to set the order they appear in the sidebar."
+msgid "Check GNOME Online Accounts for new accounts"
 msgstr ""
 
 msgid "Add Account…"
@@ -1353,6 +1720,18 @@ msgid "Look through every mailbox for tags other clients have set"
 msgstr ""
 
 msgid "Find Tags…"
+msgstr ""
+
+msgid "Smart Folders"
+msgstr ""
+
+msgid ""
+"A smart folder lists the messages that match its conditions, from every "
+"folder or one kind of folder, in one account or all of them. It searches the "
+"mail on this computer and appears in the sidebar under the unified rows."
+msgstr ""
+
+msgid "Add Smart Folder…"
 msgstr ""
 
 msgid "Search filters"
@@ -1615,16 +1994,24 @@ msgstr ""
 msgid "Add Alias…"
 msgstr ""
 
-msgid "Signature"
+msgid "Signatures"
 msgstr ""
 
-msgid "Appended to new messages sent from this account."
+msgid ""
+"Put in messages sent from this account. With more than one, the composer's "
+"signature button lists them."
 msgstr ""
 
-msgid "Edit HTML…"
+msgid "Add Signature"
 msgstr ""
 
 msgid "Import File…"
+msgstr ""
+
+msgid "Delete Signature"
+msgstr ""
+
+msgid "Start messages with this signature"
 msgstr ""
 
 msgid "Syncing"
@@ -1649,15 +2036,45 @@ msgid ""
 "Delete mail in the Trash older than this for good, checked at each sync."
 msgstr ""
 
+msgid "Move list mail to Trash"
+msgstr ""
+
+msgid ""
+"Inbox mail from mailing lists and newsletters (anything with an unsubscribe "
+"link) older than this, unless starred. Checked at each sync."
+msgstr ""
+
+msgid "Microsoft 365"
+msgstr ""
+
+msgid "Search the organization directory"
+msgstr ""
+
+msgid "Suggest people from your organization as you type a recipient."
+msgstr ""
+
+msgid "Suggest only from this account"
+msgstr ""
+
+msgid ""
+"Writing from this account, suggest people from the directory and from its "
+"own mail, not from Contacts, LDAP directories or other accounts."
+msgstr ""
+
+msgid "Show sensitivity label names"
+msgstr ""
+
+msgid ""
+"Name a message's label from your organization's list when the message gives "
+"only its ID."
+msgstr ""
+
 msgid "Folder Order"
 msgstr ""
 
 msgid ""
 "How this account's folders are sorted in the sidebar. Also in the right-"
 "click menu of its Folders heading."
-msgstr ""
-
-msgid "Sort by"
 msgstr ""
 
 msgid "Special Folders"
@@ -1676,12 +2093,15 @@ msgstr ""
 msgid "Save a copy of sent mail in"
 msgstr ""
 
+msgid "Save a copy of replies in"
+msgstr ""
+
 msgid "Server saves its own copy of sent mail"
 msgstr ""
 
 msgid ""
-"For Gmail and others that file sent mail themselves. Disables above Save a "
-"copy."
+"For Gmail and others that file sent mail themselves. Disables both Save a "
+"copy rows above."
 msgstr ""
 
 msgid "Drafts"
@@ -1733,6 +2153,12 @@ msgid ""
 "plain text on disk."
 msgstr ""
 
+msgid "Edit HTML"
+msgstr ""
+
+msgid "Edit the signature's HTML source"
+msgstr ""
+
 msgid "Follow Settings"
 msgstr ""
 
@@ -1757,15 +2183,16 @@ msgstr ""
 msgid "Opening browser… complete sign-in there."
 msgstr ""
 
-msgid "Signature HTML"
+msgid "Opening browser… approve access to the directory there."
 msgstr ""
 
-msgid ""
-"Paste or edit the signature's HTML. Scripts and style sheets are removed; "
-"inline styles, tables and images are kept."
+msgid "Approve access to the directory in the window that opened."
 msgstr ""
 
-msgid "Apply"
+msgid "Opening browser… approve access to the sensitivity labels there."
+msgstr ""
+
+msgid "Approve access to the sensitivity labels in the window that opened."
 msgstr ""
 
 msgid "Import Signature"
@@ -1778,6 +2205,9 @@ msgid "Could Not Read the File"
 msgstr ""
 
 msgid "OK"
+msgstr ""
+
+msgid "Signature {n}"
 msgstr ""
 
 msgid "Enter a client ID and sign in before saving"
@@ -1794,10 +2224,27 @@ msgstr ""
 msgid "Sign-in failed: {e}"
 msgstr ""
 
+msgid "Access to the directory approved. Save the account to finish."
+msgstr ""
+
+msgid "Access to the directory was not approved: {e}"
+msgstr ""
+
+msgid "Access to the sensitivity labels approved. Save the account to finish."
+msgstr ""
+
+msgid "Access to the sensitivity labels was not approved: {e}"
+msgstr ""
+
 msgid "✓ SMTP: connected"
 msgstr ""
 
 msgid "✗ SMTP: {e}"
+msgstr ""
+
+#. The one label on the row goes when there is no width for it, the
+#. same trade the header makes when it folds.
+msgid "Preview"
 msgstr ""
 
 msgid "Show"
@@ -1817,6 +2264,12 @@ msgstr ""
 
 msgid ""
 "Kept on the server; change it through your provider's webmail interface."
+msgstr ""
+
+msgid "Edit Alias"
+msgstr ""
+
+msgid "Add Alias"
 msgstr ""
 
 msgid "Display name (optional)"
@@ -1871,10 +2324,30 @@ msgstr ""
 msgid "Added directly in Hylki"
 msgstr ""
 
+msgid "Paused: Mail is switched off for this account in GNOME Settings"
+msgstr ""
+
 msgid "Enable this account"
 msgstr ""
 
+msgid "Mail"
+msgstr ""
+
 msgid "Use this account in Hylki"
+msgstr ""
+
+msgid ""
+"Only for an account signed in within Hylki. To use these, add this account "
+"with Microsoft 365 / Outlook as the provider, instead of from GNOME Online "
+"Accounts."
+msgstr ""
+
+msgid ""
+"Turning one of these on asks Microsoft for access; some organizations need "
+"an administrator to approve it."
+msgstr ""
+
+msgid "Signed in as {address}, not {email}."
 msgstr ""
 
 msgid "Never"
@@ -1993,6 +2466,96 @@ msgstr ""
 msgid "{n} messages"
 msgstr ""
 
+msgid "All but Trash and Junk"
+msgstr ""
+
+msgid "Remove smart folder"
+msgstr ""
+
+msgid "Inbox"
+msgstr ""
+
+msgid "Starred"
+msgstr ""
+
+msgid "Not starred"
+msgstr ""
+
+msgid "Unread"
+msgstr ""
+
+msgid "Read"
+msgstr ""
+
+msgid "Has attachments"
+msgstr ""
+
+msgid "Tagged"
+msgstr ""
+
+msgid "Message preview"
+msgstr ""
+
+msgid "Edit Smart Folder"
+msgstr ""
+
+msgid "Add Smart Folder"
+msgstr ""
+
+msgid "All accounts means those in the unified section"
+msgstr ""
+
+msgid "Folders"
+msgstr ""
+
+msgid "Any tag"
+msgstr ""
+
+msgid "Remove condition"
+msgstr ""
+
+msgid "Where"
+msgstr ""
+
+msgid "Match"
+msgstr ""
+
+msgid "Commas separate alternatives; any one of them counts"
+msgstr ""
+
+msgid "Text to match"
+msgstr ""
+
+msgid "The preview each message has in the list"
+msgstr ""
+
+msgid "From address when no Reply-To is set"
+msgstr ""
+
+msgid "Looks in the system address books and the Hylki book"
+msgstr ""
+
+msgid "Add Condition"
+msgstr ""
+
+msgid "Condition matching"
+msgstr ""
+
+msgid "All must match"
+msgstr ""
+
+msgid "Any one may match"
+msgstr ""
+
+msgid "Condition {n}"
+msgstr ""
+
+msgid "Or where"
+msgstr ""
+
+msgid "And where"
+msgstr ""
+
 msgid ""
 "Press this key on a message to add or remove the tag (with single-key "
 "shortcuts on)"
@@ -2033,49 +2596,7 @@ msgstr ""
 msgid "Name (optional)"
 msgstr ""
 
-msgid "Remove condition"
-msgstr ""
-
-msgid "Where"
-msgstr ""
-
-msgid "Match"
-msgstr ""
-
-msgid "Commas separate alternatives; any one of them counts"
-msgstr ""
-
-msgid "Text to match"
-msgstr ""
-
 msgid "Searched on the server; nothing is downloaded"
-msgstr ""
-
-msgid "From address when no Reply-To is set"
-msgstr ""
-
-msgid "Looks in the system address books and the Hylki book"
-msgstr ""
-
-msgid "Add Condition"
-msgstr ""
-
-msgid "Condition matching"
-msgstr ""
-
-msgid "All must match"
-msgstr ""
-
-msgid "Any one may match"
-msgstr ""
-
-msgid "Condition {n}"
-msgstr ""
-
-msgid "Or where"
-msgstr ""
-
-msgid "And where"
 msgstr ""
 
 msgid "Then"
@@ -2164,6 +2685,9 @@ msgstr ""
 msgid "Delete from Server…"
 msgstr ""
 
+msgid "Download"
+msgstr ""
+
 msgid "Import OpenPGP key"
 msgstr ""
 
@@ -2185,6 +2709,12 @@ msgstr ""
 msgid ""
 "Try a different search, or check which accounts and folders the footer is "
 "pulling from."
+msgstr ""
+
+msgid "Type"
+msgstr ""
+
+msgid "Size"
 msgstr ""
 
 msgid "Thumbnail grid"
@@ -2271,10 +2801,13 @@ msgstr ""
 msgid "Go to Message"
 msgstr ""
 
-msgid "All accounts"
+msgid "Deleting…"
 msgstr ""
 
-msgid "Deleting…"
+msgid "Unknown"
+msgstr ""
+
+msgid "File"
 msgstr ""
 
 #. Deliberately counts messages, not attachments: until a message has
@@ -2309,6 +2842,12 @@ msgid "To remove {old}, run:"
 msgstr ""
 
 msgid "Copy"
+msgstr ""
+
+msgid "Command Palette"
+msgstr ""
+
+msgid "Type an action, a folder or a tag, or > for actions only"
 msgstr ""
 
 msgid "Cloud Storage"
@@ -2603,13 +3142,13 @@ msgstr ""
 msgid "Markdown"
 msgstr ""
 
-msgid "HTML"
+msgid "HTML source"
 msgstr ""
 
 msgid "Plain text"
 msgstr ""
 
-msgid "Format as you type, with the toolbar"
+msgid "Format as you type; it is sent as HTML"
 msgstr ""
 
 msgid "Write Markdown; it is sent as formatted mail"
@@ -2648,10 +3187,10 @@ msgstr ""
 msgid "Save as Template"
 msgstr ""
 
-msgid "Delete Draft"
+msgid "Move this draft to Trash"
 msgstr ""
 
-msgid "Move this draft to Trash"
+msgid "Delete Draft"
 msgstr ""
 
 msgid "Schedule"
@@ -2684,6 +3223,9 @@ msgstr ""
 msgid "Sign with your OpenPGP key"
 msgstr ""
 
+#. Save Draft, Save as Template and Delete Draft are not here:
+#. the Save Draft button and its arrow stay in the header at
+#. any width.
 msgid "Attach files"
 msgstr ""
 
@@ -2720,15 +3262,13 @@ msgstr ""
 msgid "Writing in {format}"
 msgstr ""
 
-#. The one label on the row goes when there is no width for it, the
-#. same trade the header makes when it folds.
-msgid "Preview"
-msgstr ""
-
 msgid "Show the message as it will be sent"
 msgstr ""
 
 msgid "Translate what you wrote"
+msgstr ""
+
+msgid "Insert Signature"
 msgstr ""
 
 msgid "More"
@@ -2769,6 +3309,15 @@ msgstr ""
 msgid "Typing"
 msgstr ""
 
+msgid "No Signature"
+msgstr ""
+
+msgid "Insert Before the Text"
+msgstr ""
+
+msgid "Insert After the Text"
+msgstr ""
+
 msgid "Show Original"
 msgstr ""
 
@@ -2795,6 +3344,15 @@ msgid "Write something first, or select the text to translate."
 msgstr ""
 
 msgid "Could not translate"
+msgstr ""
+
+msgid "Switch to plain text?"
+msgstr ""
+
+msgid "Formatting, images and links are removed."
+msgstr ""
+
+msgid "Switch"
 msgstr ""
 
 msgid "Cannot send with OpenPGP"
@@ -2884,9 +3442,6 @@ msgstr ""
 msgid "Not found"
 msgstr ""
 
-msgid "Contacts"
-msgstr ""
-
 msgid "Open in GNOME Contacts"
 msgstr ""
 
@@ -2929,6 +3484,9 @@ msgstr ""
 msgid "Last name"
 msgstr ""
 
+msgid "In Directories"
+msgstr ""
+
 msgid "Delete Contact?"
 msgstr ""
 
@@ -2946,7 +3504,35 @@ msgstr ""
 msgid "Delete…"
 msgstr ""
 
+msgid "Type three letters or more to search the directory."
+msgstr ""
+
+msgid "Nobody in the directory matches."
+msgstr ""
+
 msgid "View photo"
+msgstr ""
+
+msgid "Phone"
+msgstr ""
+
+msgid "Address"
+msgstr ""
+
+msgid "Birthday"
+msgstr ""
+
+#. ---- note ----
+msgid "Note"
+msgstr ""
+
+msgid "Directory"
+msgstr ""
+
+msgid "Address Book"
+msgstr ""
+
+msgid "Details"
 msgstr ""
 
 msgid "Edit Contact"
@@ -2955,10 +3541,20 @@ msgstr ""
 msgid "New Contact"
 msgstr ""
 
-msgid "Add email"
+#. ---- identity fields ----
+msgid "Identity"
 msgstr ""
 
-msgid "Phone"
+msgid "Nickname"
+msgstr ""
+
+msgid "Organization"
+msgstr ""
+
+msgid "Title"
+msgstr ""
+
+msgid "Add email"
 msgstr ""
 
 msgid "Add phone"
@@ -2984,8 +3580,8 @@ msgstr ""
 
 msgid ""
 "The composer looks up recipients in these directories as you type an "
-"address. They are kept by Evolution Data Server, so a directory set up in "
-"Evolution is listed here too."
+"address, and a search in Contacts looks in them too. They are kept by "
+"Evolution Data Server, so a directory set up in Evolution is listed here too."
 msgstr ""
 
 msgid "Add Directory…"
@@ -3010,7 +3606,7 @@ msgstr ""
 msgid "Connected to {name}"
 msgstr ""
 
-msgid "{name} did not answer: {error}"
+msgid "The server took too long to answer."
 msgstr ""
 
 msgid "Edit Directory"
@@ -3160,13 +3756,48 @@ msgstr ""
 msgid "me"
 msgstr ""
 
-msgid "Choose which folders to search"
+msgid "All folders (except trash & junk)"
+msgstr ""
+
+msgid "Everywhere"
+msgstr ""
+
+msgid "This folder"
 msgstr ""
 
 msgid "All folders"
 msgstr ""
 
-msgid "This folder"
+msgid ""
+"Every folder of every account, except Trash and Junk. A search started in "
+"Trash or Junk looks there too."
+msgstr ""
+
+msgid "Every folder of every account, Trash and Junk included."
+msgstr ""
+
+msgid "Only the folder or view the list is showing."
+msgstr ""
+
+msgid "What this searches"
+msgstr ""
+
+msgid "Has Attachments"
+msgstr ""
+
+msgid "Addressed to Me"
+msgstr ""
+
+msgid "From Contacts"
+msgstr ""
+
+msgid "High Importance"
+msgstr ""
+
+msgid "Today"
+msgstr ""
+
+msgid "Choose which folders to search"
 msgstr ""
 
 msgid "Clear selection"
@@ -3175,7 +3806,16 @@ msgstr ""
 msgid "No Messages"
 msgstr ""
 
+msgid "No Matching Messages"
+msgstr ""
+
 msgid "There's nothing here right now."
+msgstr ""
+
+msgid "No message here passes the filters."
+msgstr ""
+
+msgid "Customize Columns…"
 msgstr ""
 
 msgid "Remove Stars"
@@ -3190,16 +3830,43 @@ msgstr ""
 msgid "Mark All as Unread"
 msgstr ""
 
+msgid "Search all folders but Trash and Junk"
+msgstr ""
+
+msgid "Search all folders, Trash and Junk too"
+msgstr ""
+
+msgid "Search this folder"
+msgstr ""
+
+msgid "Yesterday"
+msgstr ""
+
+msgid "Last 7 days"
+msgstr ""
+
+msgid "Last 14 days"
+msgstr ""
+
+msgid "Older"
+msgstr ""
+
 msgid "Due"
 msgstr ""
 
 msgid "Drag to resize, double-click for the usual width"
 msgstr ""
 
+msgid "Forwarded"
+msgstr ""
+
 msgid "High importance"
 msgstr ""
 
 msgid "Low importance"
+msgstr ""
+
+msgid "In {folder}"
 msgstr ""
 
 msgid "Mark as read"
@@ -3285,13 +3952,23 @@ msgstr ""
 msgid "Translate"
 msgstr ""
 
-msgid "Starred"
+msgid "{n} conversation selected"
+msgid_plural "{n} conversations selected"
+msgstr[0] ""
+msgstr[1] ""
+
+msgid "{n} message selected"
+msgid_plural "{n} messages selected"
+msgstr[0] ""
+msgstr[1] ""
+
+msgid "No draft selected"
+msgstr ""
+
+msgid "No message selected"
 msgstr ""
 
 msgid "Received"
-msgstr ""
-
-msgid "Has attachments"
 msgstr ""
 
 msgid "Click to open this message"
@@ -3422,10 +4099,7 @@ msgstr ""
 msgid "Save…"
 msgstr ""
 
-msgid "No draft selected"
-msgstr ""
-
-msgid "No message selected"
+msgid "The actions above the list apply to all of them."
 msgstr ""
 
 msgid "Choose a draft from the list to edit it here."
@@ -3462,13 +4136,12 @@ msgid "Close find"
 msgstr ""
 
 msgid ""
-"Message zoom. Ctrl+ and Ctrl- change it; a click here, or Ctrl+0, puts it "
-"back to the default from Settings."
+"Message zoom. Ctrl+ and Ctrl-, or Ctrl and the scroll wheel, change it; a "
+"click here, or Ctrl+0, puts it back to the default from Settings."
 msgstr ""
 
 msgid ""
-"Shows this message dark or light, whatever the message theme. Other messages "
-"are not affected."
+"Show this message in light or dark mode. Other messages are not affected."
 msgstr ""
 
 msgid "Light / Dark Mode"
@@ -3574,6 +4247,9 @@ msgstr ""
 msgid "Hide quoted text"
 msgstr ""
 
+msgid "Message"
+msgstr ""
+
 msgid "Save Image"
 msgstr ""
 
@@ -3616,13 +4292,31 @@ msgstr ""
 msgid "Copy Image Address"
 msgstr ""
 
+msgid "From:"
+msgstr ""
+
+msgid "To:"
+msgstr ""
+
+msgid "Cc:"
+msgstr ""
+
+msgid "Date:"
+msgstr ""
+
 msgid "Clear all"
+msgstr ""
+
+msgid "Export log"
 msgstr ""
 
 msgid "Collapse status bar"
 msgstr ""
 
-msgid "Export log"
+msgid ""
+"Offline: there is no network connection, so mail is not being checked or "
+"sent. Messages you send wait in the Outbox. Everything syncs again once the "
+"network is back."
 msgstr ""
 
 msgid "Status bar ({n})"
@@ -3762,9 +4456,6 @@ msgstr ""
 msgid "Generate"
 msgstr ""
 
-msgid "Address"
-msgstr ""
-
 msgid "Expires"
 msgstr ""
 
@@ -3803,9 +4494,6 @@ msgstr ""
 msgid "Delete this key"
 msgstr ""
 
-msgid "Trusted"
-msgstr ""
-
 msgid "Trust…"
 msgstr ""
 
@@ -3824,6 +4512,12 @@ msgid "App icon"
 msgstr ""
 
 msgid "Symbolic"
+msgstr ""
+
+msgid "All unread inbox mail"
+msgstr ""
+
+msgid "New since last in front"
 msgstr ""
 
 msgid "Follow system"
@@ -3962,6 +4656,14 @@ msgstr ""
 msgid "Installed, but not this version's copy"
 msgstr ""
 
+msgid "Measuring…"
+msgstr ""
+
+msgid ""
+"Messages {bodies}, attachments {files}. The cache, message list included, is "
+"{total}."
+msgstr ""
+
 msgid "Search Settings"
 msgstr ""
 
@@ -3977,6 +4679,14 @@ msgstr ""
 msgid ""
 "The filter editor is open. Save what you changed, or discard it, before "
 "moving on."
+msgstr ""
+
+msgid "Save the smart folder?"
+msgstr ""
+
+msgid ""
+"The smart folder editor is open. Save what you changed, or discard it, "
+"before moving on."
 msgstr ""
 
 msgid "Save the tag?"
@@ -4045,12 +4755,18 @@ msgid ""
 "when it is made."
 msgstr ""
 
-msgid "Check for new mail"
-msgstr ""
-
 msgid ""
 "Receives messages the moment they arrive. Microsoft 365 accounts check at "
 "the interval above."
+msgstr ""
+
+msgid "Save data on metered connections"
+msgstr ""
+
+msgid ""
+"On a metered connection, new mail still arrives, but Hylki does not download "
+"messages and attachments ahead of time, index older mail, watch folders "
+"other than the Inbox or fetch sender logos."
 msgstr ""
 
 msgid "Notifications"
@@ -4120,6 +4836,14 @@ msgid ""
 msgstr ""
 
 msgid "Theme"
+msgstr ""
+
+msgid "Use the desktop's icons"
+msgstr ""
+
+msgid ""
+"Draw icons from the desktop's icon theme instead of Hylki's own, so the app "
+"may look different on another desktop."
 msgstr ""
 
 msgid "This window opens to"
@@ -4454,6 +5178,30 @@ msgid ""
 "being downloaded."
 msgstr ""
 
+msgid "Group by date"
+msgstr ""
+
+msgid ""
+"Headings divide a list sorted by date into Today, Yesterday, Last 7 days, "
+"Last 14 days and Older."
+msgstr ""
+
+msgid "Tags and labels under the text"
+msgstr ""
+
+msgid ""
+"Puts a card's tags and labels on a line of their own under its text, where "
+"they leave the subject its full width."
+msgstr ""
+
+msgid "Keep the search field open"
+msgstr ""
+
+msgid ""
+"Shows the search field above the list at all times, instead of behind the "
+"search button."
+msgstr ""
+
 msgid "Tint tagged messages"
 msgstr ""
 
@@ -4526,6 +5274,14 @@ msgstr ""
 msgid ""
 "Names the columns above the list. Click one to sort the list by it, and "
 "again to reverse the order."
+msgstr ""
+
+msgid "Fit columns to the list"
+msgstr ""
+
+msgid ""
+"The name and tag columns narrow as the list does. Off, every column keeps "
+"its width and a list too narrow for them scrolls sideways."
 msgstr ""
 
 msgid "Group messages by conversation"
@@ -4816,9 +5572,32 @@ msgid "Write messages in"
 msgstr ""
 
 msgid ""
-"What new messages, replies and forwards start as. Markdown and HTML are "
-"written as source and sent as formatted mail; plain text is sent without "
-"formatting. The composer's format button switches any one message."
+"What new messages, replies and forwards start as. Rich text is formatted as "
+"you type and sent as HTML. Markdown and HTML source are written as source "
+"and sent as formatted mail; plain text is sent without formatting. The "
+"composer's format button switches any one message."
+msgstr ""
+
+msgid "Font"
+msgstr ""
+
+msgid ""
+"The font rich-text messages are written and sent in. Default leaves it to "
+"the recipient's own font."
+msgstr ""
+
+msgid "Font size"
+msgstr ""
+
+msgid "The size, in points, rich-text messages are written and sent in."
+msgstr ""
+
+msgid "Reply in the original's format"
+msgstr ""
+
+msgid ""
+"Replies to and forwards of mail sent as plain text are written in plain "
+"text. Other mail starts in the format above."
 msgstr ""
 
 msgid "Signature in replies"
@@ -4836,6 +5615,14 @@ msgid ""
 "Puts the standard “-- ” line above the signature. Thunderbird, Evolution and "
 "Mutt use it to dim the signature and to leave it out when they quote your "
 "message."
+msgstr ""
+
+msgid "Undo Send"
+msgstr ""
+
+msgid ""
+"How long a sent message waits before it goes, with Undo on offer to bring it "
+"back to the composer."
 msgstr ""
 
 msgid "Spelling"
@@ -4930,6 +5717,15 @@ msgid ""
 "where no translation exists. A change applies the next time Hylki starts."
 msgstr ""
 
+msgid "Renderer"
+msgstr ""
+
+msgid ""
+"How the windows are drawn. OpenGL or Software can help on older graphics "
+"hardware where Vulkan is incomplete. A change applies the next time Hylki "
+"starts."
+msgstr ""
+
 msgid "Keep running in the background"
 msgstr ""
 
@@ -4976,9 +5772,9 @@ msgid "Unread count on the app icon"
 msgstr ""
 
 msgid ""
-"The number of unread inbox messages on Hylki's icon in the dock or task "
-"manager. KDE Plasma shows it; GNOME needs a dock extension such as Dash to "
-"Dock."
+"A number on Hylki's icon in the dock or task manager: every unread inbox "
+"message, or only those that arrived while Hylki was not in front. KDE Plasma "
+"shows it; GNOME needs a dock extension such as Dash to Dock."
 msgstr ""
 
 msgid "Single-key shortcuts"
@@ -4987,6 +5783,20 @@ msgstr ""
 msgid ""
 "Act on mail with one key and no modifier — j/k to move, r to reply, a to "
 "archive. Press Ctrl+? for the full list."
+msgstr ""
+
+msgid "Gmail keys"
+msgstr ""
+
+msgid ""
+"Needs single-key shortcuts on. Swaps in the keys Gmail has: j/k move without "
+"opening, o opens, e archives, # deletes, g then a letter goes to a folder."
+msgstr ""
+
+msgid "Status bar"
+msgstr ""
+
+msgid "Where the bar with errors and the console opens"
 msgstr ""
 
 msgid "Console mode"
@@ -5000,6 +5810,20 @@ msgstr ""
 msgid ""
 "Save everything the console has recorded since Hylki started, to attach to a "
 "bug report. Email addresses are shortened to their domain."
+msgstr ""
+
+msgid "Downloaded mail"
+msgstr ""
+
+msgid "Remove…"
+msgstr ""
+
+msgid "Keep downloaded mail"
+msgstr ""
+
+msgid ""
+"Older messages and their attachments are removed from this computer and "
+"fetched again when opened."
 msgstr ""
 
 msgid "GNOME Files Integration"
@@ -5079,6 +5903,9 @@ msgid ""
 "backup carries."
 msgstr ""
 
+msgid "Software"
+msgstr ""
+
 msgid "In the unified section"
 msgstr ""
 
@@ -5120,6 +5947,24 @@ msgstr ""
 
 msgid ""
 "The launcher shows an icon set outside Hylki. Picking one here replaces it."
+msgstr ""
+
+msgid "Always"
+msgstr ""
+
+msgid "A year"
+msgstr ""
+
+msgid "90 days"
+msgstr ""
+
+msgid "30 days"
+msgstr ""
+
+msgid "Bottom of the window"
+msgstr ""
+
+msgid "Top of the window"
 msgstr ""
 
 msgid "When displayed"
@@ -5182,6 +6027,11 @@ msgstr ""
 msgid "Below the quoted message"
 msgstr ""
 
+msgid "{n} second"
+msgid_plural "{n} seconds"
+msgstr[0] ""
+msgstr[1] ""
+
 msgid "Above the messages"
 msgstr ""
 
@@ -5201,6 +6051,14 @@ msgid "{percent}%"
 msgstr ""
 
 msgid "Could not install the extension"
+msgstr ""
+
+msgid "Remove downloaded mail?"
+msgstr ""
+
+msgid ""
+"Every message and attachment kept on this computer is removed, and fetched "
+"again from the server when it is opened. Nothing on the server changes."
 msgstr ""
 
 msgid "Could not remove the extension"
@@ -5235,6 +6093,9 @@ msgid "Swing"
 msgstr ""
 
 msgid "Custom File"
+msgstr ""
+
+msgid "Other Font…"
 msgstr ""
 
 msgid "Print Message"
@@ -5315,10 +6176,10 @@ msgstr ""
 msgid "Monospace"
 msgstr ""
 
-msgid "Paragraph style"
+msgid "Custom…"
 msgstr ""
 
-msgid "Font"
+msgid "Paragraph style"
 msgstr ""
 
 msgid "Bold"
@@ -5407,9 +6268,6 @@ msgstr ""
 msgid "New Message from Template…"
 msgstr ""
 
-msgid "Outbox"
-msgstr ""
-
 msgid "Mark Inbox as Read"
 msgstr ""
 
@@ -5431,13 +6289,19 @@ msgstr ""
 msgid "Show or hide sub-folders"
 msgstr ""
 
+msgid "Show or hide labels"
+msgstr ""
+
 msgid "Show or hide folders"
+msgstr ""
+
+msgid "Labels ({len})"
 msgstr ""
 
 msgid "Folders ({len})"
 msgstr ""
 
-msgid "Folders"
+msgid "Labels"
 msgstr ""
 
 msgid "Sort Folders"
@@ -5458,6 +6322,9 @@ msgstr ""
 msgid "Show each tag"
 msgstr ""
 
+msgid "Show each smart folder"
+msgstr ""
+
 msgid "Long-press to expand or collapse"
 msgstr ""
 
@@ -5465,6 +6332,12 @@ msgid "Empty Trash…"
 msgstr ""
 
 msgid "Empty Junk…"
+msgstr ""
+
+msgid "Edit Smart Folder…"
+msgstr ""
+
+msgid "Delete Smart Folder…"
 msgstr ""
 
 msgid "Show or hide filters"
@@ -5661,6 +6534,11 @@ msgstr ""
 msgid "Enter your email address, the client ID and both OAuth URLs first."
 msgstr ""
 
+msgid ""
+"Offline: there is no network connection. Mail syncs again once the network "
+"is back. Click to try now, or long-press for Status Bar"
+msgstr ""
+
 msgid "Your mail provider confirmed this really came from {from}."
 msgstr ""
 
@@ -5780,9 +6658,6 @@ msgstr ""
 msgid "Could not reach the server"
 msgstr ""
 
-msgid "Sending…"
-msgstr ""
-
 msgid "A Microsoft account can't receive mail from another account"
 msgstr ""
 
@@ -5824,7 +6699,13 @@ msgstr ""
 msgid "the server's reply could not be read (it began: {reply})"
 msgstr ""
 
+msgid "no network connection"
+msgstr ""
+
 msgid "runtime error: {e}"
+msgstr ""
+
+msgid "could not reach the server"
 msgstr ""
 
 msgid "Could not load {path}: {e}"
@@ -5876,6 +6757,13 @@ msgid "Downloading attachments… {n} remaining"
 msgid_plural "Downloading attachments… {n} remaining"
 msgstr[0] ""
 msgstr[1] ""
+
+#. Nothing failed: the message waits for the network, which the
+#. Refresh button already shows is down (#442).
+msgid ""
+"No network connection. The message is in the Outbox and will be sent when "
+"the connection is back."
+msgstr ""
 
 msgid ""
 "Send failed: {e}. The message is in the Outbox and will be sent when the "
@@ -5931,9 +6819,6 @@ msgstr ""
 
 msgid ""
 "POP3 cannot change a message on the server, so the attachment was not removed"
-msgstr ""
-
-msgid "Inbox"
 msgstr ""
 
 msgid "Email Client"

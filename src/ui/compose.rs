@@ -12,6 +12,7 @@ use crate::i18n::{i18n, i18n_f, i18n_noop};
 use crate::ui::context_menu::{show_context_menu, MenuEntry};
 use crate::ui::drop_zones::{DropChoice, DropContext, DropZones};
 use crate::ui::fade_label::FadeLabel;
+use crate::ui::recipient_row::RecipientRow;
 
 /// Which recipient field a suggestion is for.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -26,7 +27,7 @@ pub enum Field {
 fn sig_html(sig: &str, dashes: bool) -> String {
     let body = rich_editor::signature_to_html(sig);
     let dashes = if dashes { "-- <br>" } else { "" };
-    format!("<div class=\"vireo-sig\"><br>{dashes}{body}</div>")
+    format!("<div class=\"hylki-sig\"><br>{dashes}{body}</div>")
 }
 
 /// A body as Markdown, keeping the empty line a reply opens with above its
@@ -75,7 +76,7 @@ fn format_label(format: ComposeFormat) -> String {
     match format {
         ComposeFormat::Rich => i18n("Rich text"),
         ComposeFormat::Markdown => i18n("Markdown"),
-        ComposeFormat::Html => i18n("HTML"),
+        ComposeFormat::Html => i18n("HTML source"),
         ComposeFormat::Plain => i18n("Plain text"),
     }
 }
@@ -83,12 +84,17 @@ fn format_label(format: ComposeFormat) -> String {
 /// The one-line explanation under each format in the menu.
 fn format_hint(format: ComposeFormat) -> String {
     match format {
-        ComposeFormat::Rich => i18n("Format as you type, with the toolbar"),
+        ComposeFormat::Rich => i18n("Format as you type; it is sent as HTML"),
         ComposeFormat::Markdown => i18n("Write Markdown; it is sent as formatted mail"),
         ComposeFormat::Html => i18n("Write the message's HTML by hand"),
         ComposeFormat::Plain => i18n("No formatting at all"),
     }
 }
+
+/// The zoom of the body in Markdown, HTML and plain text, in percent: the
+/// session's, so the next composer opens at the size the last one was left
+/// at. Rich text stays at 100, where what is on screen is what is sent.
+static ZOOM: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(100);
 
 /// The narrowest the compose pane goes (its `adw::BreakpointBin` floor).
 const COMPOSE_MIN_WIDTH: i32 = 360;
@@ -157,14 +163,9 @@ fn set_toggle_icon(btn: &gtk::Button, windowed: bool) {
     }
 }
 
-/// Replace the recipient currently being typed (after the last comma) with the
-/// chosen suggestion, leaving a trailing ", " ready for the next recipient.
-fn complete_field(row: &adw::EntryRow, sug: &Suggestion) {
-    let text = row.text().to_string();
-    let prefix_len = text.rfind(',').map(|i| i + 1).unwrap_or(0);
-    let prefix = &text[..prefix_len];
-    row.set_text(&format!("{}{}, ", prefix, sug.display()));
-    row.set_position(-1);
+/// Replace the recipient being typed with the chosen suggestion, as a pill.
+fn complete_field(row: &RecipientRow, sug: &Suggestion) {
+    row.complete(&sug.display());
 }
 
 /// One selectable "from" account in the compose window.
@@ -172,8 +173,12 @@ fn complete_field(row: &adw::EntryRow, sug: &Suggestion) {
 pub struct ComposeAccount {
     pub id: u32,
     pub label: String,
-    /// Signature text appended to the body when this account is selected.
+    /// Signature text appended to the body when this account is selected:
+    /// its default one, or empty when new messages start without.
     pub signature: String,
+    /// Every signature of the account (#445), offered by the signature
+    /// button.
+    pub signatures: Vec<crate::config::NamedSignature>,
     /// The identity's sending address (the account's own, or an alias's).
     pub email: String,
     /// The account's chosen OpenPGP key (fingerprint), if any (#133).
@@ -201,6 +206,8 @@ pub struct ComposePrefill {
     /// id chain. Both stored bare (no angle brackets).
     pub in_reply_to: String,
     pub references: String,
+    /// For a forward, the forwarded message's Message-ID (#454).
+    pub forwards: String,
     /// When editing an existing draft, its origin (so saving/sending replaces it).
     pub draft_origin: Option<DraftOrigin>,
     /// Start with Encrypt (and so Sign) on: a reply to an encrypted message (#133).
@@ -236,9 +243,16 @@ pub struct ComposePrefill {
     /// worker handed back unsent): it already has its blank line and its
     /// signature. Drafts and queued messages count as this without it.
     pub resumed: bool,
+    /// The body is a copy of a whole message (Edit as New), which carries
+    /// its own signature: a second one is not put in (#385). Insert
+    /// Signature in the menu adds one by hand.
+    pub no_signature: bool,
     /// Editing a template (#360): `draft_origin` is where it is kept, and
     /// saving puts it back there rather than in Drafts.
     pub template: bool,
+    /// The message replied to or forwarded had no HTML part (#436): with
+    /// the setting on, the composer opens in plain text.
+    pub original_plain: bool,
 }
 
 /// Everything the compose pane needs to open.
@@ -270,6 +284,17 @@ pub struct ComposeInit {
     pub signature_position: SignaturePosition,
 }
 
+/// An account that suggests only from its directory and its own mail
+/// (#410): what its directory is asked with, and the addresses in its mail.
+#[derive(Debug)]
+pub struct OwnOnly {
+    account: crate::config::AccountConfig,
+    addresses: std::collections::HashSet<String>,
+}
+
+/// Those accounts by id, as the From row knows them.
+pub type OwnMail = std::collections::HashMap<u32, OwnOnly>;
+
 pub struct Compose {
     accounts: Vec<ComposeAccount>,
     /// The rich-text (HTML) body editor.
@@ -295,14 +320,26 @@ pub struct Compose {
     outbox_origin: Option<u32>,
     /// Recipient suggestions, filtered as the user types.
     suggestions: Vec<Suggestion>,
-    /// Whether an LDAP directory is switched on (#307), found once the
-    /// composer opens; without one, typing asks nothing.
-    directories: bool,
+    /// The Microsoft 365 accounts whose organization directory is searched
+    /// too (#410), found once the composer opens. The LDAP directories are
+    /// not: one switched on in Evolution while the composer is open counts
+    /// as well (#307), and [`crate::directory::search`] keeps the list.
+    graph_directories: std::sync::Arc<Vec<crate::config::AccountConfig>>,
+    /// The accounts that suggest only from their directory and their own
+    /// mail (#410), with the addresses in that mail.
+    own_mail: OwnMail,
+    /// The account the From row has picked, which decides whether
+    /// `own_mail` narrows the suggestions.
+    from_account: u32,
     /// What the directories answered for the recipient being typed.
     directory_matches: Vec<Suggestion>,
     /// Bumped on every keystroke, so a slow directory's answer to an
     /// earlier fragment is dropped.
     directory_generation: u64,
+    /// The directory failures this composer has put in the status bar. A
+    /// directory that keeps failing says so once here, not at every pause
+    /// in the typing, and still once in the next composer (#307).
+    directory_errors_shown: std::collections::HashSet<String>,
     /// Shared autocomplete popover and which field it's currently attached to.
     completion: gtk::Popover,
     completion_field: Option<Field>,
@@ -315,6 +352,7 @@ pub struct Compose {
     /// Threading headers carried from the message being replied to.
     in_reply_to: String,
     references: String,
+    forwards: String,
     /// When editing an existing draft, its origin (replaced on save/send).
     draft_origin: Option<DraftOrigin>,
     /// Editing a template (#360), kept at `draft_origin`: Save puts it back,
@@ -363,12 +401,20 @@ pub struct Compose {
     /// formatting toolbar and sends no HTML part (#180); Markdown and HTML
     /// are written as source and converted on the way out.
     format: ComposeFormat,
+    /// Whether the body zooms (Ctrl+ / Ctrl- / Ctrl+0, Ctrl + the scroll
+    /// wheel): every format but rich text. Shared with the key and scroll
+    /// handlers, which have no model to ask.
+    zoomable: std::rc::Rc<std::cell::Cell<bool>>,
     /// The format chooser and preview toggle, which live at the end of the
     /// editor's formatting row rather than in the header.
     format_btn: gtk::Button,
     /// Translate what is being written (#327), beside the format chooser;
     /// shown only with a translation service set up.
     translate_btn: gtk::Button,
+    /// Insert Signature (#385), beside Translate: Edit as New leaves the
+    /// signature out, and this puts it back by hand. With several (#445)
+    /// it lists them. Shown only while the From account has one.
+    signature_btn: gtk::Button,
     /// A translation is out: the button waits and the body is locked.
     translating: bool,
     /// Saving on its own (#340): a save on its way, what the last one held
@@ -442,6 +488,18 @@ struct CloudLink {
     url: String,
 }
 
+/// Where Insert Signature puts the signature (#385).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SigPlace {
+    /// Where the caret is; where the setting puts it when the body has no
+    /// caret.
+    Cursor,
+    /// The top of the message.
+    Start,
+    /// The end of the message.
+    End,
+}
+
 #[derive(Debug)]
 pub enum ComposeInput {
     Send,
@@ -471,6 +529,14 @@ pub enum ComposeInput {
     /// password of their own for every link, else one is generated per
     /// file.
     CloudUpload { paths: Vec<std::path::PathBuf>, account: crate::cloud::CloudAccount, link_password: Option<String> },
+    /// [`ComposeInput::CloudUpload`] with the account's sign-in read from the
+    /// keyring (`None`: not there).
+    CloudUploadSignedIn {
+        paths: Vec<std::path::PathBuf>,
+        account: crate::cloud::CloudAccount,
+        link_password: Option<String>,
+        password: Option<String>,
+    },
     /// One upload finished (in a thread): the link, or why not.
     CloudUploaded { name: String, result: Result<crate::cloud::ShareResult, String> },
     /// Take a link back out of the body.
@@ -482,6 +548,11 @@ pub enum ComposeInput {
     ToggleSign(bool),
     /// Pick what this message is written in.
     SetFormat(ComposeFormat),
+    /// Rich text to plain text would take formatting, pictures or links
+    /// out of the body: ask first (#424).
+    AskPlain,
+    /// Put the message in this format, now that nothing stands in the way.
+    ApplyFormat(ComposeFormat),
     /// The header's format button: the four formats as a menu.
     FormatMenu,
     /// The Translate button (#327): read the quoted message's language
@@ -514,6 +585,17 @@ pub enum ComposeInput {
     SaveDraft,
     /// Save a copy of the message as a template (#360), and go on writing.
     SaveAsTemplate,
+    /// The From account's signature, put in by hand (#385): at the caret,
+    /// or before or after the text from the button's right-click menu.
+    InsertSignature(SigPlace),
+    /// The Insert Signature button was right-clicked.
+    SignatureMenu,
+    /// The Insert Signature button was clicked: one signature goes in at
+    /// the caret, several are listed (#445).
+    SignatureClicked,
+    /// One of the From account's signatures (#445), by index, in place of
+    /// the one in the message; `None` takes it out.
+    UseSignature(Option<usize>),
     /// The editor content came back — finish saving the draft, or the copy
     /// kept as a template.
     SaveDraftBody { html: String, text: String, to: String, cc: String, bcc: String, reply_to: String, subject: String, from_account_id: u32, from_alias: Option<String>, as_template: bool },
@@ -556,14 +638,22 @@ pub enum ComposeInput {
     OpenContacts,
     /// The given recipient field changed — refresh autocomplete.
     Suggest(Field),
-    /// Whether any LDAP directory is switched on (#307).
-    DirectoriesKnown(bool),
+    /// The accounts whose organization directory is searched (#410), and
+    /// the addresses in the mail of those that suggest only their own.
+    DirectoriesKnown { graph: Vec<crate::config::AccountConfig>, own_mail: OwnMail },
     /// The typing paused: ask the directories, unless it went on since.
     DirectoryLookup { field: Field, token: String, generation: u64 },
-    DirectoryResults { field: Field, token: String, generation: u64, matches: Vec<Suggestion> },
+    /// What the directories answered, and the failures not shown before.
+    DirectoryResults {
+        field: Field,
+        token: String,
+        generation: u64,
+        matches: Vec<Suggestion>,
+        failed: Vec<crate::directory::DirectoryFailure>,
+    },
     /// Addresses just sent to from another composer: into this one's
     /// suggestions at once, without waiting for a reopen.
-    AddSuggestions(Vec<Suggestion>),
+    AddSuggestions { account_id: u32, new: Vec<Suggestion> },
     /// Arrow-key move of the autocomplete highlight (+1 down, -1 up).
     CompletionMove(i32),
     /// Accept the highlighted suggestion into the active field.
@@ -573,6 +663,9 @@ pub enum ComposeInput {
     /// Ctrl+Z / Ctrl+Shift+Z (#200): step the composer's history back or
     /// forward — the body's text and the attachments, in one order.
     History { redo: bool },
+    /// Zoom the body one step in (1) or out (-1), or back to 100% (0).
+    /// Nothing in rich text.
+    Zoom(i8),
     /// The body's text history changed: WebKit gained or lost a step. The
     /// flag is whether it now has anything to take back.
     BodyHistory(bool),
@@ -586,7 +679,9 @@ pub enum ComposeInput {
 
 #[derive(Debug)]
 pub enum ComposeOutput {
-    Send(Box<OutgoingMessage>),
+    /// Send the message. Carries the composer's id, so the app knows which
+    /// pane it came from.
+    Send { id: u32, message: Box<OutgoingMessage> },
     /// Save the message to the Drafts folder (no send).
     SaveDraft(Box<OutgoingMessage>),
     /// Save the message to the Templates folder (#360), replacing the
@@ -615,6 +710,9 @@ pub enum ComposeOutput {
     /// menu (#365): the whole new setting, saved app-wide like the
     /// Settings switches.
     SetSpellcheckLangs(String),
+    /// A directory could not be asked (#307): for the status bar, once per
+    /// composer.
+    DirectoryError(String),
 }
 
 #[relm4::component(pub)]
@@ -693,18 +791,26 @@ impl Component for Compose {
                                                 sender.input(ComposeInput::SaveAsTemplate);
                                             },
                                         },
+                                        // Only while editing an existing draft: the
+                                        // message is moved to Trash, not saved, and
+                                        // the editor closes.
+                                        gtk::Button {
+                                            add_css_class: "flat",
+                                            add_css_class: "context-menu-item",
+                                            set_halign: gtk::Align::Fill,
+                                            set_tooltip_text: Some(i18n("Move this draft to Trash").as_str()),
+                                            #[watch]
+                                            set_visible: model.draft_origin.is_some(),
+                                            #[wrap(Some)]
+                                            set_child = &gtk::Label { set_label: &i18n("Delete Draft"), set_halign: gtk::Align::Start },
+                                            connect_clicked[sender] => move |b| {
+                                                b.ancestor(gtk::Popover::static_type()).and_downcast::<gtk::Popover>().map(|p| p.popdown());
+                                                sender.input(ComposeInput::DeleteDraft);
+                                            },
+                                        },
                                     },
                                 },
                             },
-                        },
-                        // Only while editing an existing draft: the message is
-                        // moved to Trash, not saved, and the editor closes.
-                        pack_start = &gtk::Button {
-                            set_label: &i18n("Delete Draft"),
-                            set_tooltip_text: Some(i18n("Move this draft to Trash").as_str()),
-                            #[watch]
-                            set_visible: model.draft_origin.is_some() && !model.template && !model.narrow,
-                            connect_clicked => ComposeInput::DeleteDraft,
                         },
                         // Send, with Send Later beside it (#145): presets, or a
                         // date and time of your own.
@@ -954,17 +1060,17 @@ impl Component for Compose {
                                 set_visible: false,
                             },
                             #[name = "to_row"]
-                            adw::EntryRow {
+                            RecipientRow {
                                 set_title: &i18n("To"),
                                 set_input_purpose: gtk::InputPurpose::Email,
                             },
                             #[name = "cc_row"]
-                            adw::EntryRow {
+                            RecipientRow {
                                 set_title: &i18n("Cc"),
                                 set_input_purpose: gtk::InputPurpose::Email,
                             },
                             #[name = "bcc_row"]
-                            adw::EntryRow {
+                            RecipientRow {
                                 set_title: &i18n("Bcc"),
                                 set_input_purpose: gtk::InputPurpose::Email,
                             },
@@ -1025,6 +1131,7 @@ impl Component for Compose {
         } = init;
         let in_reply_to = prefill.in_reply_to.clone();
         let references = prefill.references.clone();
+        let forwards = prefill.forwards.clone();
         let draft_origin = prefill.draft_origin.clone();
         let template = prefill.template && draft_origin.is_some();
         let outbox_origin = prefill.outbox_origin;
@@ -1054,7 +1161,7 @@ impl Component for Compose {
             (false, false) => "<div><br></div>",
         });
         let sig_dashes = crate::config::load_privacy().signature_dashes;
-        let sig = if !resumed && !current_sig.is_empty() {
+        let sig = if !resumed && !prefill.no_signature && !current_sig.is_empty() {
             sig_html(&current_sig, sig_dashes)
         } else {
             String::new()
@@ -1074,11 +1181,26 @@ impl Component for Compose {
         let remote_images = prefill.block_remote_images.then(|| {
             accounts
                 .iter()
-                .flat_map(|a| super::rich_editor::remote_image_urls(&a.signature))
+                .flat_map(|a| a.signatures.iter())
+                .flat_map(|sig| super::rich_editor::remote_image_urls(&sig.html))
                 .collect::<Vec<_>>()
         });
-        let editor = RichEditor::new(&content, remote_images.as_deref());
+        let editor = RichEditor::new(&content, remote_images.as_deref(), format == ComposeFormat::Plain);
         editor.set_formatting_visible(format == ComposeFormat::Rich);
+        let zoomable = std::rc::Rc::new(std::cell::Cell::new(format != ComposeFormat::Rich));
+        if zoomable.get() {
+            editor.set_zoom(ZOOM.load(std::sync::atomic::Ordering::Relaxed));
+        }
+        {
+            let z = zoomable.clone();
+            let s = sender.input_sender().clone();
+            editor.widget.add_controller(super::ctrl_scroll_zoom(
+                move || z.get(),
+                move |step| {
+                    let _ = s.send(ComposeInput::Zoom(step));
+                },
+            ));
+        }
         // A source format starts from the same content, written out as
         // source: a reply's quoted original becomes `> ` lines in Markdown,
         // or the HTML it already was.
@@ -1088,6 +1210,14 @@ impl Component for Compose {
                 editor.set_source(SourceKind::Html, &crate::markdown::pretty_html(&content))
             }
             ComposeFormat::Rich | ComposeFormat::Plain => {}
+        }
+        // HYLKI_SHOWCASE_PLAIN_LOG also logs the body a composer opens with
+        // (demo only), to check a reply started in plain text (#436).
+        if std::env::var_os("HYLKI_SHOWCASE_PLAIN_LOG").is_some() && std::env::var_os("HYLKI_DEMO").is_some() {
+            let ed = editor.clone();
+            gtk::glib::timeout_add_local_once(std::time::Duration::from_millis(2500), move || {
+                ed.eval(SHOWCASE_PLAIN_LOG, move |v| tracing::info!("showcase plain: opened {format:?} {v}"));
+            });
         }
         // The format chooser and the preview toggle belong with the other
         // formatting controls, at the far end of the same row: a header
@@ -1141,6 +1271,26 @@ impl Component for Compose {
                 let _ = s.send(ComposeInput::TranslateMenu);
             });
         }
+        let signature_btn = gtk::Button::from_icon_name("signature-symbolic");
+        signature_btn.set_tooltip_text(Some(i18n("Insert Signature").as_str()));
+        signature_btn.add_css_class("flat");
+        signature_btn.set_can_focus(false);
+        signature_btn.set_visible(accounts.get(selected).is_some_and(|a| !a.signatures.is_empty()));
+        {
+            let s = sender.input_sender().clone();
+            signature_btn.connect_clicked(move |_| {
+                let _ = s.send(ComposeInput::SignatureClicked);
+            });
+            let s = sender.input_sender().clone();
+            let right = gtk::GestureClick::new();
+            right.set_button(gtk::gdk::BUTTON_SECONDARY);
+            right.connect_pressed(move |g, _, _, _| {
+                g.set_state(gtk::EventSequenceState::Claimed);
+                let _ = s.send(ComposeInput::SignatureMenu);
+            });
+            signature_btn.add_controller(right);
+        }
+        editor.toolbar_end().append(&signature_btn);
         editor.toolbar_end().append(&translate_btn);
         editor.toolbar_end().append(&preview_btn);
         editor.toolbar_end().append(&format_btn);
@@ -1179,9 +1329,12 @@ impl Component for Compose {
             attachments: prefill_attachments,
             attach_thumbs: Default::default(),
             suggestions,
-            directories: false,
+            graph_directories: Default::default(),
+            own_mail: Default::default(),
+            from_account: 0,
             directory_matches: Vec::new(),
             directory_generation: 0,
+            directory_errors_shown: std::collections::HashSet::new(),
             completion,
             completion_field: None,
             completion_list: None,
@@ -1190,6 +1343,7 @@ impl Component for Compose {
             completion_open: std::rc::Rc::new(std::cell::Cell::new(false)),
             in_reply_to,
             references,
+            forwards,
             draft_origin,
             template,
             outbox_origin,
@@ -1211,8 +1365,10 @@ impl Component for Compose {
             sign_touched: false,
             sign_expected: None,
             format,
+            zoomable: zoomable.clone(),
             format_btn,
             translate_btn,
+            signature_btn,
             translating: false,
             autosaving: false,
             autosaved: None,
@@ -1236,6 +1392,7 @@ impl Component for Compose {
             undo_stack: Vec::new(),
             redo_stack: Vec::new(),
         };
+        model.from_account = model.accounts.get(selected).map(|a| a.id).unwrap_or_default();
         let widgets = view_output!();
         if prefill_encrypt && crate::pgp::available() {
             // Through the buttons, so the toggles and the model agree.
@@ -1515,8 +1672,23 @@ impl Component for Compose {
         {
             let s = sender.input_sender().clone();
             std::thread::spawn(move || {
-                let any = crate::directory::list().is_ok_and(|d| d.iter().any(|d| d.enabled));
-                let _ = s.send(ComposeInput::DirectoriesKnown(any));
+                let graph = crate::graph_directory::accounts();
+                // An account's id is its place in the file, from 1.
+                let narrowed: Vec<(u32, crate::config::AccountConfig)> = crate::config::load()
+                    .unwrap_or_default()
+                    .into_iter()
+                    .enumerate()
+                    .filter(|(_, a)| a.graph_directory_only && crate::graph_directory::usable(a))
+                    .map(|(i, a)| (i as u32 + 1, a))
+                    .collect();
+                let own_mail = match crate::cache::Cache::open() {
+                    Ok(cache) if !narrowed.is_empty() => narrowed
+                        .into_iter()
+                        .map(|(id, account)| (id, OwnOnly { addresses: cache.account_addresses(id), account }))
+                        .collect(),
+                    _ => OwnMail::new(),
+                };
+                let _ = s.send(ComposeInput::DirectoriesKnown { graph, own_mail });
             });
         }
 
@@ -1594,6 +1766,7 @@ impl Component for Compose {
         let s = sender.clone();
         let open = model.completion_open.clone();
         let editor = model.editor.clone();
+        let zoomable = model.zoomable.clone();
         // Weak: the root owns this controller, so a strong root here would
         // be a cycle that kept a closed composer's whole widget tree alive,
         // its editor's WebKitWebProcess included (#221).
@@ -1627,6 +1800,17 @@ impl Component for Compose {
             {
                 editor.paste(!crate::config::load_privacy().paste_plain);
                 return Propagation::Stop;
+            }
+            // Ctrl+ / Ctrl- / Ctrl+0 zoom the body, as they zoom the reader,
+            // in the formats whose size is not part of the message. This
+            // is a composer window's; inline, the main window's own keys
+            // get there first and pass them on (app.rs).
+            if let Some(step) = zoom_key(keyval, state) {
+                if zoomable.get() {
+                    s.input(ComposeInput::Zoom(step));
+                    return Propagation::Stop;
+                }
+                return Propagation::Proceed;
             }
             // Ctrl+Enter sends (#238), as it does in Gmail, Apple Mail and
             // Thunderbird. Ahead of the suggestion list's own Enter, so a
@@ -1749,6 +1933,19 @@ impl Component for Compose {
             ComposeInput::SetNarrow(narrow) => {
                 self.narrow = narrow;
                 self.dress_format_buttons();
+                // Folded, the header is as narrow as it gets: the pane goes
+                // no narrower, so a small window stops shrinking rather than
+                // cutting Send off at its edge. Unfolded, the floor drops
+                // back, or the pane could never get narrow enough to fold.
+                let (root, header) = (root.clone(), widgets.header.clone());
+                gtk::glib::idle_add_local_once(move || {
+                    let floor = if narrow {
+                        header.measure(gtk::Orientation::Horizontal, -1).0.max(COMPOSE_MIN_WIDTH)
+                    } else {
+                        COMPOSE_MIN_WIDTH
+                    };
+                    root.set_size_request(floor, 200);
+                });
             }
 
             ComposeInput::OverflowMenu => {
@@ -1757,17 +1954,9 @@ impl Component for Compose {
                     MenuEntry::new(&label, move || s.input(msg()))
                         .icon(&format!("{icon}-symbolic"))
                 };
-                let mut drafts = if self.template {
-                    vec![entry(i18n("Save Template"), "document-save", || ComposeInput::SaveDraft)]
-                } else {
-                    vec![
-                        entry(i18n("Save Draft"), "document-save", || ComposeInput::SaveDraft),
-                        entry(i18n("Save as Template"), "folder-templates", || ComposeInput::SaveAsTemplate),
-                    ]
-                };
-                if self.draft_origin.is_some() && !self.template {
-                    drafts.push(entry(i18n("Delete Draft"), "user-trash", || ComposeInput::DeleteDraft));
-                }
+                // Save Draft, Save as Template and Delete Draft are not here:
+                // the Save Draft button and its arrow stay in the header at
+                // any width.
                 let mut attach = vec![entry(i18n("Attach files"), "mail-attachment", || ComposeInput::AttachFiles)];
                 if !self.cloud_accounts.is_empty() {
                     attach.push(
@@ -1795,9 +1984,9 @@ impl Component for Compose {
                         .icon(&format!("{}-symbolic", check(self.encrypt, "channel-secure"))),
                     );
                 }
-                // The format chooser and the preview toggle are not here:
-                // they sit at the end of the formatting row, which a narrow
-                // pane never folds away.
+                // The format chooser, the preview toggle and Insert Signature
+                // are not here: they sit at the end of the formatting row,
+                // which a narrow pane never folds away.
                 let mut host = Vec::new();
                 if self.can_toggle {
                     host.push(if self.windowed {
@@ -1807,7 +1996,7 @@ impl Component for Compose {
                     });
                 }
                 let btn = &widgets.overflow_btn;
-                show_context_menu(btn, (btn.width() / 2) as f64, btn.height() as f64, vec![drafts, attach, pgp, host]);
+                show_context_menu(btn, (btn.width() / 2) as f64, btn.height() as f64, vec![attach, pgp, host]);
             }
 
             ComposeInput::CloudAttach => {
@@ -1839,12 +2028,21 @@ impl Component for Compose {
             }
 
             ComposeInput::CloudUpload { paths, account, link_password } => {
-                let secret = if account.has_secret() {
-                    crate::config::load_cloud_password(&account.key())
-                } else {
-                    Some(String::new())
-                };
-                let Some(password) = secret else {
+                if !account.has_secret() {
+                    sender.input(ComposeInput::CloudUploadSignedIn { paths, account, link_password, password: Some(String::new()) });
+                    break 'handle;
+                }
+                // Off the main thread: the keyring may wait on its user.
+                let key = account.key();
+                let s = sender.input_sender().clone();
+                crate::config::keyring_then(
+                    move || crate::config::load_cloud_password(&key),
+                    move |password| s.emit(ComposeInput::CloudUploadSignedIn { paths, account, link_password, password }),
+                );
+            }
+
+            ComposeInput::CloudUploadSignedIn { paths, account, link_password, password } => {
+                let Some(password) = password else {
                     let parent = root.root().and_downcast::<gtk::Window>();
                     let d = adw::MessageDialog::new(
                         parent.as_ref(),
@@ -1872,7 +2070,7 @@ impl Component for Compose {
                 self.cloud_busy = self.cloud_busy.saturating_sub(1);
                 match result {
                     Ok(share) => {
-                        let id = format!("vireo-cloud-{}", crate::rng::token(8).unwrap_or_else(|_| share.size.to_string()));
+                        let id = format!("hylki-cloud-{}", crate::rng::token(8).unwrap_or_else(|_| share.size.to_string()));
                         let mut caption = crate::models::human_size(share.size);
                         if let Some(d) = &share.expires {
                             caption.push_str(&format!(", {}", i18n_f("link expires {date}", &[("date", d)])));
@@ -1881,7 +2079,7 @@ impl Component for Compose {
                             caption.push_str(&format!(", {}", i18n("password-protected")));
                         }
                         let html = format!(
-                            "<p id=\"{id}\" data-vireo-cloud=\"1\">\u{1F4CE} <a href=\"{url}\">{name}</a> ({caption})</p>",
+                            "<p id=\"{id}\" data-hylki-cloud=\"1\">\u{1F4CE} <a href=\"{url}\">{name}</a> ({caption})</p>",
                             url = html_escape(&share.url),
                             name = html_escape(&share.name),
                             caption = html_escape(&caption),
@@ -1919,10 +2117,11 @@ impl Component for Compose {
                         self.editor.run_js(&format!(
                             "(function(){{var d=document.createElement('div');d.innerHTML='{}';\
                              var p=d.firstChild;var b=document.body;\
-                             var first=null;var cands=b.querySelectorAll('.vireo-sig,.vireo-quote-attr,blockquote');\
+                             var first=null;var cands=b.querySelectorAll('.hylki-sig,.hylki-quote-attr,blockquote');\
                              for(var i=0;i<cands.length;i++){{var t=cands[i];while(t.parentNode&&t.parentNode!==b)t=t.parentNode;\
                              if(t.parentNode===b&&(!first||(t.compareDocumentPosition(first)&Node.DOCUMENT_POSITION_FOLLOWING)))first=t;}}\
                              if(first)b.insertBefore(p,first);else b.appendChild(p);\
+                             window.__hylkiPlainFix&&window.__hylkiPlainFix();\
                              document.dispatchEvent(new Event('input'));}})()",
                             js_escape(&html)
                         ));
@@ -2053,19 +2252,7 @@ impl Component for Compose {
                 };
                 let to_row = widgets.to_row.clone();
                 crate::ui::contacts_browser::present(&win, move |contact| {
-                    let display =
-                        crate::worker::format_recipient(&contact.name, &contact.email);
-                    let cur = to_row.text().to_string();
-                    let trimmed = cur.trim_end();
-                    let sep = if trimmed.is_empty() {
-                        ""
-                    } else if trimmed.ends_with(',') {
-                        " "
-                    } else {
-                        ", "
-                    };
-                    to_row.set_text(&format!("{cur}{sep}{display}, "));
-                    to_row.set_position(-1);
+                    to_row.add_recipient(&crate::worker::format_recipient(&contact.name, &contact.email));
                 });
             }
 
@@ -2121,6 +2308,21 @@ impl Component for Compose {
                 }
             }
 
+            ComposeInput::Zoom(step) => {
+                if !self.zoomable.get() {
+                    break 'handle;
+                }
+                use crate::config::READER_ZOOM_STEPS as STEPS;
+                let now = ZOOM.load(std::sync::atomic::Ordering::Relaxed);
+                let at = STEPS.iter().position(|&z| z == now).unwrap_or(5) as i32;
+                let zoom = match step {
+                    0 => 100,
+                    s => STEPS[(at + i32::from(s.signum())).clamp(0, STEPS.len() as i32 - 1) as usize],
+                };
+                ZOOM.store(zoom, std::sync::atomic::Ordering::Relaxed);
+                self.editor.set_zoom(zoom);
+            }
+
             ComposeInput::History { redo } => {
                 self.history_step(redo, widgets, &sender);
             }
@@ -2165,87 +2367,94 @@ impl Component for Compose {
 
             ComposeInput::AccountChanged => {
                 self.follow_account_signing(widgets);
-                // Swap the editor's signature block for the new account's.
                 let idx = widgets.from_row.selected() as usize;
-                let new_sig = self.accounts.get(idx).map(|a| a.signature.clone()).unwrap_or_default();
-                if new_sig == self.current_sig {
+                // Another account may suggest from elsewhere: what a
+                // directory answered for the last one is not kept.
+                let account_changed =
+                    self.accounts.get(idx).is_some_and(|a| a.id != self.from_account);
+                if let Some(id) = self.accounts.get(idx).map(|a| a.id).filter(|id| *id != self.from_account) {
+                    self.from_account = id;
+                    self.directory_generation = self.directory_generation.wrapping_add(1);
+                    self.directory_matches.clear();
+                }
+                // Swap the editor's signature block for the new account's.
+                // An alias or another identity of the same account shares
+                // its signatures, so the one picked from them stays.
+                let Some(account) = self.accounts.get(idx) else {
+                    break 'handle;
+                };
+                self.signature_btn.set_visible(!account.signatures.is_empty());
+                let new_sig = account.signature.clone();
+                if !account_changed || new_sig == self.current_sig {
                     break 'handle;
                 }
-                // Source mode holds the signature as text, so the swap is a
-                // text replacement in the field rather than a DOM one.
-                if let Some(kind) = self.editor.source_kind() {
-                    // The old block is looked for with and without its
-                    // `-- ` line: a draft keeps the form it was written in,
-                    // whatever the setting says now.
-                    let old = sig_source(kind, &self.current_sig, self.sig_dashes);
-                    let old_other = sig_source(kind, &self.current_sig, !self.sig_dashes);
-                    let new = sig_source(kind, &new_sig, self.sig_dashes);
-                    // With no old block to replace (the previous account had
-                    // none), the new one goes where the setting puts it: at
-                    // the end, or above the quoted original (#237), which
-                    // in source is found by its text. HTML keeps the quote's
-                    // tags; Markdown has the `> ` lines, with the attribution
-                    // line ("On …, X wrote:" or the forward header) above.
-                    let place = match (self.signature_position, kind) {
-                        (SignaturePosition::BelowQuote, _) => "v=v+n;",
-                        (SignaturePosition::AboveQuote, SourceKind::Html) => {
-                            "var q=v.search(/<p class=\"vireo-quote-attr\"|<blockquote/);\
-                             if(q<0){v=v+n;}else{v=v.slice(0,q).replace(/\\s*$/,'')+n+v.slice(q);}"
-                        }
-                        (SignaturePosition::AboveQuote, SourceKind::Markdown) => {
-                            "var L=v.split('\\n');var qi=-1;\
-                             for(var k=0;k<L.length;k++){if(L[k]==='>'||L[k].indexOf('> ')===0){qi=k;break;}}\
-                             if(qi<0){v=v+n;}else{var a=qi-1;while(a>=0&&L[a].trim()==='')a--;\
-                             if(a>=0&&(/wrote:\\s*$/.test(L[a])||/^-{5,} Forwarded message/.test(L[a])))qi=a;\
-                             v=L.slice(0,qi).join('\\n').replace(/\\s*$/,'')+n+'\\n'+L.slice(qi).join('\\n');}"
-                        }
-                    };
-                    self.editor.run_js(&format!(
-                        "(function(){{var t=document.getElementById('src');if(!t)return;\
-                         var o='{}',p='{}',n='{}';var v=t.value;\
-                         var i=o?v.lastIndexOf(o):-1;\
-                         if(i<0&&p){{i=v.lastIndexOf(p);if(i>=0)o=p;}}\
-                         if(i>=0){{v=v.slice(0,i)+n+v.slice(i+o.length);}}else{{{place}}}\
-                         t.value=v;window.__hylkiDirty=true;}})()",
-                        js_escape(&old),
-                        js_escape(&old_other),
-                        js_escape(&new)
-                    ));
-                    self.current_sig = new_sig;
+                self.put_signature(new_sig);
+            }
+
+            ComposeInput::InsertSignature(place) => {
+                let idx = widgets.from_row.selected() as usize;
+                let sig = self.accounts.get(idx).map(|a| self.chosen_signature(a)).unwrap_or_default();
+                self.insert_signature(sig, place);
+            }
+
+            ComposeInput::SignatureClicked => {
+                let idx = widgets.from_row.selected() as usize;
+                let Some(account) = self.accounts.get(idx) else {
+                    break 'handle;
+                };
+                if account.signatures.len() < 2 {
+                    sender.input(ComposeInput::InsertSignature(SigPlace::Cursor));
                     break 'handle;
                 }
-                {
-                    let replacement = if new_sig.is_empty() {
-                        String::new()
-                    } else {
-                        sig_html(&new_sig, self.sig_dashes)
-                    };
-                    // No signature block to replace (the previous account
-                    // had none): a new one goes where the setting puts it,
-                    // above the quoted original or at the end (#237).
-                    let anchor = match self.signature_position {
-                        SignaturePosition::AboveQuote => {
-                            "var b=document.body;var q=null;\
-                             var cands=b.querySelectorAll('.vireo-quote-attr,blockquote');\
-                             for(var i=0;i<cands.length;i++){{var t=cands[i];\
-                             while(t.parentNode&&t.parentNode!==b)t=t.parentNode;\
-                             if(t.parentNode===b&&(!q||(t.compareDocumentPosition(q)&Node.DOCUMENT_POSITION_FOLLOWING)))q=t;}}\
-                             if(q){{q.insertAdjacentHTML('beforebegin',h);}}else{{b.insertAdjacentHTML('beforeend',h);}}"
-                        }
-                        SignaturePosition::BelowQuote => {
-                            "document.body.insertAdjacentHTML('beforeend',h);"
-                        }
-                    };
-                    let js = format!(
-                        "(function(){{var s=document.querySelector('.vireo-sig');\
-                         var h='{}';\
-                         if(s){{if(h){{s.outerHTML=h;}}else{{s.remove();}}}}\
-                         else if(h){{{anchor}}}}})()",
-                        rich_editor::js_escape(&replacement)
-                    );
-                    self.editor.run_js(&js);
-                    self.current_sig = new_sig;
+                // The one in the message is drawn as chosen; a body that
+                // started without one (Edit as New, a draft) may still
+                // carry the default's text, which is no harm to show.
+                let list: Vec<MenuEntry> = account
+                    .signatures
+                    .iter()
+                    .enumerate()
+                    .map(|(i, sig)| {
+                        let s = sender.clone();
+                        MenuEntry::new(&sig.name, move || s.input(ComposeInput::UseSignature(Some(i))))
+                            .selected(!self.current_sig.is_empty() && sig.html == self.current_sig)
+                    })
+                    .collect();
+                let s = sender.clone();
+                let none = MenuEntry::new(i18n("No Signature"), move || s.input(ComposeInput::UseSignature(None)))
+                    .selected(self.current_sig.is_empty());
+                let btn = &self.signature_btn;
+                show_context_menu(btn, (btn.width() / 2) as f64, btn.height() as f64, vec![list, vec![none]]);
+            }
+
+            ComposeInput::UseSignature(choice) => {
+                let idx = widgets.from_row.selected() as usize;
+                let sig = match choice {
+                    Some(i) => match self.accounts.get(idx).and_then(|a| a.signatures.get(i)) {
+                        Some(sig) => sig.html.clone(),
+                        None => break 'handle,
+                    },
+                    None => String::new(),
+                };
+                if sig != self.current_sig {
+                    self.put_signature(sig);
                 }
+            }
+
+            ComposeInput::SignatureMenu => {
+                let entry = |label: String, place: SigPlace| {
+                    let s = sender.clone();
+                    MenuEntry::new(&label, move || s.input(ComposeInput::InsertSignature(place)))
+                };
+                let btn = &self.signature_btn;
+                show_context_menu(
+                    btn,
+                    (btn.width() / 2) as f64,
+                    btn.height() as f64,
+                    vec![vec![
+                        entry(i18n("Insert Before the Text"), SigPlace::Start),
+                        entry(i18n("Insert After the Text"), SigPlace::End),
+                    ]],
+                );
             }
 
             ComposeInput::Suggest(field) => {
@@ -2257,7 +2466,7 @@ impl Component for Compose {
                 self.directory_generation = self.directory_generation.wrapping_add(1);
                 self.directory_matches.clear();
                 let token = recipient_token(row);
-                if self.directories && token.chars().count() >= crate::directory::MIN_QUERY {
+                if token.chars().count() >= crate::directory::MIN_QUERY {
                     // A directory is asked once the typing pauses, not per key.
                     let generation = self.directory_generation;
                     let s = sender.input_sender().clone();
@@ -2268,19 +2477,57 @@ impl Component for Compose {
                 self.show_completion(field, row);
             }
 
-            ComposeInput::DirectoriesKnown(any) => self.directories = any,
+            ComposeInput::DirectoriesKnown { graph, own_mail } => {
+                self.graph_directories = std::sync::Arc::new(graph);
+                self.own_mail = own_mail;
+            }
 
             ComposeInput::DirectoryLookup { field, token, generation } => {
                 if generation == self.directory_generation {
                     let s = sender.input_sender().clone();
+                    // An account that suggests only its own asks its
+                    // directory alone, no LDAP and no other tenant.
+                    let own = self.own_mail.get(&self.from_account);
+                    let narrowed = own.is_some();
+                    if let Some(own) = own {
+                        tracing::debug!(
+                            target: "hylki::graph",
+                            "suggestions narrowed to {}: its directory and {} addresses from its mail",
+                            own.account.email,
+                            own.addresses.len()
+                        );
+                    }
+                    let graph = match own {
+                        Some(own) => std::sync::Arc::new(vec![own.account.clone()]),
+                        None => self.graph_directories.clone(),
+                    };
                     std::thread::spawn(move || {
-                        let matches = crate::directory::search(&token);
-                        let _ = s.send(ComposeInput::DirectoryResults { field, token, generation, matches });
+                        // Both at once: the slower decides when the list
+                        // grows, not the two one after the other.
+                        let (matches, failed) = std::thread::scope(|scope| {
+                            let org = (!graph.is_empty())
+                                .then(|| scope.spawn(|| crate::graph_directory::search(&token, &graph)));
+                            let (mut matches, failed) =
+                                if narrowed { Default::default() } else { crate::directory::search(&token) };
+                            if let Some(found) = org.and_then(|h| h.join().ok()) {
+                                matches.extend(found);
+                            }
+                            (matches, failed)
+                        });
+                        let _ = s.send(ComposeInput::DirectoryResults { field, token, generation, matches, failed });
                     });
                 }
             }
 
-            ComposeInput::DirectoryResults { field, token, generation, matches } => {
+            ComposeInput::DirectoryResults { field, token, generation, matches, failed } => {
+                // A directory that cannot be asked says so once, whatever
+                // came of the typing meanwhile.
+                for f in failed {
+                    let text = f.text();
+                    if self.directory_errors_shown.insert(text.clone()) {
+                        let _ = sender.output(ComposeOutput::DirectoryError(text));
+                    }
+                }
                 let row = match field {
                     Field::To => &widgets.to_row,
                     Field::Cc => &widgets.cc_row,
@@ -2294,9 +2541,12 @@ impl Component for Compose {
                 }
             }
 
-            ComposeInput::AddSuggestions(new) => {
+            ComposeInput::AddSuggestions { account_id, new } => {
                 for n in new {
                     let key = n.email.to_lowercase();
+                    if let Some(own) = self.own_mail.get_mut(&account_id) {
+                        own.addresses.insert(key.clone());
+                    }
                     match self.suggestions.iter_mut().find(|s| s.email.to_lowercase() == key) {
                         Some(s) => {
                             s.score += 1;
@@ -2330,8 +2580,7 @@ impl Component for Compose {
                     Some(Field::Bcc) => &widgets.bcc_row,
                     None => break 'handle,
                 };
-                let text = row.text().to_string();
-                let token = text.rsplit(',').next().unwrap_or("").trim().to_string();
+                let token = row.typed();
                 if !token.is_empty() {
                     let chosen = self.ranked_matches(&token).into_iter().nth(self.completion_selected);
                     if let Some(sug) = chosen {
@@ -2567,12 +2816,71 @@ impl Component for Compose {
             }
 
             ComposeInput::SetFormat(to) => {
+                if to == self.format {
+                    break 'handle;
+                }
+                // Plain text shows only what is sent (#424), so moving a
+                // formatted body there drops what it cannot show, and the
+                // way back does not bring it back.
+                if self.format == ComposeFormat::Rich && to == ComposeFormat::Plain {
+                    let s = sender.clone();
+                    self.editor.eval(
+                        "String(!!(window.__hylkiPlainLoses&&window.__hylkiPlainLoses()))",
+                        move |loses| {
+                            s.input(if loses == "true" {
+                                ComposeInput::AskPlain
+                            } else {
+                                ComposeInput::ApplyFormat(ComposeFormat::Plain)
+                            });
+                        },
+                    );
+                    break 'handle;
+                }
+                sender.input(ComposeInput::ApplyFormat(to));
+            }
+
+            ComposeInput::AskPlain => {
+                let dialog = adw::AlertDialog::new(
+                    Some(&i18n("Switch to plain text?")),
+                    Some(&i18n("Formatting, images and links are removed.")),
+                );
+                dialog.add_response("cancel", &i18n("Cancel"));
+                dialog.add_response("switch", &i18n("Switch"));
+                dialog.set_response_appearance("switch", adw::ResponseAppearance::Destructive);
+                dialog.set_default_response(Some("cancel"));
+                dialog.set_close_response("cancel");
+                let s = sender.input_sender().clone();
+                dialog.connect_response(None, move |_, resp| {
+                    if resp == "switch" {
+                        let _ = s.send(ComposeInput::ApplyFormat(ComposeFormat::Plain));
+                    }
+                });
+                dialog.present(Some(root));
+                // HYLKI_SHOWCASE_PLAIN_ANSWER=switch|cancel answers it two
+                // seconds on (demo only), for a check without a pointer.
+                if let (Ok(answer), Some(_)) =
+                    (std::env::var("HYLKI_SHOWCASE_PLAIN_ANSWER"), std::env::var_os("HYLKI_DEMO"))
+                {
+                    tracing::info!("showcase plain: asked before switching");
+                    let (d, s) = (dialog.clone(), sender.input_sender().clone());
+                    gtk::glib::timeout_add_seconds_local_once(2, move || {
+                        d.force_close();
+                        if answer == "switch" {
+                            let _ = s.send(ComposeInput::ApplyFormat(ComposeFormat::Plain));
+                        }
+                    });
+                }
+            }
+
+            ComposeInput::ApplyFormat(to) => {
                 let from = self.format;
                 if to == from {
                     break 'handle;
                 }
                 self.format = to;
                 self.editor.set_formatting_visible(to == ComposeFormat::Rich);
+                self.zoomable.set(to != ComposeFormat::Rich);
+                self.editor.set_zoom(if self.zoomable.get() { ZOOM.load(std::sync::atomic::Ordering::Relaxed) } else { 100 });
                 if let Some(zones) = &self.drop_zones {
                     zones.set_allow_inline(to == ComposeFormat::Rich);
                 }
@@ -2581,15 +2889,13 @@ impl Component for Compose {
                 // A preview of the old format's render would be a lie about
                 // the new one.
                 self.preview_btn.set_active(false);
-                // Rich and plain text share one document — plain text only
-                // decides what is *sent* — so switching between them must
-                // not reload it and throw away the undo history and caret.
-                if from.is_source() || to.is_source() {
-                    let s = sender.clone();
-                    self.read_body_as(from, false, move |body, _| {
-                        s.input(ComposeInput::LoadAs { from, to, body });
-                    });
-                }
+                // Every change reloads the body, plain text included: it
+                // shows the message flattened to what is sent (#424), so it
+                // cannot share the rich document's undo history.
+                let s = sender.clone();
+                self.read_body_as(from, false, move |body, _| {
+                    s.input(ComposeInput::LoadAs { from, to, body });
+                });
             }
 
             ComposeInput::LoadAs { from, to, body } => {
@@ -2599,6 +2905,7 @@ impl Component for Compose {
                     ComposeFormat::Markdown => crate::markdown::to_html(&body),
                     _ => body,
                 };
+                self.editor.set_plain(to == ComposeFormat::Plain);
                 match to {
                     ComposeFormat::Markdown => self.editor.set_source(SourceKind::Markdown, &markdown_body(&html)),
                     ComposeFormat::Html => self
@@ -2607,6 +2914,14 @@ impl Component for Compose {
                     ComposeFormat::Rich | ComposeFormat::Plain => self.editor.set_html(&html),
                 }
                 self.editor.grab_focus();
+                // HYLKI_SHOWCASE_PLAIN_LOG logs the reloaded body, its font
+                // and the text it sends (demo only).
+                if std::env::var_os("HYLKI_SHOWCASE_PLAIN_LOG").is_some() && std::env::var_os("HYLKI_DEMO").is_some() {
+                    let ed = self.editor.clone();
+                    gtk::glib::timeout_add_local_once(std::time::Duration::from_millis(1500), move || {
+                        ed.eval(SHOWCASE_PLAIN_LOG, move |v| tracing::info!("showcase plain: {to:?} {v}"));
+                    });
+                }
             }
 
             ComposeInput::TogglePreview(on) => {
@@ -2668,15 +2983,23 @@ impl Component for Compose {
                 // cannot go to is caught here, while it can still be fixed
                 // (#368). Invisible characters pasted along with an address
                 // are taken out first, where the user can see the result.
-                let rows = [&widgets.to_row, &widgets.cc_row, &widgets.bcc_row, &widgets.reply_to_row];
-                for row in rows {
+                for row in [&widgets.to_row, &widgets.cc_row, &widgets.bcc_row] {
                     if let Some(clean) = crate::worker::clean_recipient_field(&row.text()) {
                         row.set_text(&clean);
                     }
                 }
+                if let Some(clean) = crate::worker::clean_recipient_field(&widgets.reply_to_row.text()) {
+                    widgets.reply_to_row.set_text(&clean);
+                }
+                let rows: [(&gtk::Widget, String); 4] = [
+                    (widgets.to_row.upcast_ref(), widgets.to_row.text()),
+                    (widgets.cc_row.upcast_ref(), widgets.cc_row.text()),
+                    (widgets.bcc_row.upcast_ref(), widgets.bcc_row.text()),
+                    (widgets.reply_to_row.upcast_ref(), widgets.reply_to_row.text().to_string()),
+                ];
                 if let Some((row, addr)) = rows
-                    .into_iter()
-                    .find_map(|row| crate::worker::invalid_recipient(&row.text()).map(|addr| (row, addr)))
+                    .iter()
+                    .find_map(|(row, text)| crate::worker::invalid_recipient(text).map(|addr| (row, addr)))
                 {
                     row.add_css_class("error");
                     let parent = widgets.to_row.root().and_downcast::<gtk::Window>();
@@ -2790,7 +3113,7 @@ impl Component for Compose {
                 if self.template {
                     out.draft_origin = None;
                 }
-                let _ = sender.output(ComposeOutput::Send(Box::new(out)));
+                let _ = sender.output(ComposeOutput::Send { id: self.compose_id, message: Box::new(out) });
                 let _ = sender.output(ComposeOutput::Close(self.compose_id));
             }
 
@@ -2839,6 +3162,7 @@ impl Component for Compose {
                     out.outbox_origin = None;
                     out.in_reply_to.clear();
                     out.references.clear();
+                    out.forwards.clear();
                     out.send_at = None;
                     let _ = sender.output(ComposeOutput::SaveTemplate(Box::new(out)));
                     break 'handle;
@@ -2973,6 +3297,11 @@ fn same_from(a: &str, b: &str) -> bool {
 }
 
 impl Compose {
+    /// Whether the body zooms in its present format; see [`ComposeInput::Zoom`].
+    pub fn zooms(&self) -> bool {
+        self.zoomable.get()
+    }
+
     /// The From to put on the wire: the picked identity's (`None` for the
     /// account's own), or the one typed in (#347), which has to hold one
     /// address.
@@ -3001,6 +3330,185 @@ impl Compose {
     /// Put Sign where the From account's default has it (#267), until the
     /// user has set it by hand. While encrypting it stays on: encrypted
     /// mail is always signed.
+    /// The signature Insert Signature puts in: the one the message last
+    /// had, if it is one of `account`'s, else its default, else its first.
+    fn chosen_signature(&self, account: &ComposeAccount) -> String {
+        if account.signatures.iter().any(|s| s.html == self.current_sig) {
+            return self.current_sig.clone();
+        }
+        if !account.signature.is_empty() {
+            return account.signature.clone();
+        }
+        account.signatures.first().map(|s| s.html.clone()).unwrap_or_default()
+    }
+
+    /// Put `new_sig` in the editor in place of the current signature block,
+    /// or where the setting puts a signature when there is none.
+    fn put_signature(&mut self, new_sig: String) {
+        // Source mode holds the signature as text, so the swap is a
+        // text replacement in the field rather than a DOM one.
+        if let Some(kind) = self.editor.source_kind() {
+            // The old block is looked for with and without its
+            // `-- ` line: a draft keeps the form it was written in,
+            // whatever the setting says now.
+            let old = sig_source(kind, &self.current_sig, self.sig_dashes);
+            let old_other = sig_source(kind, &self.current_sig, !self.sig_dashes);
+            let new = sig_source(kind, &new_sig, self.sig_dashes);
+            // With no old block to replace (the previous account had
+            // none), the new one goes where the setting puts it: at
+            // the end, or above the quoted original (#237), which
+            // in source is found by its text. HTML keeps the quote's
+            // tags; Markdown has the `> ` lines, with the attribution
+            // line ("On …, X wrote:" or the forward header) above.
+            let place = self.source_sig_place(kind);
+            self.editor.run_js(&format!(
+                "(function(){{var t=document.getElementById('src');if(!t)return;\
+                 var o='{}',p='{}',n='{}';var v=t.value;\
+                 var i=o?v.lastIndexOf(o):-1;\
+                 if(i<0&&p){{i=v.lastIndexOf(p);if(i>=0)o=p;}}\
+                 if(i>=0){{v=v.slice(0,i)+n+v.slice(i+o.length);}}else{{{place}}}\
+                 t.value=v;window.__hylkiDirty=true;}})()",
+                js_escape(&old),
+                js_escape(&old_other),
+                js_escape(&new)
+            ));
+            self.current_sig = new_sig;
+            return;
+        }
+        {
+            let replacement = if new_sig.is_empty() {
+                String::new()
+            } else {
+                sig_html(&new_sig, self.sig_dashes)
+            };
+            // No signature block to replace (the previous account
+            // had none): a new one goes where the setting puts it,
+            // above the quoted original or at the end (#237).
+            let anchor = self.rich_sig_anchor();
+            let js = format!(
+                "(function(){{var s=[].filter.call(document.querySelectorAll('.hylki-sig'),\
+                 function(x){{return !x.closest('blockquote');}})[0];\
+                 var h='{}';\
+                 if(s){{if(h){{s.outerHTML=h;}}else{{s.remove();}}}}\
+                 else if(h){{{anchor}}}\
+                 window.__hylkiPlainFix&&window.__hylkiPlainFix();}})()",
+                rich_editor::js_escape(&replacement)
+            );
+            self.editor.run_js(&js);
+            self.current_sig = new_sig;
+        }
+    }
+
+    /// Source-mode JS that puts `n` into `v` where the setting puts a
+    /// signature: at the end, or above the quoted original (#237), which in
+    /// source is found by its text. HTML keeps the quote's tags; Markdown
+    /// has the `> ` lines, with the attribution line ("On …, X wrote:" or
+    /// the forward header) above.
+    fn source_sig_place(&self, kind: SourceKind) -> &'static str {
+        match (self.signature_position, kind) {
+            (SignaturePosition::BelowQuote, _) => "v=v+n;",
+            (SignaturePosition::AboveQuote, SourceKind::Html) => {
+                "var q=v.search(/<p class=\"hylki-quote-attr\"|<blockquote/);\
+                 if(q<0){v=v+n;}else{v=v.slice(0,q).replace(/\\s*$/,'')+n+v.slice(q);}"
+            }
+            (SignaturePosition::AboveQuote, SourceKind::Markdown) => {
+                "var L=v.split('\\n');var qi=-1;\
+                 for(var k=0;k<L.length;k++){if(L[k]==='>'||L[k].indexOf('> ')===0){qi=k;break;}}\
+                 if(qi<0){v=v+n;}else{var a=qi-1;while(a>=0&&L[a].trim()==='')a--;\
+                 if(a>=0&&(/wrote:\\s*$/.test(L[a])||/^-{5,} Forwarded message/.test(L[a])))qi=a;\
+                 v=L.slice(0,qi).join('\\n').replace(/\\s*$/,'')+n+'\\n'+L.slice(qi).join('\\n');}"
+            }
+        }
+    }
+
+    /// Rich-mode JS that puts the HTML `h` where the setting puts a
+    /// signature: above the quoted original, or at the end (#237).
+    fn rich_sig_anchor(&self) -> &'static str {
+        match self.signature_position {
+            SignaturePosition::AboveQuote => {
+                "var b=document.body;var q=null;\
+                 var cands=b.querySelectorAll('.hylki-quote-attr,blockquote');\
+                 for(var i=0;i<cands.length;i++){var t=cands[i];\
+                 while(t.parentNode&&t.parentNode!==b)t=t.parentNode;\
+                 if(t.parentNode===b&&(!q||(t.compareDocumentPosition(q)&Node.DOCUMENT_POSITION_FOLLOWING)))q=t;}\
+                 if(q){q.insertAdjacentHTML('beforebegin',h);}else{b.insertAdjacentHTML('beforeend',h);}"
+            }
+            SignaturePosition::BelowQuote => "document.body.insertAdjacentHTML('beforeend',h);",
+        }
+    }
+
+    /// Insert Signature (#385): `sig` at the caret, or at the top or the
+    /// end of the message. The message's own signature block moves rather
+    /// than doubling; one inside a quote is the other person's and stays.
+    fn insert_signature(&mut self, sig: String, place: SigPlace) {
+        if sig.is_empty() {
+            return;
+        }
+        let place_js = match place {
+            SigPlace::Cursor => "cursor",
+            SigPlace::Start => "start",
+            SigPlace::End => "end",
+        };
+        if let Some(kind) = self.editor.source_kind() {
+            let old = sig_source(kind, &self.current_sig, self.sig_dashes);
+            let old_other = sig_source(kind, &self.current_sig, !self.sig_dashes);
+            let new = sig_source(kind, &sig, self.sig_dashes);
+            // A caret only counts while the field has focus: a fresh
+            // composer's field reports 0, which is the top, not a choice.
+            let js = r#"(function(){var t=document.getElementById('src');if(!t)return;
+var o=@OLD@,p=@OTHER@,n=@NEW@,where=@WHERE@,v=t.value;
+var a=document.activeElement===t?t.selectionEnd:-1;
+var i=o?v.lastIndexOf(o):-1;if(i<0&&p){i=v.lastIndexOf(p);if(i>=0)o=p;}
+if(i>=0){v=v.slice(0,i)+v.slice(i+o.length);if(a>i+o.length)a-=o.length;else if(a>i)a=i;}
+if(where==='start'){v=n.replace(/^\s+/,'')+'\n'+v;a=-1;}
+else if(where==='end'){v=v.replace(/\s*$/,'')+n;a=-1;}
+else if(a>=0){v=v.slice(0,a)+n+v.slice(a);}
+else{@PLACE@}
+t.value=v;if(a>=0){t.selectionStart=t.selectionEnd=a;}window.__hylkiDirty=true;})()"#
+                // The signature text goes in last, so nothing in it is
+                // taken for a placeholder.
+                .replace("@WHERE@", &format!("'{place_js}'"))
+                .replace("@PLACE@", self.source_sig_place(kind))
+                .replace("@OTHER@", &format!("'{}'", js_escape(&old_other)))
+                .replace("@OLD@", &format!("'{}'", js_escape(&old)))
+                .replace("@NEW@", &format!("'{}'", js_escape(&new)));
+            self.editor.run_js(&js);
+            self.current_sig = sig;
+            return;
+        }
+        // At the caret the line it sits on is split, so the signature
+        // stands as a block of its own between the two halves; an empty
+        // line gives up its place to it.
+        let js = r#"(function(){var b=document.body,h=@SIG@,where=@WHERE@;
+var olds=[].filter.call(b.querySelectorAll('.hylki-sig'),function(s){return !s.closest('blockquote');});
+var sel=window.getSelection(),r=null;
+if(where==='cursor'&&sel.rangeCount){r=sel.getRangeAt(0).cloneRange();r.collapse(false);if(!b.contains(r.startContainer)||r.startContainer===b&&b.childNodes.length===0)r=null;}
+if(r){for(var k=0;k<olds.length;k++){if(olds[k].contains(r.startContainer)){r.setStartBefore(olds[k]);r.collapse(true);}}}
+var spot=null;
+if(r){var top=r.startContainer;
+ if(top===b){spot=b.childNodes[r.startOffset]||null;}
+ else{while(top.parentNode!==b)top=top.parentNode;
+  if(olds.indexOf(top)>=0){spot=top;}
+  else{var tail=document.createRange();tail.setStart(r.startContainer,r.startOffset);tail.setEndAfter(top);
+   var rest=tail.extractContents();var keep=function(n){return n&&(n.textContent.trim()!==''||n.querySelector&&n.querySelector('img,table,hr'));};
+   spot=top.nextSibling;
+   if(keep(rest)){b.insertBefore(rest,spot);spot=top.nextSibling;}
+   if(!keep(top)){spot=top.nextSibling;top.remove();}}}}
+for(var k=0;k<olds.length;k++){if(spot===olds[k])spot=olds[k].nextSibling;olds[k].remove();}
+var tpl=document.createElement('template');tpl.innerHTML=h;var sig=tpl.content.firstElementChild;
+if(where==='start'){b.insertBefore(sig,b.firstChild);}
+else if(where==='end'){b.appendChild(sig);}
+else if(r){b.insertBefore(sig,spot);var c=document.createRange();c.setStartBefore(sig);c.collapse(true);sel.removeAllRanges();sel.addRange(c);}
+else{@ANCHOR@}
+window.__hylkiPlainFix&&window.__hylkiPlainFix();
+window.__hylkiDirty=true;})()"#
+            .replace("@WHERE@", &format!("'{place_js}'"))
+            .replace("@ANCHOR@", self.rich_sig_anchor())
+            .replace("@SIG@", &format!("'{}'", rich_editor::js_escape(&sig_html(&sig, self.sig_dashes))));
+        self.editor.run_js(&js);
+        self.current_sig = sig;
+    }
+
     fn follow_account_signing(&mut self, widgets: &ComposeWidgets) {
         if self.sign_touched || self.encrypt || !crate::pgp::available() {
             return;
@@ -3136,6 +3644,7 @@ impl Compose {
                 .collect(),
             in_reply_to: self.in_reply_to.clone(),
             references: self.references.clone(),
+            forwards: self.forwards.clone(),
             draft_origin: self.draft_origin.clone(),
             outbox_origin: self.outbox_origin,
             sign: self.sign,
@@ -3147,13 +3656,30 @@ impl Compose {
 
     /// Suggestions matching `token`, ranked best-first (prefix match, then most
     /// frequently used), capped to a handful.
+    /// The addresses in the From account's mail, when that account
+    /// suggests only from its directory and its own mail (#410).
+    fn narrowed(&self) -> Option<&std::collections::HashSet<String>> {
+        self.own_mail.get(&self.from_account).map(|own| &own.addresses)
+    }
+
     fn ranked_matches(&self, token: &str) -> Vec<Suggestion> {
         let q = token.to_lowercase();
-        let mut matches: Vec<Suggestion> =
-            self.suggestions.iter().filter(|s| s.matches(token)).cloned().collect();
+        let narrowed = self.narrowed();
+        let mut matches: Vec<Suggestion> = self
+            .suggestions
+            .iter()
+            .filter(|s| s.matches(token) && narrowed.is_none_or(|own| own.contains(&s.email.to_lowercase())))
+            .cloned()
+            .collect();
         // A directory matched on attributes the entry may not show (a
         // surname under a display name), so its answers are not filtered
-        // again; one already known from Contacts or mail is not repeated.
+        // again; one already known from Contacts or mail is not repeated,
+        // but is marked as in the directory (#307).
+        let in_directory: std::collections::HashSet<String> =
+            self.directory_matches.iter().map(|s| s.email.to_lowercase()).collect();
+        for s in &mut matches {
+            s.from_directory |= in_directory.contains(&s.email.to_lowercase());
+        }
         let known: std::collections::HashSet<String> = matches.iter().map(|s| s.email.to_lowercase()).collect();
         let mut seen = std::collections::HashSet::new();
         matches.extend(
@@ -3177,10 +3703,8 @@ impl Compose {
 
     /// Filter suggestions by the recipient fragment being typed and show them in
     /// a popover under the field; clicking one completes that recipient.
-    fn show_completion(&mut self, field: Field, row: &adw::EntryRow) {
-        let text = row.text().to_string();
-        // The recipient currently being typed is the part after the last comma.
-        let token = text.rsplit(',').next().unwrap_or("").trim().to_string();
+    fn show_completion(&mut self, field: Field, row: &RecipientRow) {
+        let token = row.typed();
         if token.is_empty() {
             self.completion_open.set(false);
             self.completion.popdown();
@@ -3214,8 +3738,11 @@ impl Compose {
             item.set_margin_end(6);
             item.set_margin_top(3);
             item.set_margin_bottom(3);
-            // Mark where the suggestion came from: address book vs. mail history.
-            let icon = gtk::Image::from_icon_name(if sug.from_contacts {
+            // Mark where the suggestion came from: a directory, the address
+            // book, or mail history.
+            let icon = gtk::Image::from_icon_name(if sug.from_directory {
+                "x-office-address-book-symbolic"
+            } else if sug.from_contacts {
                 "avatar-default-symbolic"
             } else {
                 "document-open-recent-symbolic"
@@ -3701,14 +4228,14 @@ fn cloud_upload_dialog(
 
 /// The GtkText embedded somewhere inside a composite row — where Pango
 /// attributes (the spell-check underlines) actually live.
-/// The recipient being typed: the part of the field after the last comma.
-fn recipient_token(row: &adw::EntryRow) -> String {
-    row.text().rsplit(',').next().unwrap_or("").trim().to_string()
+/// The recipient being typed, after the field's pills.
+fn recipient_token(row: &RecipientRow) -> String {
+    row.typed()
 }
 
-/// Whether the field has the keyboard. An EntryRow holds its focus in the
+/// Whether the field has the keyboard. The row holds its focus in the
 /// GtkText inside it, so the row's own has_focus() is never true.
-fn recipient_focused(row: &adw::EntryRow) -> bool {
+fn recipient_focused(row: &RecipientRow) -> bool {
     row.root()
         .and_downcast::<gtk::Window>()
         .and_then(|w| gtk::prelude::GtkWindowExt::focus(&w))
@@ -3848,6 +4375,25 @@ fn pick_send_time(parent: Option<&gtk::Window>, current: Option<i64>, sender: re
         }
     });
     dialog.present();
+}
+
+/// Ctrl+ (or Ctrl+=, for layouts where + needs Shift), Ctrl- and Ctrl+0,
+/// keypad included, as the zoom step they ask for: the reader's keys.
+fn zoom_key(keyval: gtk::gdk::Key, state: gtk::gdk::ModifierType) -> Option<i8> {
+    use gtk::gdk::Key;
+    if !state.contains(gtk::gdk::ModifierType::CONTROL_MASK) || state.contains(gtk::gdk::ModifierType::ALT_MASK) {
+        return None;
+    }
+    // By value, as the suggestion keys are.
+    if [Key::plus, Key::equal, Key::KP_Add].contains(&keyval) {
+        Some(1)
+    } else if [Key::minus, Key::KP_Subtract].contains(&keyval) {
+        Some(-1)
+    } else if [Key::_0, Key::KP_0].contains(&keyval) {
+        Some(0)
+    } else {
+        None
+    }
 }
 
 /// Whether keyboard focus is in a one-line text field of the composer — an
@@ -4168,6 +4714,13 @@ pub enum TranslateHow {
     Html,
 }
 
+/// What HYLKI_SHOWCASE_PLAIN_LOG reports about the body (demo only).
+const SHOWCASE_PLAIN_LOG: &str = r#"JSON.stringify({plain:!!window.__hylkiPlain,
+font:document.body?getComputedStyle(document.body).fontFamily:'',
+bold:document.body&&document.body.querySelector('b,strong')?getComputedStyle(document.body.querySelector('b,strong')).fontWeight:'',
+html:document.body?document.body.innerHTML:document.documentElement.outerHTML.slice(0,400),
+text:window.__hylkiBodyText?window.__hylkiBodyText():''})"#;
+
 /// The quoted message's text, for telling which language to offer first:
 /// the reply's quote in the rich document, or the quoted lines of a
 /// Markdown or HTML source.
@@ -4175,7 +4728,7 @@ const TR_QUOTE_TEXT: &str = r#"(function(){var t=document.getElementById('src');
 if(t){var v=t.value;var i=v.search(/<blockquote/i);
 if(i>=0)return v.slice(i).replace(/<[^>]*>/g,' ').slice(0,4000);
 return v.split('\n').filter(function(l){return /^\s*>/.test(l);}).map(function(l){return l.replace(/^\s*>+\s?/,'');}).join('\n').slice(0,4000);}
-var q=document.querySelector('blockquote.vireo-quote-mail')||document.querySelector('blockquote');
+var q=document.querySelector('blockquote.hylki-quote-mail')||document.querySelector('blockquote');
 return q?q.innerText.slice(0,4000):'';})()"#;
 
 /// What the rich document asks to have translated: the selection, else
@@ -4188,7 +4741,7 @@ return q?q.innerText.slice(0,4000):'';})()"#;
 const TR_RICH_BEGIN: &str = r#"(function(){var b=document.body;if(!b)return '';
 var s=getSelection(),r=null,sel=false;
 if(s.rangeCount&&!s.isCollapsed&&b.contains(s.anchorNode)){r=s.getRangeAt(0).cloneRange();sel=true;}
-else{var first=null,c=b.querySelectorAll('.vireo-sig,.vireo-quote-attr,blockquote');
+else{var first=null,c=b.querySelectorAll('.hylki-sig,.hylki-quote-attr,blockquote');
 for(var i=0;i<c.length;i++){var t=c[i];while(t.parentNode&&t.parentNode!==b)t=t.parentNode;
 if(t.parentNode===b&&(!first||(t.compareDocumentPosition(first)&Node.DOCUMENT_POSITION_FOLLOWING)))first=t;}
 var kids=[];for(var n=b.firstChild;n&&n!==first;n=n.nextSibling)kids.push(n);
@@ -4219,7 +4772,7 @@ return JSON.stringify({parts:p,sel:sel});})()"#;
 const TR_RICH_END: &str = r#"(function(h){var b=document.body;if(!b)return;b.setAttribute('contenteditable','true');
 var r=window.__hylkiTr;window.__hylkiTr=null;if(!r)return;b.focus();
 var s=getSelection();s.removeAllRanges();s.addRange(r);
-document.execCommand('insertHTML',false,h);window.__hylkiDirty=true;window.__hylkiTrState='translated';if(!window.__hylkiTrWatch){window.__hylkiTrWatch=true;document.addEventListener('input',function(e){var st=window.__hylkiTrState;if(!st)return;var k=e.inputType||'';if(k==='historyUndo')window.__hylkiTrState=st==='translated'?'original':'';else if(k==='historyRedo')window.__hylkiTrState=st==='original'?'translated':'';else window.__hylkiTrState='';},true);}})(ARG)"#;
+document.execCommand('insertHTML',false,h);window.__hylkiPlainFix&&window.__hylkiPlainFix();window.__hylkiDirty=true;window.__hylkiTrState='translated';if(!window.__hylkiTrWatch){window.__hylkiTrWatch=true;document.addEventListener('input',function(e){var st=window.__hylkiTrState;if(!st)return;var k=e.inputType||'';if(k==='historyUndo')window.__hylkiTrState=st==='translated'?'original':'';else if(k==='historyRedo')window.__hylkiTrState=st==='original'?'translated':'';else window.__hylkiTrState='';},true);}})(ARG)"#;
 
 /// The source field's version of [`TR_RICH_BEGIN`]: the selection, else
 /// the text above the quote (and, in Markdown, its "wrote:" line) and the
@@ -4227,8 +4780,8 @@ document.execCommand('insertHTML',false,h);window.__hylkiDirty=true;window.__hyl
 const TR_SOURCE_BEGIN: &str = r#"(function(H){var t=document.getElementById('src');if(!t)return '';
 var v=t.value,a=t.selectionStart,e=t.selectionEnd,sel=e>a;
 if(!sel){a=0;e=v.length;
-var sig=H?v.search(/<div class="vireo-sig"/):v.indexOf('\n-- \n');if(sig>=0)e=Math.min(e,sig);
-var q=H?v.search(/<p class="vireo-quote-attr"|<blockquote/i):v.search(/(^|\n)[ \t]*>/);
+var sig=H?v.search(/<div class="hylki-sig"/):v.indexOf('\n-- \n');if(sig>=0)e=Math.min(e,sig);
+var q=H?v.search(/<p class="hylki-quote-attr"|<blockquote/i):v.search(/(^|\n)[ \t]*>/);
 if(q>=0){if(!H){var pre=v.slice(0,q).replace(/\s+$/,'');var ls=pre.lastIndexOf('\n');
 if(/(wrote|schrieb|a écrit|escribió|Forwarded message)/i.test(pre.slice(ls+1)))q=ls+1;}
 e=Math.min(e,q);}}
@@ -4251,7 +4804,7 @@ mod tests {
 
     #[test]
     fn a_markdown_reply_has_a_line_to_write_on_above_the_quote() {
-        let reply = "<p><br></p><p class=\"vireo-quote-attr\">On Monday, Ann wrote:</p><blockquote><p>Hi</p></blockquote>";
+        let reply = "<p><br></p><p class=\"hylki-quote-attr\">On Monday, Ann wrote:</p><blockquote><p>Hi</p></blockquote>";
         let md = super::markdown_body(reply);
         assert!(md.starts_with("\n\nOn Monday, Ann wrote:"), "{md:?}");
         // A new message stays empty, and written text is left as it is.
@@ -4264,8 +4817,8 @@ mod tests {
 
     #[test]
     fn the_separator_line_follows_the_setting() {
-        assert_eq!(sig_html("Ann", false), "<div class=\"vireo-sig\"><br>Ann</div>");
-        assert_eq!(sig_html("Ann", true), "<div class=\"vireo-sig\"><br>-- <br>Ann</div>");
+        assert_eq!(sig_html("Ann", false), "<div class=\"hylki-sig\"><br>Ann</div>");
+        assert_eq!(sig_html("Ann", true), "<div class=\"hylki-sig\"><br>-- <br>Ann</div>");
         assert!(!sig_source(SourceKind::Markdown, "Ann", false).contains("-- "));
         assert!(sig_source(SourceKind::Markdown, "Ann", true).starts_with("\n\n-- \n"));
         assert_eq!(sig_source(SourceKind::Markdown, "", true), "");

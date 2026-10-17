@@ -510,6 +510,10 @@ fn gravatar_image(email: &str) -> Result<Option<DecodedImage>, ()> {
         }
     }
 
+    // Offline or metered, a later bind asks again (#442).
+    if !crate::power::fetches_ahead() {
+        return Err(());
+    }
     let _slot = GravatarSlot::acquire();
     let response = match ureq::get(&gravatar_url(email))
         .timeout(std::time::Duration::from_secs(10))

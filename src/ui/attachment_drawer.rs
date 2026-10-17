@@ -1458,11 +1458,11 @@ fn build_cell(
         b.set_tooltip_text(Some(tip));
         b
     };
-    let download = action_btn("folder-download-symbolic", "Download");
+    let download = action_btn("folder-download-symbolic", &i18n("Download"));
     let s = sender.clone();
     download.connect_clicked(move |_| s.input(AttachmentDrawerInput::Download(index)));
     actions.append(&download);
-    let open = action_btn("document-open-symbolic", "Open");
+    let open = action_btn("document-open-symbolic", &i18n("Open"));
     let s = sender.clone();
     open.connect_clicked(move |_| s.input(AttachmentDrawerInput::Open(index)));
     actions.append(&open);
@@ -1577,11 +1577,11 @@ fn build_list_row(
     };
     // Spaced as the row spaces its other parts.
     let actions = gtk::Box::new(gtk::Orientation::Horizontal, 8);
-    let download = action_btn("folder-download-symbolic", "Download");
+    let download = action_btn("folder-download-symbolic", &i18n("Download"));
     let s = sender.clone();
     download.connect_clicked(move |_| s.input(AttachmentDrawerInput::Download(index)));
     actions.append(&download);
-    let open = action_btn("document-open-symbolic", "Open");
+    let open = action_btn("document-open-symbolic", &i18n("Open"));
     let s = sender.clone();
     open.connect_clicked(move |_| s.input(AttachmentDrawerInput::Open(index)));
     actions.append(&open);

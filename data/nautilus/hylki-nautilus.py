@@ -44,6 +44,10 @@ _STRINGS = {
 }
 
 _TRANSLATIONS = {
+    "ca": {
+        "label": "Envia amb l'Hylki",
+        "tip": "Adjunta els fitxers seleccionats a un missatge nou a l'Hylki",
+    },
     "es": {
         "label": "Enviar con Hylki",
         "tip": "Adjuntar los archivos seleccionados a un nuevo mensaje en Hylki",
@@ -55,6 +59,10 @@ _TRANSLATIONS = {
     "hu": {
         "label": "Küldés a Vireóval",
         "tip": "A kijelölt fájlok csatolása egy új üzenethez a Vireóban",
+    },
+    "it": {
+        "label": "Invia con Hylki",
+        "tip": "Allega i file selezionati a un nuovo messaggio in Hylki",
     },
     "pl": {
         "label": "Wyślij za pomocą aplikacji Hylki",

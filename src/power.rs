@@ -12,7 +12,12 @@
 //!   everywhere and notices a wake within [`CLOCK_TICK`].
 //! - The network coming back, since at the moment of waking a laptop is usually
 //!   still rejoining its Wi-Fi and a reconnect then would only fail.
+//!
+//! The network monitor's state is also kept here for the workers: nothing
+//! dials out while it says the network is down, and a metered connection
+//! holds back the work done ahead of the user (#442).
 
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::time::{Duration, Instant};
 
 const LOGIN1_DEST: &str = "org.freedesktop.login1";
@@ -82,26 +87,169 @@ fn boot_clock() -> Option<Duration> {
     Some(Duration::from_secs_f64(secs))
 }
 
-/// Invoke `on_back` each time the network becomes reachable again after being
-/// down. GIO answers through the network-monitor portal inside the Flatpak,
-/// so this needs no permission. Must be called on the GTK main thread.
-pub fn watch_network<F: Fn() + 'static>(on_back: F) {
+/// What the network monitor reported, for [`watch_network`]'s callback.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum NetworkChange {
+    /// Reachable again after being down.
+    Back,
+    /// No longer reachable.
+    Lost,
+    /// The connection started or stopped being metered.
+    Metered(bool),
+}
+
+/// The monitor's view, kept where the worker threads can read it: GIO
+/// delivers its changes on the main thread only (#442).
+static ONLINE: AtomicBool = AtomicBool::new(true);
+static METERED: AtomicBool = AtomicBool::new(false);
+/// Settings: whether a metered connection holds back the work done ahead of
+/// the user (on by default).
+static SAVE_DATA: AtomicBool = AtomicBool::new(true);
+/// Until when a Refresh clicked while offline may try the servers anyway,
+/// in case the monitor is wrong about the network (milliseconds since the
+/// process started, 0 for no grace).
+static TRY_UNTIL: AtomicU64 = AtomicU64::new(0);
+/// How long one such Refresh lets connections through.
+const TRY_ANYWAY: Duration = Duration::from_secs(60);
+
+fn since_start() -> u64 {
+    static START: std::sync::OnceLock<Instant> = std::sync::OnceLock::new();
+    START.get_or_init(Instant::now).elapsed().as_millis() as u64
+}
+
+/// Read the monitor's current state into [`online`] and [`metered`]. Called
+/// before the workers start, so their first connection already knows it.
+/// Must be called on the GTK main thread.
+pub fn read_network(save_data: bool) {
     use gtk::gio::prelude::*;
     let monitor = gtk::gio::NetworkMonitor::default();
-    let was_up = std::cell::Cell::new(monitor.is_network_available());
+    ONLINE.store(monitor.is_network_available(), Ordering::Relaxed);
+    METERED.store(monitor.is_network_metered(), Ordering::Relaxed);
+    SAVE_DATA.store(save_data, Ordering::Relaxed);
+    since_start();
+}
+
+/// Invoke `on_change` when the network goes down, comes back, or turns
+/// metered or not. GIO answers through the network-monitor portal inside the
+/// Flatpak, so this needs no permission. Must be called on the GTK main thread.
+pub fn watch_network<F: Fn(NetworkChange) + 'static>(on_change: F) {
+    use gtk::gio::prelude::*;
+    let monitor = gtk::gio::NetworkMonitor::default();
+    let on_change = std::rc::Rc::new(on_change);
     // Fires on every route change too (VPNs, container bridges); only the
-    // down-to-up edge means sessions opened since have nothing to reuse.
-    monitor.connect_network_changed(move |_, up| {
-        if up && !was_up.get() {
-            tracing::info!("network is back");
-            on_back();
+    // edges mean anything here.
+    {
+        let on_change = on_change.clone();
+        monitor.connect_network_changed(move |_, up| {
+            let was_up = ONLINE.swap(up, Ordering::Relaxed);
+            if up && !was_up {
+                tracing::info!("network is back");
+                on_change(NetworkChange::Back);
+            } else if !up && was_up {
+                tracing::info!("network is gone");
+                on_change(NetworkChange::Lost);
+            }
+        });
+    }
+    monitor.connect_network_metered_notify(move |m| {
+        let now = m.is_network_metered();
+        if METERED.swap(now, Ordering::Relaxed) != now {
+            tracing::info!("network is {}metered", if now { "" } else { "not " });
+            on_change(NetworkChange::Metered(now));
         }
-        was_up.set(up);
     });
 }
 
 /// Whether the network looks reachable right now.
-pub fn network_available() -> bool {
-    use gtk::gio::prelude::*;
-    gtk::gio::NetworkMonitor::default().is_network_available()
+pub fn online() -> bool {
+    ONLINE.load(Ordering::Relaxed)
+}
+
+/// Whether the connection is metered.
+pub fn metered() -> bool {
+    METERED.load(Ordering::Relaxed)
+}
+
+/// Settings: hold back the work done ahead of the user on a metered
+/// connection.
+pub fn set_save_data(on: bool) {
+    SAVE_DATA.store(on, Ordering::Relaxed);
+}
+
+/// Whether the work done ahead of the user (prefetching bodies and
+/// attachments, indexing old mail, watching extra folders, fetching logos)
+/// waits: the connection is metered and Settings asks to save data there.
+pub fn saving_data() -> bool {
+    metered() && SAVE_DATA.load(Ordering::Relaxed)
+}
+
+/// Whether pictures nobody asked for yet (sender logos, Gravatars) may be
+/// fetched: there is a network, and it is not one to save data on.
+pub fn fetches_ahead() -> bool {
+    reaches_internet() && !saving_data()
+}
+
+/// A Refresh clicked while offline: let connections through for a while,
+/// since the monitor can be wrong (a network with no default route).
+pub fn try_anyway() {
+    TRY_UNTIL.store(since_start() + TRY_ANYWAY.as_millis() as u64, Ordering::Relaxed);
+}
+
+/// Whether a connection to `host` is worth trying. A server on this machine
+/// (Proton Mail Bridge) is reachable with no network at all.
+pub fn reaches(host: &str) -> bool {
+    online() || is_local(host) || since_start() < TRY_UNTIL.load(Ordering::Relaxed)
+}
+
+/// Whether background traffic to the internet should go out: not while
+/// offline, unless a Refresh asked to try anyway.
+pub fn reaches_internet() -> bool {
+    reaches("")
+}
+
+/// [`reaches`] for a server given as a URL (JMAP).
+pub fn reaches_url(url: &str) -> bool {
+    reaches(url_host(url))
+}
+
+fn url_host(url: &str) -> &str {
+    let rest = url.split_once("://").map_or(url, |(_, r)| r);
+    let authority = rest.split(['/', '?', '#']).next().unwrap_or("");
+    let host = authority.rsplit_once('@').map_or(authority, |(_, h)| h);
+    match host.strip_prefix('[') {
+        Some(v6) => v6.split(']').next().unwrap_or(""),
+        None => host.split(':').next().unwrap_or(""),
+    }
+}
+
+fn is_local(host: &str) -> bool {
+    let host = host.trim().trim_start_matches('[').trim_end_matches(']');
+    host.eq_ignore_ascii_case("localhost")
+        || host.parse::<std::net::IpAddr>().is_ok_and(|ip| ip.is_loopback())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn local_hosts() {
+        assert!(is_local("localhost"));
+        assert!(is_local("LOCALHOST"));
+        assert!(is_local("127.0.0.1"));
+        assert!(is_local("127.0.0.2"));
+        assert!(is_local("::1"));
+        assert!(is_local("[::1]"));
+        assert!(!is_local("imap.example.com"));
+        assert!(!is_local("192.168.1.10"));
+        assert!(!is_local(""));
+    }
+
+    #[test]
+    fn url_hosts() {
+        assert_eq!(url_host("https://api.fastmail.com/jmap/session"), "api.fastmail.com");
+        assert_eq!(url_host("http://localhost:8080"), "localhost");
+        assert_eq!(url_host("https://user@[::1]:443/jmap"), "::1");
+        assert_eq!(url_host("mail.example.com"), "mail.example.com");
+    }
 }

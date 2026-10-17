@@ -47,11 +47,18 @@ The full list. The [README](../README.md) carries a shorter one.
   over mail that is already in a folder.
 - **Tags:** IMAP keywords, Graph categories, or a local fallback where the
   server has neither; custom colours, drag to reorder, and number-key
-  shortcuts.
+  shortcuts. Gmail's labels show beside them.
+- **Quick filters:** unread, starred, attachments, addressed to you, from
+  your contacts, high importance, tagged and today, combined, in one popover
+  above the list with the sort orders. See [Message list layout](DOCUMENTATION.md#message-list-layout).
+- **Smart folders:** saved searches across accounts and folders, on
+  starred, unread, attachments, tags and the filter conditions, with unread
+  counts. See [Smart folders](DOCUMENTATION.md#smart-folders).
 - **Unified and filtered folders:** Inboxes, Starred, Sent, Drafts, Archive,
   Junk and Trash across accounts, plus a folder per filter and any folders
   you keep in Favorites.
-- **Empty Trash and Junk**, by hand or automatically after a number of days.
+- **Empty Trash and Junk**, by hand or automatically after a number of days,
+  and move old newsletter and mailing-list mail out of the Inbox the same way.
 - **Attachment gallery:** every attachment in an account or folder in one
   place, with PDF first-page thumbnails, scoped by account and folder, and a
   deep archive scan that finds old attachments without downloading them.
@@ -60,8 +67,11 @@ The full list. The [README](../README.md) carries a shorter one.
 - **Printing:** a message with its sender, recipients and date, page
   numbers and an optional wider margin for hole punching, with an in-app
   preview that also saves straight to PDF.
+- **Undo Send:** a sent message waits three to thirty seconds, five by
+  default, with Undo on offer.
 - **Outbox:** a send that fails is kept and retried when the connection
   returns, not lost. Queued messages can be edited, sent by hand or discarded.
+  A message being sent is listed there too until it has gone.
 - **Send later:** schedule a message for tomorrow morning, Monday, or any
   date and time; it waits in the Outbox, editable, until then.
 
@@ -70,9 +80,11 @@ The full list. The [README](../README.md) carries a shorter one.
 - **Four formats:** rich text, Markdown, hand-written HTML, or plain text,
   switched per message from the composer's format button. See
   [Writing in Markdown or HTML](DOCUMENTATION.md#writing-in-markdown-or-html).
-- **HTML signatures**, per account, with a default sender for new mail. In a
-  reply or forward the signature sits above the quoted message, or below it
-  if you prefer.
+  Rich text has fonts, sizes, any color, headings, lists and pictures, and
+  is sent as HTML.
+- **HTML signatures**, several per account, picked by name in the composer,
+  with a default sender for new mail. In a reply or forward the signature
+  sits above the quoted message, or below it if you prefer.
 - **Drafts** that can be saved without a recipient, reopened inline, and
   deleted from the composer.
 - **Templates:** save a message as a template and start new ones from it,
@@ -127,7 +139,8 @@ The full list. The [README](../README.md) carries a shorter one.
   the language of the message you are answering. See
   [Translating messages](DOCUMENTATION.md#translating-messages).
 - **One-click unsubscribe:** a banner on list mail that leaves the list for
-  you, by request or by email, without a browser where the list allows it.
+  you, by request or by email, without a browser where the list allows it,
+  and can delete the mail already received from the same address.
 - **OpenPGP:** read encrypted and signed mail, sign and encrypt what you
   send, and manage keys from Settings, through the GnuPG already on your
   computer. See [OpenPGP](DOCUMENTATION.md#openpgp-encrypted-and-signed-mail).
@@ -166,6 +179,7 @@ The full list. The [README](../README.md) carries a shorter one.
 - **Hylki address book:** a book of your own, beside the ones Evolution Data
   Server keeps, with vCard (`.vcf`) import. It works without GNOME.
 - **LDAP directories:** recipients looked up in a company directory as you
-  type, through Evolution Data Server.
+  type, through Evolution Data Server, and in a Microsoft 365
+  organization's directory.
 - **Your language:** the desktop's, or one you pick; a 12- or 24-hour clock
   following the desktop setting.

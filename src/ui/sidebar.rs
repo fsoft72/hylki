@@ -88,6 +88,8 @@ enum UnifiedRow {
     Favorites,
     Filtered,
     Tags,
+    /// The smart folders (#417): saved searches, each a row of the list.
+    Smart,
 }
 
 /// What a unified row is called.
@@ -97,6 +99,7 @@ fn row_title(row: UnifiedRow) -> String {
         UnifiedRow::Favorites => i18n("Favorites"),
         UnifiedRow::Filtered => i18n("Filters"),
         UnifiedRow::Tags => i18n("Tags"),
+        UnifiedRow::Smart => i18n("Smart Folders"),
     }
 }
 
@@ -107,6 +110,7 @@ fn row_icon(row: UnifiedRow) -> &'static str {
         UnifiedRow::Favorites => "user-bookmarks-symbolic",
         UnifiedRow::Filtered => "filter-folder-symbolic",
         UnifiedRow::Tags => "tag-outline-symbolic",
+        UnifiedRow::Smart => "folder-saved-search-symbolic",
     }
 }
 
@@ -120,6 +124,8 @@ fn select_msg(row: UnifiedRow) -> SidebarInput {
         UnifiedRow::Favorites => SidebarInput::ToggleFavoritesExpand,
         UnifiedRow::Filtered => SidebarInput::UnifiedFilteredSelected,
         UnifiedRow::Tags => SidebarInput::UnifiedTagsSelected,
+        // Each smart folder is a view of its own; the header holds them.
+        UnifiedRow::Smart => SidebarInput::ToggleSmartExpand,
     }
 }
 
@@ -131,6 +137,7 @@ fn toggle_msg(row: UnifiedRow) -> SidebarInput {
         UnifiedRow::Favorites => SidebarInput::ToggleFavoritesExpand,
         UnifiedRow::Filtered => SidebarInput::ToggleFilteredExpand(Slot::Unified),
         UnifiedRow::Tags => SidebarInput::ToggleTagsExpand(Slot::Unified),
+        UnifiedRow::Smart => SidebarInput::ToggleSmartExpand,
     }
 }
 
@@ -140,7 +147,7 @@ fn chevron_icon(open: bool) -> &'static str {
 }
 
 /// What a unified row is called.
-fn kind_label(kind: FolderKind) -> String {
+pub(crate) fn kind_label(kind: FolderKind) -> String {
     match kind {
         FolderKind::Inbox => i18n("Inboxes"),
         FolderKind::Starred => i18n("Starred"),
@@ -194,6 +201,8 @@ pub struct SectionData {
     /// its folders are left out of every unified row and chip, and only
     /// its own section lists them.
     pub in_unified: bool,
+    /// A Gmail account, whose own folders are labels and say so (#374).
+    pub gmail: bool,
 }
 
 /// Initial state for the sidebar.
@@ -217,6 +226,7 @@ pub struct SidebarInit {
     pub junk_expanded: bool,
     pub trash_expanded: bool,
     pub favorites_expanded: bool,
+    pub smart_expanded: bool,
     /// Whether the "Attachments" row is shown.
     pub show_attachments: bool,
     /// Whether the "Contacts" row is shown.
@@ -266,6 +276,8 @@ pub enum Sel {
     /// A tag (its keyword) selected in a Tags section (#71): scoped to an
     /// account when picked from that account's own section.
     Tag(Option<u32>, String),
+    /// A smart folder (#417), by its id.
+    Smart(String),
 }
 
 impl Sel {
@@ -360,6 +372,10 @@ pub struct Sidebar {
     sync_spinner: Option<gtk::Spinner>,
     /// Whether any account is syncing (drives the refresh spinner).
     busy: bool,
+    /// Whether the network is down (turns the refresh button orange).
+    offline: bool,
+    /// The rail's refresh button, for its offline face.
+    sync_button: Option<gtk::Button>,
     /// The "Outbox" row list box (one row), while anything is queued.
     outbox_list: Option<gtk::ListBox>,
     /// Display-wide provider holding each account's avatar color rules.
@@ -418,6 +434,12 @@ pub struct Sidebar {
     /// The favorite folders (#367), in the order they were added.
     favorite_folders: Vec<UnifiedFolderRef>,
     favorites_expanded: bool,
+    /// The smart folders (#417) as (id, name), in their saved order, with
+    /// each one's unread count and the badge showing it.
+    smart_folders: Vec<(String, String)>,
+    smart_expanded: bool,
+    smart_unread: HashMap<String, u32>,
+    smart_badges: HashMap<String, gtk::Label>,
     /// The rows of every Filtered Folders section (the unified one and each
     /// account's own), in row order, with the sections' widgets and badges.
     filtered_rows: HashMap<Slot, Vec<UnifiedFolderRef>>,
@@ -493,6 +515,8 @@ pub enum SidebarInput {
         /// Where the Filtered Folders and Tags sections are drawn.
         filtered_placement: crate::config::SectionPlacement,
         tags_placement: crate::config::SectionPlacement,
+        /// The smart folders (#417) as (id, name).
+        smart_folders: Vec<(String, String)>,
     },
     /// Focus Mode's sidebar parts: hide the accounts, fold the unified
     /// rows. `animate` slides what goes (or comes back) and rebuilds once it
@@ -542,6 +566,12 @@ pub enum SidebarInput {
     ToggleFavoritesExpand,
     /// A folder picked in the Favorites list, by its index there.
     FavoriteRowSelected(i32),
+    /// Open or fold the Smart Folders list (#417).
+    ToggleSmartExpand,
+    /// A smart folder picked, by its index in the list.
+    SmartRowSelected(i32),
+    /// Each smart folder's unread count, by id.
+    SetSmartUnread(HashMap<String, u32>),
     ToggleCollapseLocal(u32),
     /// Set icon-only mode outright (the app's narrow-window breakpoint) —
     /// unlike ToggleCollapsed this never reports CollapsedChanged, so it can't
@@ -572,6 +602,8 @@ pub enum SidebarInput {
     SetContactsRow(bool),
     /// Whether any account is syncing — spins the refresh button.
     SetBusy(bool),
+    /// Whether the network is down: the refresh button turns orange (#442).
+    SetOffline(bool),
     /// How many messages are waiting to be sent; 0 hides the Outbox row.
     SetOutboxCount(u32),
     /// The "Outbox" row was chosen.
@@ -606,6 +638,7 @@ pub enum SidebarOutput {
         junk: bool,
         trash: bool,
         favorites: bool,
+        smart: bool,
     },
     /// A unified Starred / Sent / Drafts row was chosen: every account's
     /// folder of that kind, merged.
@@ -614,6 +647,8 @@ pub enum SidebarOutput {
     UnifiedFilteredSelected,
     /// The unified Tags row: every tagged message.
     UnifiedTagsSelected,
+    /// A smart folder (#417), by its id.
+    SmartSelected(String),
     /// The user toggled an account's own Filtered Folders / Tags section.
     ToggleAccountFiltered(u32),
     ToggleAccountTags(u32),
@@ -656,7 +691,11 @@ pub enum SidebarOutput {
         name: String,
         path: String,
     },
-    ToggleCollapse(u32),
+    /// An account's section was opened or folded, by the user or to show a
+    /// folder picked inside it: the state it is now in, not a toggle, since
+    /// both sidebars (the pane and the peek) report the same reveal and two
+    /// toggles cancelled out (the account then folded at the next rebuild).
+    AccountFolded { id: u32, folded: bool },
     /// The user toggled the collapsible custom-folders section for an account.
     ToggleCustomFolders(u32),
     /// The user toggled icon-only mode; `true` means collapsed.
@@ -687,6 +726,8 @@ pub enum CtxAction {
     RefreshFolder { account_id: u32, folder_id: u32 },
     MarkAllInboxesRead,
     RefreshAllInboxes,
+    /// Erase every unified account's Trash or Junk at once (#413).
+    EmptyAll(FolderKind),
     /// Open Settings → Accounts with this account's editor up.
     OpenAccountSettings(u32),
     RemoveAccount(u32),
@@ -708,6 +749,11 @@ pub enum CtxAction {
     ApplyFilters { account_id: u32, folder_id: u32 },
     /// Open Settings on this tag (by keyword).
     EditTag(String),
+    /// Smart folders (#417): make one, or open Settings on one or take it
+    /// away, by id.
+    NewSmartFolder,
+    EditSmartFolder(String),
+    DeleteSmartFolder(String),
     /// Put the account's folders back in the server's order.
     ResetFolderOrder(u32),
 }
@@ -818,6 +864,8 @@ impl Component for Sidebar {
             sync_stack: None,
             sync_spinner: None,
             busy: false,
+            offline: !crate::power::online(),
+            sync_button: None,
             outbox_list: None,
             color_provider,
             selected: Sel::None,
@@ -843,6 +891,10 @@ impl Component for Sidebar {
             unified_folders_expanded: init.filtered_expanded,
             favorite_folders: Vec::new(),
             favorites_expanded: init.favorites_expanded,
+            smart_folders: Vec::new(),
+            smart_expanded: init.smart_expanded,
+            smart_unread: HashMap::new(),
+            smart_badges: HashMap::new(),
             filtered_rows: HashMap::new(),
             filtered_sections: HashMap::new(),
             filtered_badges: HashMap::new(),
@@ -962,6 +1014,7 @@ impl Sidebar {
                 tags,
                 filtered_placement,
                 tags_placement,
+                smart_folders,
             } => {
                 // Order each account's folders essential-first, then custom, so
                 // the essential/custom split lines up with row indices (the main
@@ -995,6 +1048,14 @@ impl Sidebar {
                 self.tags = tags;
                 self.filtered_placement = filtered_placement;
                 self.tags_placement = tags_placement;
+                self.smart_folders = smart_folders;
+                // The open smart folder was deleted: fall back to the
+                // default view.
+                if let Sel::Smart(id) = &self.selected {
+                    if !self.smart_folders.iter().any(|(i, _)| i == id) {
+                        self.selected = Sel::None;
+                    }
+                }
                 self.unified_kinds = unified_kinds;
                 self.unified_tags = unified_tags;
                 self.show_accounts = show_accounts;
@@ -1289,6 +1350,49 @@ impl Sidebar {
                 }
             }
 
+            SidebarInput::ToggleSmartExpand => {
+                self.toggle_row(UnifiedRow::Smart, &sender);
+                // The header is a toggle, not a view: it never stays picked.
+                if let Some(w) = self.kind_widgets.get(&UnifiedRow::Smart) {
+                    let header = w.header.clone();
+                    let quiet = self.quiet.clone();
+                    gtk::glib::idle_add_local_once(move || {
+                        quiet.set(true);
+                        header.unselect_all();
+                        quiet.set(false);
+                    });
+                }
+            }
+
+            SidebarInput::SmartRowSelected(index) => {
+                let Some((id, _)) = self.smart_folders.get(index as usize).cloned() else {
+                    return;
+                };
+                let key = Sel::Smart(id.clone());
+                if self.selected == key {
+                    return;
+                }
+                self.selected = key.clone();
+                self.clear_other_selections(key);
+                let _ = sender.output(SidebarOutput::SmartSelected(id));
+            }
+
+            SidebarInput::SetSmartUnread(counts) => {
+                for (id, badge) in &self.smart_badges {
+                    let n = counts.get(id).copied().unwrap_or(0);
+                    badge.set_label(&n.to_string());
+                    badge.set_visible(n > 0);
+                }
+                self.smart_unread = counts;
+                if let Some(w) = self.kind_widgets.get(&UnifiedRow::Smart) {
+                    if let Some(b) = &w.badge {
+                        let total = self.row_unread(UnifiedRow::Smart);
+                        b.set_label(&total.to_string());
+                        b.set_visible(total > 0 && !self.row_shown_open(UnifiedRow::Smart));
+                    }
+                }
+            }
+
             SidebarInput::FavoriteRowSelected(index) => {
                 let Some(r) = self.favorite_folders.get(index as usize).cloned() else {
                     return;
@@ -1577,6 +1681,13 @@ impl Sidebar {
                 }
             }
 
+            SidebarInput::SetOffline(offline) => {
+                self.offline = offline;
+                if let Some(button) = &self.sync_button {
+                    crate::ui::show_refresh_offline(button, offline);
+                }
+            }
+
 
             SidebarInput::SetFocus { hide_accounts, fold_unified, animate } => {
                 let hiding = hide_accounts && !self.focus_hide_accounts;
@@ -1697,7 +1808,7 @@ impl Sidebar {
                         label.set_visible(!expanded && n > 0);
                     }
                     if !rail_only {
-                        let _ = sender.output(SidebarOutput::ToggleCollapse(id));
+                        let _ = sender.output(SidebarOutput::AccountFolded { id, folded: !expanded });
                     }
                 }
             }
@@ -2051,6 +2162,7 @@ impl Sidebar {
 
             self.sync_stack = None;
             self.sync_spinner = None;
+            self.sync_button = None;
             if self.collapsed {
                 // Refresh, showing a spinner while any account syncs.
                 let refresh = gtk::Button::new();
@@ -2080,7 +2192,9 @@ impl Sidebar {
                     let _ = s.output(SidebarOutput::StatusBarRequested);
                 });
                 refresh.add_controller(long);
+                crate::ui::show_refresh_offline(&refresh, self.offline);
                 bar.append(&refresh);
+                self.sync_button = Some(refresh);
                 self.sync_stack = Some(stack);
                 self.sync_spinner = Some(spinner);
             }
@@ -2214,6 +2328,11 @@ impl Sidebar {
         }
         if unified_shown && self.unified_tags_shown() && self.tags_placement == AllInboxes {
             unified_rows.push(UnifiedRow::Tags);
+        }
+        // Smart folders (#417) close the section, and like Favorites stand
+        // alone with a single account.
+        if !self.smart_folders.is_empty() {
+            unified_rows.push(UnifiedRow::Smart);
         }
         let unified_sections: Vec<SectionData> =
             sections.iter().filter(|s| s.in_unified).cloned().collect();
@@ -2909,10 +3028,19 @@ impl Sidebar {
                         custom_chevron.set_margin_start(2);
                     }
                     let btn = heading_chevron(&custom_chevron);
-                    btn.set_tooltip_text(Some(i18n("Show or hide folders").as_str()));
+                    btn.set_tooltip_text(Some(
+                        if section.gmail { i18n("Show or hide labels") } else { i18n("Show or hide folders") }.as_str(),
+                    ));
                     hb.append(&btn);
                     folders_chevron = Some(btn);
-                    let lbl = gtk::Label::new(Some(&i18n_f("Folders ({len})", &[("len", &(custom.len()).to_string())])));
+                    // Gmail's own word for them: its folders are labels.
+                    let len = custom.len().to_string();
+                    let heading = if section.gmail {
+                        i18n_f("Labels ({len})", &[("len", &len)])
+                    } else {
+                        i18n_f("Folders ({len})", &[("len", &len)])
+                    };
+                    let lbl = gtk::Label::new(Some(&heading));
                     lbl.set_halign(gtk::Align::Start);
                     lbl.set_hexpand(true);
                     hb.append(&lbl);
@@ -2925,7 +3053,7 @@ impl Sidebar {
                     sender,
                 );
                 if self.collapsed {
-                    folders_toggle.set_tooltip_text(Some(i18n("Folders").as_str()));
+                    folders_toggle.set_tooltip_text(Some(if section.gmail { i18n("Labels") } else { i18n("Folders") }.as_str()));
                 }
                 // Right-click: how this account's folders are sorted.
                 let click = gtk::GestureClick::new();
@@ -3177,6 +3305,7 @@ impl Sidebar {
             UnifiedRow::Kind(_) => i18n("Show each account"),
             UnifiedRow::Favorites | UnifiedRow::Filtered => i18n("Show each folder"),
             UnifiedRow::Tags => i18n("Show each tag"),
+            UnifiedRow::Smart => i18n("Show each smart folder"),
         };
 
         let list = gtk::ListBox::new();
@@ -3307,6 +3436,27 @@ impl Sidebar {
                     ],
                     &cs,
                 );
+            });
+            list.add_controller(click);
+        } else if let UnifiedRow::Kind(kind @ (FolderKind::Trash | FolderKind::Junk)) = row_kind {
+            // Right-click the merged Trash or Junk: empty every account's
+            // (#413), each one still a row of its own below for one at a time.
+            let label = if kind == FolderKind::Trash { i18n_noop("Empty Trash…") } else { i18n_noop("Empty Junk…") };
+            let click = gtk::GestureClick::new();
+            click.set_button(gtk::gdk::BUTTON_SECONDARY);
+            let cs = sender.clone();
+            let list_w = list.clone();
+            click.connect_pressed(move |_, _, x, y| {
+                show_sidebar_menu(&list_w, x, y, vec![(label, CtxAction::EmptyAll(kind))], &cs);
+            });
+            list.add_controller(click);
+        } else if row_kind == UnifiedRow::Smart {
+            let click = gtk::GestureClick::new();
+            click.set_button(gtk::gdk::BUTTON_SECONDARY);
+            let cs = sender.clone();
+            let list_w = list.clone();
+            click.connect_pressed(move |_, _, x, y| {
+                show_sidebar_menu(&list_w, x, y, vec![(i18n_noop("New Smart Folder…"), CtxAction::NewSmartFolder)], &cs);
             });
             list.add_controller(click);
         }
@@ -3480,6 +3630,44 @@ impl Sidebar {
                 });
                 sub.add_controller(click);
             }
+            UnifiedRow::Smart => {
+                self.smart_badges.clear();
+                for (id, name) in &self.smart_folders {
+                    let icon = gtk::Image::from_icon_name("folder-saved-search-symbolic");
+                    pin_icon_size(&icon);
+                    let unread = self.smart_unread.get(id).copied().unwrap_or(0);
+                    let (row, badge) =
+                        build_unified_sub_row(&icon, name, name, unread, self.collapsed, self.chevrons_left, false);
+                    sub.append(&row);
+                    self.smart_badges.insert(id.clone(), badge);
+                }
+                let ss = sender.input_sender().clone();
+                let quiet = self.quiet.clone();
+                sub.connect_row_selected(move |_, row| {
+                    if quiet.get() {
+                        return;
+                    }
+                    if let Some(row) = row {
+                        let _ = ss.send(SidebarInput::SmartRowSelected(row.index()));
+                    }
+                });
+                let click = gtk::GestureClick::new();
+                click.set_button(gtk::gdk::BUTTON_SECONDARY);
+                let cs = sender.clone();
+                let sub_w = sub.clone();
+                let ids: Vec<String> = self.smart_folders.iter().map(|(id, _)| id.clone()).collect();
+                click.connect_pressed(move |_, _, x, y| {
+                    if let Some(id) = sub_w.row_at_y(y as i32).and_then(|row| ids.get(row.index() as usize)) {
+                        let items = vec![
+                            (i18n_noop("Edit Smart Folder…"), CtxAction::EditSmartFolder(id.clone())),
+                            (i18n_noop("Delete Smart Folder…"), CtxAction::DeleteSmartFolder(id.clone())),
+                            (i18n_noop("New Smart Folder…"), CtxAction::NewSmartFolder),
+                        ];
+                        show_sidebar_menu(&sub_w, x, y, items, &cs);
+                    }
+                });
+                sub.add_controller(click);
+            }
             UnifiedRow::Filtered => {
                 let refs = self.unified_folders.clone();
                 for r in &refs {
@@ -3605,6 +3793,7 @@ impl Sidebar {
             UnifiedRow::Favorites => self.favorites_expanded,
             UnifiedRow::Filtered => self.unified_folders_expanded,
             UnifiedRow::Tags => self.tags_expanded,
+            UnifiedRow::Smart => self.smart_expanded,
         }
     }
 
@@ -3617,7 +3806,7 @@ impl Sidebar {
             || self.collapsed
                 && match row {
                     UnifiedRow::Kind(kind) => self.rail_fold.folds_kind(kind),
-                    UnifiedRow::Favorites => false,
+                    UnifiedRow::Favorites | UnifiedRow::Smart => false,
                     UnifiedRow::Filtered => self.rail_fold.folds_filtered(),
                     UnifiedRow::Tags => self.rail_fold.folds_tags(),
                 }
@@ -3668,6 +3857,7 @@ impl Sidebar {
             UnifiedRow::Favorites => self.favorites_expanded = open,
             UnifiedRow::Filtered => self.unified_folders_expanded = open,
             UnifiedRow::Tags => self.tags_expanded = open,
+            UnifiedRow::Smart => self.smart_expanded = open,
         }
     }
 
@@ -3706,6 +3896,7 @@ impl Sidebar {
                 .sum(),
             UnifiedRow::Filtered => self.filtered_unread(Slot::Unified),
             UnifiedRow::Tags => 0,
+            UnifiedRow::Smart => self.smart_unread.values().sum(),
         }
     }
 
@@ -4077,7 +4268,7 @@ impl Sidebar {
     fn chip_shown(&self, row: UnifiedRow) -> bool {
         match row {
             UnifiedRow::Kind(kind) => self.unified_chips.has(kind),
-            UnifiedRow::Favorites => true,
+            UnifiedRow::Favorites | UnifiedRow::Smart => true,
             UnifiedRow::Filtered => self.unified_chips.filtered,
             UnifiedRow::Tags => false,
         }
@@ -4210,7 +4401,7 @@ impl Sidebar {
         for (row, w) in &self.kind_widgets {
             let keep_header = match row {
                 UnifiedRow::Kind(k) => keep == Sel::UnifiedKind(*k),
-                UnifiedRow::Favorites => false,
+                UnifiedRow::Favorites | UnifiedRow::Smart => false,
                 UnifiedRow::Filtered => keep == Sel::UnifiedFiltered,
                 UnifiedRow::Tags => keep == Sel::UnifiedTags,
             };
@@ -4222,6 +4413,7 @@ impl Sidebar {
                 UnifiedRow::Favorites => matches!(keep, Sel::Favorite(..)),
                 UnifiedRow::Filtered => matches!(keep, Sel::UnifiedFolder(..)),
                 UnifiedRow::Tags => matches!(keep, Sel::Tag(None, _)),
+                UnifiedRow::Smart => matches!(keep, Sel::Smart(_)),
             };
             if !keep_list {
                 w.list.unselect_all();
@@ -4399,6 +4591,13 @@ impl Sidebar {
             Sel::UnifiedKind(kind) => self.select_row_header(UnifiedRow::Kind(kind)),
             Sel::UnifiedFiltered => self.select_row_header(UnifiedRow::Filtered),
             Sel::UnifiedTags => self.select_row_header(UnifiedRow::Tags),
+            Sel::Smart(id) => {
+                if let Some(w) = self.kind_widgets.get(&UnifiedRow::Smart) {
+                    if let Some(idx) = self.smart_folders.iter().position(|(i, _)| *i == id) {
+                        w.list.select_row(w.list.row_at_index(idx as i32).as_ref());
+                    }
+                }
+            }
             Sel::Favorite(acc, path) => {
                 if let Some(w) = self.kind_widgets.get(&UnifiedRow::Favorites) {
                     if let Some(idx) =
@@ -4539,7 +4738,7 @@ impl Sidebar {
             label.set_visible(false);
         }
         if !self.collapsed {
-            let _ = sender.output(SidebarOutput::ToggleCollapse(id));
+            let _ = sender.output(SidebarOutput::AccountFolded { id, folded: false });
         }
     }
 
@@ -5345,6 +5544,7 @@ impl Sidebar {
             junk: self.kind_open(FolderKind::Junk),
             trash: self.kind_open(FolderKind::Trash),
             favorites: self.favorites_expanded,
+            smart: self.smart_expanded,
         });
     }
 
@@ -5623,10 +5823,16 @@ pub(crate) fn folder_depth(folder: &Folder, all: &[&Folder]) -> usize {
         .count()
 }
 
-/// The icon a folder row wears when a filter rule files into it: the
-/// filter-folder glyph in the account's color, in place in the hierarchy.
+/// The icon a folder row in an account wears: the filter-folder glyph in
+/// the account's color where a filter rule files into it, a tag for a Gmail
+/// label, otherwise its kind's own.
 fn filter_icon(section: &SectionData, folder: &Folder) -> FolderGlyph {
     if !section.filtered.iter().any(|f| f.id == folder.id) {
+        // A Gmail account's own folders are labels (#374): a tag, not a
+        // folder.
+        if section.gmail && folder.kind == FolderKind::Custom {
+            return FolderGlyph::Icon(gtk::Image::from_icon_name("tag-symbolic"));
+        }
         return FolderGlyph::Plain;
     }
     if folder.kind == FolderKind::Custom {

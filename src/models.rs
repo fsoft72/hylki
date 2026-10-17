@@ -278,6 +278,11 @@ pub struct Message {
     pub timestamp: i64,
     pub unread: bool,
     pub starred: bool,
+    /// Replied to (IMAP `\Answered`, JMAP `$answered`, Microsoft 365's last
+    /// verb) and forwarded (`$Forwarded`, `$forwarded`), for the list's
+    /// arrows (#454). Set by any client, this one included when it sends.
+    pub answered: bool,
+    pub forwarded: bool,
     /// The message's IMAP keywords (user flags) as the server reports them —
     /// `$label1`, `Work`, `$Junk`… — verbatim and in server order. Tags (#71)
     /// are the ones a [`crate::config::Tag`] maps to; the rest are ignored.
@@ -295,6 +300,11 @@ pub struct Message {
     /// When a Microsoft 365 follow-up flag falls due (Unix seconds), or 0.
     /// Only Graph has such a date; IMAP and JMAP have no standard for one.
     pub due: i64,
+    /// The Gmail labels the message wears besides the folder it is listed
+    /// in (#374), as the server names them (modified UTF-7, `Parent/Child`
+    /// for a nested one). System labels (`\Inbox`, `\Important`…) are left
+    /// out. Empty on every other server.
+    pub labels: Vec<String>,
 }
 
 /// How important a message's sender marked it: the `X-Priority`, `Importance`
@@ -408,12 +418,12 @@ impl SenderTrust {
     /// Heading for the details popover, and the badge's tooltip. Not drawn on
     /// screen: the toolbar badge is the icon alone, colored by verdict.
     pub fn label(self) -> String {
-        i18n(match self {
-            SenderTrust::Pass => "Verified sender",
-            SenderTrust::Unverified => "Sender not verified",
-            SenderTrust::Suspicious => "Check this sender",
-            SenderTrust::Fail => "Possible forgery",
-        })
+        match self {
+            SenderTrust::Pass => i18n("Verified sender"),
+            SenderTrust::Unverified => i18n("Sender not verified"),
+            SenderTrust::Suspicious => i18n("Check this sender"),
+            SenderTrust::Fail => i18n("Possible forgery"),
+        }
     }
 
     /// CSS class for the badge's color.
@@ -823,6 +833,9 @@ pub struct SenderCheck {
     /// carries a `text/calendar` part. Read in the same pass, for the same
     /// reason: the raw message is in hand exactly once.
     pub invite: Option<Box<Invite>>,
+    /// The sensitivity label the sender's organization set (#411), read in
+    /// the same pass.
+    pub label: Option<crate::sensitivity::SensitivityLabel>,
 }
 
 impl Default for SenderCheck {
@@ -834,6 +847,7 @@ impl Default for SenderCheck {
             pgp: None,
             unsubscribe: None,
             invite: None,
+            label: None,
         }
     }
 }
@@ -867,6 +881,12 @@ pub struct OutboxItem {
     pub last_error: String,
     /// Send Later (#145): unix seconds it is due; `None` goes as soon as it can.
     pub send_at: Option<i64>,
+    /// The Message-ID of the message a forward forwards, to mark once it
+    /// goes (#454); a reply's original is in its own In-Reply-To.
+    pub forwards: String,
+    /// Set only for a message still on its way out (#434), never stored:
+    /// what it is doing ("Sending…"), shown instead of how long it waited.
+    pub status: String,
 }
 
 impl OutboxItem {
@@ -879,9 +899,9 @@ impl OutboxItem {
             .unwrap_or(queued_at);
         let secs = (now - queued_at).max(0);
         let ago = match secs {
-            s if s < 90 => "just now".to_string(),
-            s if s < 3600 => format!("{} minutes ago", s / 60),
-            s if s < 7200 => "an hour ago".to_string(),
+            s if s < 90 => i18n("just now"),
+            s if s < 3600 => i18n_f("{n} minutes ago", &[("n", &(s / 60).to_string())]),
+            s if s < 7200 => i18n("an hour ago"),
             s if s < 86400 => i18n_f("{n} hours ago", &[("n", &(s / 3600).to_string())]),
             s if s < 172_800 => i18n("yesterday"),
             s => i18n_f("{n} days ago", &[("n", &(s / 86400).to_string())]),
@@ -918,7 +938,9 @@ impl OutboxItem {
             // The row's one line of context: how long it has been stuck and what
             // is stopping it, falling back to the body when nothing has failed
             // yet (a message queued while offline never got an error).
-            preview: {
+            preview: if !self.status.is_empty() {
+                self.status.clone()
+            } else {
                 // A scheduled message says when it goes, until it is due.
                 let waiting = match self.send_at {
                     Some(at) if at > crate::datefmt::now() => {
@@ -947,12 +969,15 @@ impl OutboxItem {
             // Never dimmed as read: it is still waiting to go out.
             unread: true,
             starred: false,
+            answered: false,
+            forwarded: false,
             keywords: Vec::new(),
             has_attachment: false,
             message_id: String::new(),
             references: String::new(),
             importance: Default::default(),
             due: 0,
+            labels: Vec::new(),
         }
     }
 }
@@ -1185,6 +1210,36 @@ impl Message {
         }
     }
 
+    /// Whether the message carries `tag`: its keyword, or on Gmail a label
+    /// named like it (#374), which is how a tag set in Gmail itself arrives.
+    pub fn has_tag(&self, tag: &crate::config::Tag) -> bool {
+        self.has_keyword(&tag.keyword) || self.labels.iter().any(|l| label_names_tag(l, tag))
+    }
+
+    /// The message's keywords, with the keyword of every tag a Gmail label
+    /// stands for: what the tag checks go by.
+    pub fn tag_keywords(&self, tags: &[crate::config::Tag]) -> Vec<String> {
+        let mut out = self.keywords.clone();
+        for t in tags {
+            if !self.has_keyword(&t.keyword) && self.labels.iter().any(|l| label_names_tag(l, t)) {
+                out.push(t.keyword.clone());
+            }
+        }
+        out
+    }
+
+    /// Take a tag off this copy of the message: its keyword and the labels
+    /// that stand for it.
+    pub fn drop_tag(&mut self, tag: &crate::config::Tag) {
+        self.set_keyword(&tag.keyword, false);
+        self.labels.retain(|l| !label_names_tag(l, tag));
+    }
+
+    /// The pills the message wears in the list and the reader; see [`pills`].
+    pub fn pills<'a>(&self, tags: &'a [crate::config::Tag]) -> Vec<Pill<'a>> {
+        pills(&self.keywords, &self.labels, tags)
+    }
+
     /// Strip interior NUL bytes from every text field. GTK's C strings end at
     /// the first NUL and glib panics rather than truncate when handed one
     /// mid-string — a single message with a stray 0x00 in its envelope (they
@@ -1229,6 +1284,64 @@ impl Message {
         datetime_list_at(self.timestamp, &self.date)
     }
 
+}
+
+/// One pill on a message: a tag (#71), or a Gmail label no tag stands for
+/// (#374), by its display name.
+#[derive(Debug, Clone, PartialEq)]
+pub enum Pill<'a> {
+    Tag(&'a crate::config::Tag),
+    Label(String),
+}
+
+/// The tags a message carries, in the order Settings lists them, then the
+/// Gmail labels none of them stands for, in the server's order. A label
+/// named like a tag (by keyword or by name) shows as that tag, once: on
+/// Gmail, which keeps no keywords, a label is how such a tag arrives.
+pub fn pills<'a>(
+    keywords: &[String],
+    labels: &[String],
+    tags: &'a [crate::config::Tag],
+) -> Vec<Pill<'a>> {
+    // A decoded name can hold a NUL (`&AAA-`), which a GTK label aborts on.
+    let shown: Vec<String> =
+        labels.iter().map(|l| crate::mutf7::decode(l).replace('\0', " ")).collect();
+    let names_label = |t: &crate::config::Tag, i: usize| {
+        t.keyword.eq_ignore_ascii_case(&labels[i]) || t.name.eq_ignore_ascii_case(&shown[i])
+    };
+    let mut out: Vec<Pill<'a>> = tags
+        .iter()
+        .filter(|t| {
+            keywords.iter().any(|k| k.eq_ignore_ascii_case(&t.keyword))
+                || (0..labels.len()).any(|i| names_label(t, i))
+        })
+        .map(Pill::Tag)
+        .collect();
+    for (i, name) in shown.iter().enumerate() {
+        if !tags.iter().any(|t| names_label(t, i)) {
+            out.push(Pill::Label(name.clone()));
+        }
+    }
+    out
+}
+
+/// Which of the tag palette's colors a Gmail label no tag stands for wears
+/// (#374): worked out from its name, so a label has the same color on every
+/// row, in the reader and from one run to the next. A tag named like the
+/// label is how a user picks the color instead.
+pub fn label_hue(name: &str) -> usize {
+    // FNV-1a: std's hasher makes no promise to stay the same across releases.
+    let hash = name
+        .to_lowercase()
+        .bytes()
+        .fold(0x811c_9dc5_u32, |h, b| (h ^ b as u32).wrapping_mul(0x0100_0193));
+    hash as usize % crate::config::TAG_COLORS.len()
+}
+
+/// Whether a Gmail label (as the server writes it, modified UTF-7) stands for
+/// a tag: named like its keyword, or like its name.
+pub fn label_names_tag(label: &str, tag: &crate::config::Tag) -> bool {
+    tag.keyword.eq_ignore_ascii_case(label) || tag.name.eq_ignore_ascii_case(&crate::mutf7::decode(label))
 }
 
 /// A short date for a single line: the time for today, the day and month
@@ -1328,6 +1441,74 @@ pub fn thread_ids<'a>(msgs: impl IntoIterator<Item = &'a Message>) -> Vec<String
 mod tests {
     use super::*;
 
+    /// #374: tags first in Settings order, then the labels no tag stands
+    /// for, decoded; a label named like a tag shows as that tag, once.
+    #[test]
+    fn pills_put_tags_first_and_show_a_label_once() {
+        let tag = |name: &str, keyword: &str| crate::config::Tag {
+            name: name.into(),
+            keyword: keyword.into(),
+            color: "#1c71d8".into(),
+        };
+        let tags = [tag("Urgent", "$label1"), tag("Work", "Work"), tag("Receipts", "receipts")];
+        let keywords = vec!["$Label1".to_string()];
+        let labels: Vec<String> =
+            ["Clients/Acme", "work", "&AOk-t&AOk-", "My Label", "Receipts"].iter().map(|l| l.to_string()).collect();
+        let names: Vec<String> = pills(&keywords, &labels, &tags)
+            .into_iter()
+            .map(|p| match p {
+                Pill::Tag(t) => format!("tag:{}", t.name),
+                Pill::Label(l) => format!("label:{l}"),
+            })
+            .collect();
+        assert_eq!(
+            names,
+            ["tag:Urgent", "tag:Work", "tag:Receipts", "label:Clients/Acme", "label:été", "label:My Label"]
+        );
+        assert!(pills(&[], &[], &tags).is_empty());
+        assert_eq!(pills(&[], &["&AAA-".to_string()], &[]), [Pill::Label(" ".into())]);
+    }
+
+    /// #374: a label's color follows its name, whatever the case, and the
+    /// palette is spread over rather than one color for all.
+    #[test]
+    fn a_label_keeps_one_color() {
+        assert_eq!(label_hue("Clients/Acme"), label_hue("clients/acme"));
+        // Pinned: a label must not change color between releases.
+        assert_eq!(["Work", "Clients", "Newsletters"].map(label_hue), [0, 7, 3]);
+        let hues: std::collections::HashSet<usize> =
+            ["Travel", "Receipts", "Clients", "Family", "Newsletters", "Bills", "School", "Friends"]
+                .iter()
+                .map(|n| label_hue(n))
+                .collect();
+        assert!(hues.len() >= 4, "{hues:?}");
+        assert!(hues.iter().all(|&h| h < crate::config::TAG_COLORS.len()));
+    }
+
+    /// #374: a Gmail label named like a tag is the tag, for every check that
+    /// asks; taking the tag off takes those labels too.
+    #[test]
+    fn a_label_named_like_a_tag_is_the_tag() {
+        let tag = |name: &str, keyword: &str| crate::config::Tag {
+            name: name.into(),
+            keyword: keyword.into(),
+            color: "#1c71d8".into(),
+        };
+        let work = tag("Work", "$label2");
+        let ete = tag("Été", "ete");
+        let mut m = crate::backend::MockBackend::new().message(1).expect("a demo message");
+        m.keywords.clear();
+        m.labels = vec!["work".into(), "&AMk-t&AOk-".into(), "Other".into()];
+        assert!(m.has_tag(&work) && m.has_tag(&ete));
+        assert!(!m.has_tag(&tag("Home", "home")));
+        assert_eq!(m.tag_keywords(&[work.clone(), ete.clone()]), ["$label2", "ete"]);
+        m.keywords = vec!["$Label2".into()];
+        assert_eq!(m.tag_keywords(&[work.clone()]), ["$Label2"], "no second copy of a keyword it has");
+        m.drop_tag(&work);
+        assert!(!m.has_tag(&work) && m.keywords.is_empty());
+        assert_eq!(m.labels, ["&AMk-t&AOk-", "Other"]);
+    }
+
     /// #334: each priority header's spellings, and normal for anything else.
     #[test]
     fn importance_reads_every_priority_header() {
@@ -1410,6 +1591,8 @@ mod tests {
             attempts: 1,
             send_at: None,
             last_error: String::new(),
+            forwards: String::new(),
+            status: String::new(),
         }
     }
 

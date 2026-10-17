@@ -105,6 +105,32 @@ pub fn save_language(lang: &str) {
     }
 }
 
+/// How GTK draws the windows (#403): empty for GTK's own choice, else a
+/// `GSK_RENDERER` value ("vulkan", "gl", "cairo"). Its own small file, as
+/// the language is: it has to be read before GTK starts.
+pub fn load_renderer() -> String {
+    renderer_path()
+        .and_then(|p| std::fs::read_to_string(p).ok())
+        .map(|s| s.trim().to_string())
+        .unwrap_or_default()
+}
+
+pub fn save_renderer(renderer: &str) {
+    let Some(path) = renderer_path() else { return };
+    if let Some(dir) = path.parent() {
+        let _ = std::fs::create_dir_all(dir);
+    }
+    if renderer.trim().is_empty() {
+        let _ = std::fs::remove_file(&path);
+    } else {
+        let _ = std::fs::write(&path, format!("{}\n", renderer.trim()));
+    }
+}
+
+fn renderer_path() -> Option<PathBuf> {
+    Some(config_base()?.join("hylki").join("renderer"))
+}
+
 fn language_path() -> Option<PathBuf> {
     Some(config_base()?.join("hylki").join("language"))
 }
@@ -182,7 +208,8 @@ pub fn set_custom_sound(src: &Path) -> std::io::Result<PathBuf> {
     // sound playing rather than none.
     std::fs::create_dir_all(&dir)?;
     let part = dir.join(".incoming");
-    std::fs::copy(src, &part)?;
+    let bytes = std::fs::read(src)?;
+    std::fs::write(&part, without_id3v2(&bytes))?;
     for entry in std::fs::read_dir(&dir)?.flatten() {
         if entry.file_name() != ".incoming" {
             let _ = std::fs::remove_file(entry.path());
@@ -191,6 +218,48 @@ pub fn set_custom_sound(src: &Path) -> std::io::Result<PathBuf> {
     let dest = dir.join(name);
     std::fs::rename(&part, &dest)?;
     Ok(dest)
+}
+
+/// `bytes` without the ID3v2 tags in front. An MP3 that starts with one
+/// makes GTK's media file abort the whole app inside GStreamer's decodebin3
+/// (#397), while the same audio without the tag plays. The tag only holds
+/// the title, artist and cover art, none of which a notification needs.
+fn without_id3v2(mut bytes: &[u8]) -> &[u8] {
+    while bytes.len() >= 10 && bytes.starts_with(b"ID3") && bytes[6..10].iter().all(|b| b & 0x80 == 0) {
+        // A syncsafe size: seven bits a byte, not counting the 10-byte
+        // header, nor the 10-byte footer when flag 0x10 says there is one.
+        let size = bytes[6..10].iter().fold(0usize, |n, b| (n << 7) | usize::from(*b));
+        let footer = if bytes[5] & 0x10 != 0 { 10 } else { 0 };
+        let Some(rest) = bytes.get(10 + size + footer..) else {
+            break;
+        };
+        bytes = rest;
+    }
+    bytes
+}
+
+/// Take the ID3v2 tag off a custom sound copied in before #397, so the next
+/// new mail does not take the app down. Cheap when there is none: it reads
+/// three bytes.
+fn repair_custom_sound(path: &Path) {
+    use std::io::Read;
+    let mut head = [0u8; 3];
+    let tagged = std::fs::File::open(path).and_then(|mut f| f.read_exact(&mut head)).is_ok() && &head == b"ID3";
+    if !tagged {
+        return;
+    }
+    let Ok(bytes) = std::fs::read(path) else {
+        return;
+    };
+    let audio = without_id3v2(&bytes);
+    if audio.len() == bytes.len() {
+        return;
+    }
+    let part = path.with_file_name(".incoming");
+    match std::fs::write(&part, audio).and_then(|()| std::fs::rename(&part, path)) {
+        Ok(()) => tracing::info!("new-mail sound: took the ID3v2 tag off {}", path.display()),
+        Err(e) => tracing::warn!("new-mail sound: could not take the ID3v2 tag off {}: {e}", path.display()),
+    }
 }
 
 /// The built-in new-mail sounds: GNOME's four alert sounds (data/sounds/),
@@ -226,7 +295,9 @@ impl NewMailSound {
     /// sound whose file has gone is nothing.
     pub fn source(&self) -> Option<SoundSource> {
         if self.sound == CUSTOM_SOUND {
-            return custom_sound().map(SoundSource::File);
+            let path = custom_sound()?;
+            repair_custom_sound(&path);
+            return Some(SoundSource::File(path));
         }
         let name = BUILTIN_SOUNDS.iter().find(|n| **n == self.sound).unwrap_or(&BUILTIN_SOUNDS[0]);
         Some(SoundSource::Resource(format!("/co/hyprlab/Hylki/sounds/{name}.ogg")))
@@ -282,6 +353,20 @@ pub fn sound_when_focused() -> bool {
 /// Service name used for keyring entries; password items are keyed by email.
 const KEYRING_SERVICE: &str = "co.hyprlab.Hylki";
 
+/// A protocol this build does not know reads as IMAP: an account written by
+/// another version (the EWS accounts of 1.44.0-beta.5) then shows up unable
+/// to connect, where it can be removed, instead of failing the whole file and
+/// with it every account.
+fn known_protocol<'de, D: serde::Deserializer<'de>>(d: D) -> Result<Protocol, D::Error> {
+    let name = String::deserialize(d)?;
+    Ok(Protocol::deserialize(serde::de::value::StrDeserializer::<serde::de::value::Error>::new(&name)).unwrap_or_else(
+        |_| {
+            tracing::warn!("unknown account protocol {name:?}, read as IMAP");
+            Protocol::Imap
+        },
+    ))
+}
+
 /// Incoming-mail protocol for an account.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Deserialize, Serialize)]
 #[serde(rename_all = "lowercase")]
@@ -332,7 +417,7 @@ pub struct AccountConfig {
     pub name: String,
     pub email: String,
     /// Incoming-mail protocol (IMAP, POP3, Graph or JMAP).
-    #[serde(default)]
+    #[serde(default, deserialize_with = "known_protocol")]
     pub protocol: Protocol,
     /// Incoming server host (IMAP, POP3 or JMAP, per `protocol`; a JMAP
     /// account may give a URL with its scheme).
@@ -400,12 +485,23 @@ pub struct AccountConfig {
     /// default (the separate Privacy switch covers other people's mail).
     #[serde(default)]
     pub gravatar: bool,
-    /// Composition signature appended to new messages from this account.
+    /// The signature put in new messages from this account: the default
+    /// one of `signatures`, written here too so an older Hylki still finds
+    /// it. A config from before #445 has only this.
     #[serde(default)]
     pub signature: Option<String>,
     /// Whether `signature` is HTML (vs. plain text).
     #[serde(default)]
     pub signature_html: bool,
+    /// Every signature the account has (#445), in the order the composer
+    /// offers them. Read through [`AccountConfig::signature_set`], which
+    /// also covers a config that has only `signature`.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub signatures: Vec<NamedSignature>,
+    /// Which of `signatures` new messages start with. None: they start
+    /// without one, and the composer's signature button puts one in.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub default_signature: Option<usize>,
     /// How this account is labelled in the UI (e.g. the All Inboxes view).
     /// When unset, the email address is shown.
     #[serde(default)]
@@ -477,6 +573,11 @@ pub struct AccountConfig {
     /// that has stopped appending means no sent mail is kept at all.
     #[serde(default, skip_serializing_if = "is_false")]
     pub server_saves_sent: bool,
+    /// Where the copy of a reply is filed (#468): with the rest of sent
+    /// mail, or beside the message it answers, as Evolution can. Decided
+    /// when the reply goes out, from wherever the original is by then.
+    #[serde(default, skip_serializing_if = "ReplyCopies::is_default")]
+    pub reply_copies: ReplyCopies,
     /// Auto-empty (#140): mail in the Junk folder older than this many days
     /// is deleted for good at each sync. 0 = never.
     #[serde(default, skip_serializing_if = "is_zero")]
@@ -484,6 +585,11 @@ pub struct AccountConfig {
     /// The same for the Trash folder.
     #[serde(default, skip_serializing_if = "is_zero")]
     pub empty_trash_days: u32,
+    /// Mailing-list mail (#407): Inbox messages with a List-Unsubscribe
+    /// header, not starred, older than this many days go to the Trash at
+    /// each sync. 0 = never.
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub clean_lists_days: u32,
     /// The OpenPGP key (fingerprint) that signs mail from this account and
     /// opens what is encrypted to it (#133); `None` = the key whose address
     /// matches.
@@ -505,6 +611,24 @@ pub struct AccountConfig {
     /// for one message.
     #[serde(default, skip_serializing_if = "is_false")]
     pub sign_by_default: bool,
+    /// The composer's recipient suggestions also search the organization's
+    /// directory through Microsoft Graph (#410). Only for a Microsoft 365
+    /// account signed in within Hylki: the scopes it needs are asked for
+    /// when it is turned on, and a token from GNOME Online Accounts cannot
+    /// be given them.
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub graph_directory: bool,
+    /// Writing from this account, the suggestions are its directory's and
+    /// its own mail's only (#410): a work account then offers no one from
+    /// GNOME Contacts, an LDAP directory or another account's mail.
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub graph_directory_only: bool,
+    /// A message's sensitivity label whose name the message leaves out is
+    /// named from the organization's list of labels, read through
+    /// Microsoft Graph (#411). Like `graph_directory`, only for an account
+    /// signed in within Hylki, with its scope asked for when turned on.
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub graph_label_names: bool,
 }
 
 fn is_zero(v: &u32) -> bool {
@@ -513,6 +637,15 @@ fn is_zero(v: &u32) -> bool {
 
 fn is_true(b: &bool) -> bool {
     *b
+}
+
+/// One of an account's signatures (#445), named so the composer can offer
+/// it beside the others.
+#[derive(Debug, Clone, Default, PartialEq, Deserialize, Serialize)]
+pub struct NamedSignature {
+    pub name: String,
+    /// The signature as HTML.
+    pub html: String,
 }
 
 /// A send-as alias (#34): an extra From identity the composer offers. By
@@ -619,6 +752,33 @@ pub struct OAuthSettings {
 
 
 impl AccountConfig {
+    /// The account's signatures and the one new messages start with. A
+    /// config written before #445 holds a single `signature`, which is
+    /// both.
+    pub fn signature_set(&self) -> (Vec<NamedSignature>, Option<usize>) {
+        if self.signatures.is_empty() {
+            return match self.signature.as_deref().filter(|s| !s.trim().is_empty()) {
+                Some(html) => (
+                    vec![NamedSignature { name: crate::i18n::i18n("Signature"), html: html.to_string() }],
+                    Some(0),
+                ),
+                None => (Vec::new(), None),
+            };
+        }
+        let default = self.default_signature.filter(|i| *i < self.signatures.len());
+        (self.signatures.clone(), default)
+    }
+
+    /// Store `signatures`, with `default` the one new messages start with,
+    /// and keep `signature` in step for an older Hylki.
+    pub fn set_signatures(&mut self, signatures: Vec<NamedSignature>, default: Option<usize>) {
+        let default = default.filter(|i| *i < signatures.len());
+        self.signature = default.map(|i| signatures[i].html.clone());
+        self.signature_html = true;
+        self.default_signature = default;
+        self.signatures = signatures;
+    }
+
     /// The account's UI label: the custom label, or the email address.
     pub fn display_label(&self) -> String {
         match self.label.as_deref() {
@@ -712,9 +872,20 @@ pub fn load() -> Option<Vec<AccountConfig>> {
 /// Passwords live only in the keyring, so an in-memory `AccountConfig` loaded
 /// from disk has an empty `password`. We must NEVER store an empty password —
 /// doing so would wipe the keyring entry of any account that wasn't just edited.
+///
+/// The file is written at once; the passwords are queued for the keyring
+/// thread (see [`keyring_later`]), since this is called from the main thread
+/// and a keyring can take as long as its user does to answer. A keyring read
+/// queued after this call sees them.
 pub fn save(accounts: &[AccountConfig]) -> std::io::Result<()> {
     write_config(accounts)?;
     prune_avatars(accounts);
+    let accounts = accounts.to_vec();
+    keyring_later(move || store_secrets(&accounts));
+    Ok(())
+}
+
+fn store_secrets(accounts: &[AccountConfig]) {
     for account in accounts {
         if !account.password.is_empty() {
             if let Err(e) = store_password(&account.email, &account.password) {
@@ -750,7 +921,6 @@ pub fn save(accounts: &[AccountConfig]) -> std::io::Result<()> {
             }
         }
     }
-    Ok(())
 }
 
 /// Rewrite the config file from the current accounts (dropping any plaintext
@@ -786,8 +956,146 @@ fn write_config(accounts: &[AccountConfig]) -> std::io::Result<()> {
 // Keyring (secret-service)
 // ---------------------------------------------------------------------------
 
+// Every keyring call runs on one thread, in the order it was made. A Secret
+// Service provider may wait on its user before it answers (a security key
+// that wants a tap, #466), and nothing bounds that wait, so the main thread
+// must never make the call itself: it queues it here with [`keyring_later`]
+// or [`keyring_then`]. Other threads still call the functions below and wait
+// for their turn. One thread keeps the order: a password saved and then read
+// back, or read and then replaced, is never overtaken.
+
+type KeyringJob = Box<dyn FnOnce() + Send>;
+
+/// Jobs queued with [`keyring_later`] and not yet done.
+static KEYRING_QUEUED: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+
+thread_local! {
+    static ON_KEYRING_THREAD: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+}
+
+fn keyring_thread() -> Option<&'static std::sync::mpsc::Sender<KeyringJob>> {
+    static THREAD: std::sync::OnceLock<Option<std::sync::mpsc::Sender<KeyringJob>>> =
+        std::sync::OnceLock::new();
+    THREAD
+        .get_or_init(|| {
+            let (tx, rx) = std::sync::mpsc::channel::<KeyringJob>();
+            std::thread::Builder::new()
+                .name("hylki-keyring".into())
+                .spawn(move || {
+                    ON_KEYRING_THREAD.with(|on| on.set(true));
+                    for job in rx {
+                        if std::panic::catch_unwind(std::panic::AssertUnwindSafe(job)).is_err() {
+                            tracing::error!("a keyring call panicked");
+                        }
+                    }
+                })
+                .map_err(|e| tracing::error!("could not start the keyring thread: {e}"))
+                .ok()
+                .map(|_| tx)
+        })
+        .as_ref()
+}
+
+/// Queue `job` for the keyring thread and return at once.
+pub fn keyring_later(job: impl FnOnce() + Send + 'static) {
+    use std::sync::atomic::Ordering;
+    // Counted down even when the job panics.
+    struct Done;
+    impl Drop for Done {
+        fn drop(&mut self) {
+            KEYRING_QUEUED.fetch_sub(1, Ordering::SeqCst);
+        }
+    }
+    KEYRING_QUEUED.fetch_add(1, Ordering::SeqCst);
+    let job: KeyringJob = Box::new(move || {
+        let _done = Done;
+        job();
+    });
+    match keyring_thread() {
+        Some(thread) => {
+            if let Err(std::sync::mpsc::SendError(job)) = thread.send(job) {
+                std::thread::spawn(job);
+            }
+        }
+        None => {
+            std::thread::spawn(job);
+        }
+    }
+}
+
+/// Wait, up to `limit`, for the jobs queued with [`keyring_later`] to be
+/// done; whether they were. Called on the way out: a password saved just
+/// before quitting would otherwise go with the process.
+pub fn keyring_drain(limit: std::time::Duration) -> bool {
+    let started = std::time::Instant::now();
+    while KEYRING_QUEUED.load(std::sync::atomic::Ordering::SeqCst) > 0 {
+        if started.elapsed() >= limit {
+            return false;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(20));
+    }
+    true
+}
+
+/// Run `job` on the keyring thread and hand its answer to `done` on the main
+/// loop. Called from the main thread.
+pub fn keyring_then<T: Send + 'static>(
+    job: impl FnOnce() -> T + Send + 'static,
+    done: impl FnOnce(T) + 'static,
+) {
+    let (tx, rx) = futures::channel::oneshot::channel();
+    keyring_later(move || {
+        let _ = tx.send(job());
+    });
+    gtk::glib::spawn_future_local(async move {
+        if let Ok(answer) = rx.await {
+            done(answer);
+        }
+    });
+}
+
+/// Run `f` on the keyring thread and wait for it.
+fn on_keyring_thread<T: Send + 'static>(f: impl FnOnce() -> T + Send + 'static) -> T {
+    if ON_KEYRING_THREAD.with(|on| on.get()) {
+        return f();
+    }
+    if gtk::glib::MainContext::default().is_owner() {
+        tracing::warn!(
+            "keyring call on the main thread: the window waits until the keyring answers\n{}",
+            std::backtrace::Backtrace::force_capture()
+        );
+    }
+    let (tx, rx) = std::sync::mpsc::sync_channel(1);
+    let job: KeyringJob = Box::new(move || {
+        let _ = tx.send(std::panic::catch_unwind(std::panic::AssertUnwindSafe(f)));
+    });
+    match keyring_thread() {
+        Some(thread) => {
+            if let Err(std::sync::mpsc::SendError(job)) = thread.send(job) {
+                job();
+            }
+        }
+        None => job(),
+    }
+    match rx.recv() {
+        Ok(Ok(answer)) => answer,
+        Ok(Err(panic)) => std::panic::resume_unwind(panic),
+        Err(_) => unreachable!("the keyring job always answers"),
+    }
+}
+
 fn keyring_entry(key: &str) -> keyring::Result<keyring::Entry> {
     keyring::Entry::new(KEYRING_SERVICE, key)
+}
+
+fn set_secret(key: &str, secret: &str) -> keyring::Result<()> {
+    let (key, secret) = (key.to_owned(), secret.to_owned());
+    on_keyring_thread(move || keyring_entry(&key)?.set_password(&secret))
+}
+
+fn delete_secret(key: &str) -> keyring::Result<()> {
+    let key = key.to_owned();
+    on_keyring_thread(move || keyring_entry(&key)?.delete_credential())
 }
 
 /// Keyring key for an account's separate SMTP password.
@@ -807,7 +1115,7 @@ fn oauth_key(email: &str) -> String {
 }
 
 pub fn store_oauth_refresh(email: &str, token: &str) -> keyring::Result<()> {
-    keyring_entry(&oauth_key(email))?.set_password(token)
+    set_secret(&oauth_key(email), token)
 }
 
 pub fn load_oauth_refresh(email: &str) -> Option<String> {
@@ -815,12 +1123,12 @@ pub fn load_oauth_refresh(email: &str) -> Option<String> {
 }
 
 pub fn store_password(email: &str, password: &str) -> keyring::Result<()> {
-    keyring_entry(email)?.set_password(password)
+    set_secret(email, password)
 }
 
 /// Cloud attachments (#144): an account's app password, by `CloudAccount::key`.
 pub fn store_cloud_password(key: &str, password: &str) -> keyring::Result<()> {
-    keyring_entry(key)?.set_password(password)
+    set_secret(key, password)
 }
 
 pub fn load_cloud_password(key: &str) -> Option<String> {
@@ -828,9 +1136,7 @@ pub fn load_cloud_password(key: &str) -> Option<String> {
 }
 
 pub fn delete_cloud_password(key: &str) {
-    if let Ok(e) = keyring_entry(key) {
-        let _ = e.delete_credential();
-    }
+    let _ = delete_secret(key);
 }
 
 /// Write a settings file readable by the owner only (for modules outside
@@ -844,7 +1150,7 @@ pub fn load_password(email: &str) -> Option<String> {
 }
 
 pub fn store_smtp_password(email: &str, password: &str) -> keyring::Result<()> {
-    keyring_entry(&smtp_key(email))?.set_password(password)
+    set_secret(&smtp_key(email), password)
 }
 
 pub fn load_smtp_password(email: &str) -> Option<String> {
@@ -856,7 +1162,7 @@ pub fn store_alias_smtp_password(
     alias_addr: &str,
     password: &str,
 ) -> keyring::Result<()> {
-    keyring_entry(&alias_smtp_key(email, alias_addr))?.set_password(password)
+    set_secret(&alias_smtp_key(email, alias_addr), password)
 }
 
 pub fn load_alias_smtp_password(email: &str, alias_addr: &str) -> Option<String> {
@@ -890,11 +1196,12 @@ fn load_key(key: &str) -> Option<String> {
 /// locked or still starting, and taking that for "no password" signed the
 /// account in with an empty one until Hylki restarted (#375).
 fn read_key(key: &str) -> Result<Option<String>, String> {
-    match keyring_entry(key).and_then(|e| e.get_password()) {
+    let key = key.to_owned();
+    on_keyring_thread(move || match keyring_entry(&key).and_then(|e| e.get_password()) {
         Ok(password) => Ok(Some(password)),
-        Err(keyring::Error::NoEntry) => Ok(load_legacy_key(key)),
+        Err(keyring::Error::NoEntry) => Ok(load_legacy_key(&key)),
         Err(e) => Err(e.to_string()),
-    }
+    })
 }
 
 /// [`load_password`], with a keyring that could not be read as an error.
@@ -935,11 +1242,9 @@ pub fn delete_password(email: &str) {
 }
 
 fn delete_key(key: &str) {
-    if let Ok(entry) = keyring_entry(key) {
-        match entry.delete_credential() {
-            Ok(()) | Err(keyring::Error::NoEntry) => {}
-            Err(e) => tracing::warn!("could not delete keyring entry for {key}: {e}"),
-        }
+    match delete_secret(key) {
+        Ok(()) | Err(keyring::Error::NoEntry) => {}
+        Err(e) => tracing::warn!("could not delete keyring entry for {key}: {e}"),
     }
 }
 
@@ -1095,6 +1400,11 @@ pub(crate) struct PrivacyFile {
     /// Whether to use IMAP IDLE push for instant new-mail delivery.
     #[serde(default = "default_on")]
     pub(crate) push: bool,
+    /// On a metered connection, hold back the work done ahead of the user:
+    /// prefetching bodies and attachments, indexing old mail, watching
+    /// folders other than the Inbox, fetching sender logos (#442).
+    #[serde(default = "default_on")]
+    pub(crate) metered_save_data: bool,
     /// Addresses or whole domains whose incoming mail is auto-deleted (to Trash).
     /// Stored lowercased; a bare domain like "spam.com" matches any sender there.
     #[serde(default)]
@@ -1152,9 +1462,16 @@ pub(crate) struct PrivacyFile {
     #[serde(default = "default_on")]
     pub(crate) reader_switch: bool,
     /// Whether the Light / Dark Mode switch, which draws one message in the
-    /// other scheme, is shown in the reader header (PR #386).
-    #[serde(default)]
+    /// other scheme, is shown in the reader header (PR #386). On by default
+    /// under a new key: the switch first shipped off, and that `false` was
+    /// saved as `theme_switch` for everyone, chosen or not, so the old key is
+    /// left unread and drops out at the next save.
+    #[serde(rename = "theme_switch_shown", default = "default_on")]
     pub(crate) theme_switch: bool,
+    /// Draw icons from the desktop's icon theme instead of Hylki's own
+    /// (Settings → Appearance). Off: the app looks the same everywhere.
+    #[serde(default)]
+    pub(crate) desktop_icons: bool,
     /// What Reader View does when a message is opened: keep the last choice,
     /// or start every message on or off.
     #[serde(default)]
@@ -1294,6 +1611,14 @@ pub(crate) struct PrivacyFile {
     /// rather than behind its chevron, the default.
     #[serde(default)]
     pub(crate) toolbar_expanded: bool,
+    /// The font rich-text messages are written and sent in, as a CSS family
+    /// list. Empty, the editor shows the interface font and the message
+    /// names none, so it reads in the recipient's own.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub(crate) compose_font: String,
+    /// Their text size in points; 0 leaves it to the recipient.
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub(crate) compose_font_size: u32,
     /// New messages start as plain text, without formatting (#180). Kept
     /// written so a version that predates `compose_format` still opens its
     /// composer the way this one was left.
@@ -1304,6 +1629,11 @@ pub(crate) struct PrivacyFile {
     /// where `compose_plain` above still says which of the two it is.
     #[serde(default)]
     pub(crate) compose_format: Option<ComposeFormat>,
+    /// Whether a reply or forward to mail that had no HTML part is written
+    /// in plain text whatever `compose_format` says (#436). Mailing lists
+    /// and the people on them often write plain text and expect it back.
+    #[serde(default)]
+    pub(crate) follow_plain: bool,
     /// Where the split reply opens in the reading pane (#212).
     #[serde(default)]
     pub(crate) reply_position: ReplyPosition,
@@ -1316,6 +1646,10 @@ pub(crate) struct PrivacyFile {
     /// Off by default, as in most mail programs today.
     #[serde(default)]
     pub(crate) signature_dashes: bool,
+    /// Undo Send (#434): seconds a sent message waits, with Undo on offer,
+    /// before it is handed to the server. 0 sends at once.
+    #[serde(default = "default_undo_send_secs")]
+    pub(crate) undo_send_secs: u32,
     /// Whether the composer underlines misspelled words as you type.
     #[serde(default = "default_on")]
     pub(crate) spellcheck: bool,
@@ -1375,6 +1709,30 @@ pub(crate) struct PrivacyFile {
     /// Headings over those columns, which sort the list when clicked.
     #[serde(default)]
     pub(crate) list_headings: bool,
+    /// Columns keep their widths and a single line too wide for the pane
+    /// scrolls sideways (#443). Off, the default and the way it was, the
+    /// name columns narrow to fit.
+    #[serde(default)]
+    pub(crate) list_column_scroll: bool,
+    /// A list sorted by date is divided under Today, Yesterday, Last 7 days,
+    /// Last 14 days and Older (#435). On by default since 1.44, for
+    /// existing installs too (see `date_groups_default_applied`).
+    #[serde(default = "default_on")]
+    pub(crate) list_group_by_date: bool,
+    /// A card's tags and Gmail labels go on a line of their own under its
+    /// text, instead of at the end of the subject (#374).
+    #[serde(default)]
+    pub(crate) list_pills_below: bool,
+    /// Grouping by date was turned on once for an install from before it
+    /// became the default: every save writes every key, so those files
+    /// carry the old `false` without anyone having chosen it. A new
+    /// install starts with this set, so switching grouping off sticks.
+    #[serde(default)]
+    pub(crate) date_groups_default_applied: bool,
+    /// The search field stays above the list instead of hiding behind the
+    /// search button (#446). Off by default.
+    #[serde(default)]
+    pub(crate) list_search_open: bool,
     /// The widths columns were dragged to, in pixels, by column name.
     #[serde(default)]
     pub(crate) list_column_widths: std::collections::BTreeMap<String, i32>,
@@ -1382,6 +1740,15 @@ pub(crate) struct PrivacyFile {
     /// a stray keystroke shouldn't archive mail for someone who never asked.
     #[serde(default)]
     pub(crate) single_key_shortcuts: bool,
+    /// Gmail's keys in place of Hylki's own for the single-key shortcuts
+    /// (#392): j/k move without opening, o opens, e archives, # deletes, g
+    /// then a letter goes to a folder. Off by default.
+    #[serde(default)]
+    pub(crate) gmail_keys: bool,
+    /// How many days downloaded mail (bodies and attachment files) is kept
+    /// on this computer (#394); 0 keeps it. The message index always stays.
+    #[serde(default)]
+    pub(crate) keep_downloads_days: u32,
     /// Keep running after the window is closed, so new mail still arrives and
     /// notifies. Off by default: closing a window is expected to quit.
     #[serde(default)]
@@ -1401,9 +1768,14 @@ pub(crate) struct PrivacyFile {
     #[serde(default = "default_on")]
     pub(crate) tray_mail: bool,
     /// Whether the launcher icon in a dock or task manager shows the unread
-    /// count (#271).
+    /// count (#271). Kept written so a version that predates
+    /// `launcher_badge` still shows a badge when this one does.
     #[serde(default = "default_on")]
     pub(crate) launcher_count: bool,
+    /// What that count counts (#431). Absent on installs that predate the
+    /// choice, where `launcher_count` above says whether there is one.
+    #[serde(default)]
+    pub(crate) launcher_badge: Option<LauncherBadge>,
     /// Whether to say anything at all when remote content is blocked. Off hides
     /// the banner; it never changes what is blocked, only whether you're told.
     #[serde(default = "default_on")]
@@ -1458,6 +1830,10 @@ pub(crate) struct PrivacyFile {
     /// the status bar. Off by default.
     #[serde(default)]
     pub(crate) console_mode: bool,
+    /// The status bar at the top of the window rather than its foot (#433).
+    /// Off by default, for everyone: the key is new in 1.44.
+    #[serde(default)]
+    pub(crate) status_bar_top: bool,
     /// Read-marking policy (#100).
     #[serde(default)]
     pub(crate) read_mark: ReadMark,
@@ -1571,6 +1947,7 @@ impl Default for PrivacyFile {
             tags_placement: SectionPlacement::default(),
             chevrons_left: default_chevrons_left(),
             console_mode: false,
+            status_bar_top: false,
             read_mark: ReadMark::default(),
             files_action: FilesAction::default(),
             files_large: FilesLarge::default(),
@@ -1588,6 +1965,7 @@ impl Default for PrivacyFile {
             clock_style: ClockStyle::default(),
             fetch_interval_secs: default_fetch_interval(),
             push: true,
+            metered_save_data: true,
             blacklist: Vec::new(),
             palette_collapse_secs: default_palette_collapse(),
             card_palette_collapse_secs: default_palette_collapse(),
@@ -1602,7 +1980,8 @@ impl Default for PrivacyFile {
             single_message_card: default_single_message_card(),
             reader_mode: false,
             reader_switch: true,
-            theme_switch: false,
+            theme_switch: true,
+            desktop_icons: false,
             reader_default: ReaderDefault::default(),
             reader_zoom: default_reader_zoom(),
             card_attachments: true,
@@ -1636,11 +2015,15 @@ impl Default for PrivacyFile {
             paste_plain: true,
             return_paragraph: false,
             toolbar_expanded: false,
+            compose_font: String::new(),
+            compose_font_size: 0,
             compose_plain: false,
             compose_format: None,
+            follow_plain: false,
             reply_position: ReplyPosition::default(),
             signature_position: SignaturePosition::default(),
             signature_dashes: false,
+            undo_send_secs: default_undo_send_secs(),
             spellcheck: true,
             spellcheck_langs: String::new(),
             sidebar_hover_expand: false,
@@ -1656,14 +2039,22 @@ impl Default for PrivacyFile {
             list_layout: ListLayout::Cards,
             list_columns: default_list_columns(),
             list_headings: false,
+            list_column_scroll: false,
+            list_group_by_date: true,
+            list_pills_below: false,
+            date_groups_default_applied: true,
+            list_search_open: false,
             list_column_widths: Default::default(),
             single_key_shortcuts: false,
+            gmail_keys: false,
+            keep_downloads_days: 0,
             run_in_background: false,
             autostart: false,
             tray: false,
             tray_icon: TrayIcon::default(),
             tray_mail: true,
             launcher_count: true,
+            launcher_badge: None,
             print: PrintOptions::default(),
         }
     }
@@ -1681,18 +2072,33 @@ pub(crate) fn load_privacy() -> PrivacyFile {
         return PrivacyFile::default();
     };
     let mut file = toml::from_str::<PrivacyFile>(&text).unwrap_or_default();
-    // The inset card for a lone message became the default on 2026-08-31
-    // for new installs only: every save writes every key, so an install
-    // from before then stayed on the full-bleed view without ever choosing
-    // it (#153). Apply the default once and remember that it was.
-    if !file.single_card_default_applied {
-        file.single_card_default_applied = true;
-        file.single_message_card = true;
+    if apply_new_defaults(&mut file) {
         if let Ok(toml) = toml::to_string_pretty(&file) {
             let _ = write_private(&path, &toml);
         }
     }
     file
+}
+
+/// Bring a file from before a default changed up to it, once: every save
+/// writes every key, so an older install carries the old value without
+/// anyone having chosen it. Whether anything changed.
+fn apply_new_defaults(file: &mut PrivacyFile) -> bool {
+    let mut changed = false;
+    // The inset card for a lone message became the default on 2026-08-31
+    // (#153).
+    if !file.single_card_default_applied {
+        file.single_card_default_applied = true;
+        file.single_message_card = true;
+        changed = true;
+    }
+    // Grouping the list by date, the default since 1.44 (#435).
+    if !file.date_groups_default_applied {
+        file.date_groups_default_applied = true;
+        file.list_group_by_date = true;
+        changed = true;
+    }
+    changed
 }
 
 
@@ -1933,6 +2339,42 @@ impl FolderSort {
 
 
 
+/// Where an account files the copy of a reply it sends (#468).
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ReplyCopies {
+    /// Wherever the rest of sent mail goes.
+    #[default]
+    WithSent,
+    /// In the folder of the message replied to.
+    Original,
+    /// The same, but a reply to mail in the Inbox goes with sent mail:
+    /// what the Inbox holds is waiting to be dealt with, and a reply is not.
+    OriginalNotInbox,
+}
+
+impl ReplyCopies {
+    pub const ALL: [ReplyCopies; 3] =
+        [ReplyCopies::WithSent, ReplyCopies::Original, ReplyCopies::OriginalNotInbox];
+
+    pub fn label(self) -> String {
+        match self {
+            ReplyCopies::WithSent => crate::i18n::i18n("With sent mail"),
+            ReplyCopies::Original => crate::i18n::i18n("Folder of the original"),
+            ReplyCopies::OriginalNotInbox => crate::i18n::i18n("Folder of the original, not the Inbox"),
+        }
+    }
+
+    /// Its place in [`ReplyCopies::ALL`], for combo rows.
+    pub fn index(self) -> u32 {
+        ReplyCopies::ALL.iter().position(|s| *s == self).unwrap_or(0) as u32
+    }
+
+    fn is_default(&self) -> bool {
+        *self == ReplyCopies::WithSent
+    }
+}
+
 /// When an opened message is marked read (#100).
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -2064,6 +2506,20 @@ fn count_unread_default() -> bool {
 
 fn is_false(b: &bool) -> bool {
     !*b
+}
+
+/// The subject with any leading "Re:", "Fwd:" or "Fw:" (any case, repeated)
+/// taken off, and the whitespace around it.
+fn strip_reply_prefixes(subject: &str) -> &str {
+    const PREFIXES: [&str; 3] = ["re:", "fwd:", "fw:"];
+    let mut rest = subject.trim();
+    while let Some(next) = PREFIXES.iter().find_map(|p| {
+        let head = rest.get(..p.len())?;
+        head.eq_ignore_ascii_case(p).then(|| rest[p.len()..].trim_start())
+    }) {
+        rest = next;
+    }
+    rest.trim()
 }
 
 /// One condition of a [`FilterRule`]: what to look at, how, and for what.
@@ -2354,6 +2810,41 @@ fn mailboxes(list: &str) -> Vec<String> {
 }
 
 impl FilterRule {
+    /// The rule the "Create Filter from Message…" entry starts the
+    /// editor with: the sender's address, and the subject without its
+    /// leading "Re:" / "Fwd:" so a whole thread matches. Both have to match;
+    /// what the rule does is left for the user to pick. A blank subject
+    /// leaves the sender as the only condition.
+    pub fn draft_from_message(account_email: &str, from_addr: &str, subject: &str) -> FilterRule {
+        let mut conditions = vec![FilterCondition {
+            field: FilterField::FromAddress,
+            matcher: FilterMatch::Equals,
+            value: from_addr.trim().to_string(),
+        }];
+        let subject = strip_reply_prefixes(subject);
+        if !subject.is_empty() {
+            conditions.push(FilterCondition {
+                field: FilterField::Subject,
+                matcher: FilterMatch::Contains,
+                value: subject.to_string(),
+            });
+        }
+        let mut rule = FilterRule {
+            name: String::new(),
+            account_email: account_email.to_string(),
+            field: FilterField::FromAddress,
+            matcher: FilterMatch::Equals,
+            value: String::new(),
+            more: Vec::new(),
+            any: false,
+            dest_path: String::new(),
+            tag: String::new(),
+            count_unread: count_unread_default(),
+        };
+        rule.set_conditions(conditions);
+        rule
+    }
+
     /// Every condition, the first included.
     pub fn conditions(&self) -> Vec<FilterCondition> {
         let mut all = Vec::with_capacity(1 + self.more.len());
@@ -2455,6 +2946,266 @@ pub fn save_filters(rules: &[FilterRule]) {
             }
         }
         Err(e) => tracing::warn!("could not serialize filters: {e}"),
+    }
+}
+
+/// A smart folder (#417): a saved search over the mail already on this
+/// computer, listed in the sidebar's unified section. It looks in one
+/// account or every account in the unified section, in one kind of folder
+/// or every folder but Trash and Junk, and keeps the messages its
+/// conditions match, all of them or any one.
+#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct SmartFolder {
+    /// A name of its own for the sidebar to find it by, kept when renamed.
+    pub id: String,
+    pub name: String,
+    /// The account it looks in; empty for every account in the unified
+    /// section.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub account_email: String,
+    /// The kind of folder it looks in; none for every folder but Trash and
+    /// Junk.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub folder: Option<SmartFolderKind>,
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub any: bool,
+    #[serde(default)]
+    pub conditions: Vec<SmartCondition>,
+}
+
+/// The kinds of folder a smart folder can be held to.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum SmartFolderKind {
+    Inbox,
+    Sent,
+    Drafts,
+    Archive,
+    Junk,
+    Trash,
+}
+
+impl SmartFolderKind {
+    /// Every kind, in the order the editor lists them.
+    pub const ALL: [SmartFolderKind; 6] = [
+        SmartFolderKind::Inbox,
+        SmartFolderKind::Sent,
+        SmartFolderKind::Drafts,
+        SmartFolderKind::Archive,
+        SmartFolderKind::Junk,
+        SmartFolderKind::Trash,
+    ];
+
+    pub fn kind(self) -> crate::models::FolderKind {
+        use crate::models::FolderKind;
+        match self {
+            SmartFolderKind::Inbox => FolderKind::Inbox,
+            SmartFolderKind::Sent => FolderKind::Sent,
+            SmartFolderKind::Drafts => FolderKind::Drafts,
+            SmartFolderKind::Archive => FolderKind::Archive,
+            SmartFolderKind::Junk => FolderKind::Junk,
+            SmartFolderKind::Trash => FolderKind::Trash,
+        }
+    }
+}
+
+/// One condition of a [`SmartFolder`]: the filter conditions, which look at
+/// text, and the message's own state, which a filter has no use for.
+#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct SmartCondition {
+    pub field: SmartField,
+    #[serde(default = "contains_match")]
+    pub matcher: FilterMatch,
+    /// The text to match, commas separating alternatives, or for
+    /// [`SmartField::Tagged`] the tag's keyword (empty for any tag).
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub value: String,
+}
+
+fn contains_match() -> FilterMatch {
+    FilterMatch::Contains
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum SmartField {
+    FromAddress,
+    FromName,
+    Subject,
+    Recipients,
+    ReplyTo,
+    /// The list preview: a smart folder reads only what is on this computer.
+    Body,
+    FromInContacts,
+    FromNotInContacts,
+    Starred,
+    NotStarred,
+    Unread,
+    Read,
+    Attachment,
+    Tagged,
+}
+
+impl SmartField {
+    /// Every field, in the order the editor lists them.
+    pub const ALL: [SmartField; 14] = [
+        SmartField::Starred,
+        SmartField::NotStarred,
+        SmartField::Unread,
+        SmartField::Read,
+        SmartField::Attachment,
+        SmartField::Tagged,
+        SmartField::FromAddress,
+        SmartField::FromName,
+        SmartField::Subject,
+        SmartField::Recipients,
+        SmartField::ReplyTo,
+        SmartField::Body,
+        SmartField::FromInContacts,
+        SmartField::FromNotInContacts,
+    ];
+
+    /// The filter field the condition matches through, for the ones that
+    /// look at text or the address books.
+    pub fn filter_field(self) -> Option<FilterField> {
+        Some(match self {
+            SmartField::FromAddress => FilterField::FromAddress,
+            SmartField::FromName => FilterField::FromName,
+            SmartField::Subject => FilterField::Subject,
+            SmartField::Recipients => FilterField::Recipients,
+            SmartField::ReplyTo => FilterField::ReplyTo,
+            SmartField::Body => FilterField::Body,
+            SmartField::FromInContacts => FilterField::FromInContacts,
+            SmartField::FromNotInContacts => FilterField::FromNotInContacts,
+            _ => return None,
+        })
+    }
+
+    /// Whether the field takes text to match.
+    pub fn takes_text(self) -> bool {
+        self.filter_field().is_some_and(|f| !f.is_contact_check())
+    }
+}
+
+/// What a smart folder's conditions look at in one message.
+pub struct SmartInput<'a> {
+    pub text: FilterInput<'a>,
+    pub starred: bool,
+    pub unread: bool,
+    pub attachment: bool,
+    pub keywords: &'a [String],
+    /// The keywords of the tags there are, lower case: what "any tag" means,
+    /// since a server sets keywords of its own ($Forwarded, $Junk) too.
+    pub tags: &'a [String],
+}
+
+impl SmartCondition {
+    pub fn matches(&self, input: &SmartInput) -> bool {
+        match self.field {
+            SmartField::Starred => input.starred,
+            SmartField::NotStarred => !input.starred,
+            SmartField::Unread => input.unread,
+            SmartField::Read => !input.unread,
+            SmartField::Attachment => input.attachment,
+            SmartField::Tagged if self.value.is_empty() => {
+                input.keywords.iter().any(|k| input.tags.contains(&k.to_lowercase()))
+            }
+            SmartField::Tagged => input.keywords.iter().any(|k| k.eq_ignore_ascii_case(&self.value)),
+            field => {
+                let Some(field) = field.filter_field() else { return false };
+                FilterCondition { field, matcher: self.matcher, value: self.value.clone() }.matches(&input.text)
+            }
+        }
+    }
+}
+
+/// What the cache can rule out before a message is read: the state the
+/// conditions require when every one of them must hold.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct SmartPrefilter {
+    pub starred: Option<bool>,
+    pub unread: Option<bool>,
+    pub attachment: Option<bool>,
+}
+
+impl SmartFolder {
+    /// Every condition holds, or with `any` one does. A folder with no
+    /// conditions keeps everything it looks at.
+    pub fn matches(&self, input: &SmartInput) -> bool {
+        if self.conditions.is_empty() {
+            return true;
+        }
+        if self.any {
+            self.conditions.iter().any(|c| c.matches(input))
+        } else {
+            self.conditions.iter().all(|c| c.matches(input))
+        }
+    }
+
+    pub fn prefilter(&self) -> SmartPrefilter {
+        let mut pre = SmartPrefilter::default();
+        if self.any {
+            return pre;
+        }
+        for c in &self.conditions {
+            match c.field {
+                SmartField::Starred => pre.starred = Some(true),
+                SmartField::NotStarred => pre.starred = Some(false),
+                SmartField::Unread => pre.unread = Some(true),
+                SmartField::Read => pre.unread = Some(false),
+                SmartField::Attachment => pre.attachment = Some(true),
+                _ => {}
+            }
+        }
+        pre
+    }
+
+    /// Whether a condition asks about the address books, which are read
+    /// only when one does.
+    pub fn needs_contacts(&self) -> bool {
+        self.conditions
+            .iter()
+            .any(|c| matches!(c.field, SmartField::FromInContacts | SmartField::FromNotInContacts))
+    }
+}
+
+/// A new smart folder's id: random, so a folder renamed or recreated under
+/// an old name is never taken for another.
+pub fn new_smart_folder_id() -> String {
+    crate::rng::token(12).unwrap_or_else(|_| {
+        format!("{:x}", std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_nanos()))
+    })
+}
+
+#[derive(Default, serde::Serialize, serde::Deserialize)]
+struct SmartFoldersFile {
+    #[serde(default)]
+    folders: Vec<SmartFolder>,
+}
+
+fn smart_folders_path() -> Option<PathBuf> {
+    Some(config_base()?.join("hylki").join("smart_folders.toml"))
+}
+
+pub fn load_smart_folders() -> Vec<SmartFolder> {
+    let Some(path) = smart_folders_path() else { return Vec::new() };
+    let Ok(text) = std::fs::read_to_string(path) else { return Vec::new() };
+    toml::from_str::<SmartFoldersFile>(&text).map(|f| f.folders).unwrap_or_else(|e| {
+        tracing::warn!("could not read smart folders: {e}");
+        Vec::new()
+    })
+}
+
+pub fn save_smart_folders(folders: &[SmartFolder]) {
+    let Some(path) = smart_folders_path() else { return };
+    let file = SmartFoldersFile { folders: folders.to_vec() };
+    match toml::to_string_pretty(&file) {
+        Ok(toml) => {
+            if let Err(e) = write_private(&path, &toml) {
+                tracing::warn!("could not save smart folders: {e}");
+            }
+        }
+        Err(e) => tracing::warn!("could not serialize smart folders: {e}"),
     }
 }
 
@@ -2832,6 +3583,32 @@ pub enum SignaturePosition {
 
 
 
+/// What the number on the launcher icon counts (#431).
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum LauncherBadge {
+    /// No badge.
+    Off,
+    /// Every unread message in the inboxes, as the tray icon's dot.
+    #[default]
+    AllUnread,
+    /// Inbox mail that arrived while the main window was not in front and
+    /// is still unread; back to none each time the window comes forward.
+    NewSinceFront,
+}
+
+impl PrivacyFile {
+    /// The launcher badge choice, falling back to the on/off switch it
+    /// replaced.
+    pub(crate) fn launcher_badge(&self) -> LauncherBadge {
+        self.launcher_badge.unwrap_or(if self.launcher_count {
+            LauncherBadge::AllUnread
+        } else {
+            LauncherBadge::Off
+        })
+    }
+}
+
 /// What new messages start out as, falling back to the plain-text
 /// switch this setting replaced (#180).
 pub fn load_compose_format() -> ComposeFormat {
@@ -3053,6 +3830,13 @@ pub struct RailFold {
     pub tags: bool,
 }
 
+/// The delays Settings → Composing offers for Undo Send (#434), in seconds.
+pub(crate) const UNDO_SEND_CHOICES: [u32; 6] = [0, 3, 5, 10, 20, 30];
+
+fn default_undo_send_secs() -> u32 {
+    5
+}
+
 fn default_on() -> bool {
     true
 }
@@ -3150,6 +3934,8 @@ pub fn load_list_layout() -> ListLayout {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum ListColumn {
     Star,
+    /// Replied to, forwarded, or both (#454).
+    Replied,
     Sender,
     Recipients,
     Correspondents,
@@ -3165,8 +3951,9 @@ pub enum ListColumn {
 }
 
 impl ListColumn {
-    pub const ALL: [ListColumn; 11] = [
+    pub const ALL: [ListColumn; 12] = [
         ListColumn::Star,
+        ListColumn::Replied,
         ListColumn::Sender,
         ListColumn::Recipients,
         ListColumn::Correspondents,
@@ -3180,9 +3967,10 @@ impl ListColumn {
     ];
 
     /// The columns a single line shows until they are changed: the ones it
-    /// had before they could be.
-    pub const DEFAULT: [ListColumn; 6] = [
+    /// had before they could be, and the replied arrows (#454).
+    pub const DEFAULT: [ListColumn; 7] = [
         ListColumn::Star,
+        ListColumn::Replied,
         ListColumn::Sender,
         ListColumn::Subject,
         ListColumn::Tags,
@@ -3194,6 +3982,7 @@ impl ListColumn {
     pub fn key(self) -> &'static str {
         match self {
             ListColumn::Star => "star",
+            ListColumn::Replied => "replied",
             ListColumn::Sender => "sender",
             ListColumn::Recipients => "recipients",
             ListColumn::Correspondents => "correspondents",
@@ -3215,6 +4004,7 @@ impl ListColumn {
     pub fn icon(self) -> &'static str {
         match self {
             ListColumn::Star => "starred-symbolic",
+            ListColumn::Replied => "mail-reply-sender-symbolic",
             ListColumn::Sender => "avatar-default-symbolic",
             ListColumn::Recipients => "mail-send-symbolic",
             ListColumn::Correspondents => "chat-bubbles-text-symbolic",
@@ -3232,6 +4022,7 @@ impl ListColumn {
     pub fn label(self) -> &'static str {
         match self {
             ListColumn::Star => crate::i18n::i18n_noop("Star"),
+            ListColumn::Replied => crate::i18n::i18n_noop("Replied"),
             ListColumn::Sender => crate::i18n::i18n_noop("Sender"),
             ListColumn::Recipients => crate::i18n::i18n_noop("Recipients"),
             ListColumn::Correspondents => crate::i18n::i18n_noop("Correspondents"),
@@ -3389,6 +4180,9 @@ struct SidebarFile {
     favorites: Vec<String>,
     #[serde(default = "default_on")]
     favorites_expanded: bool,
+    /// Whether the Smart Folders list (#417) is open.
+    #[serde(default = "default_on")]
+    smart_expanded: bool,
     /// Account emails whose own Filtered Folders / Tags sections are open
     /// (closed by default, like their custom folders).
     #[serde(default)]
@@ -3432,6 +4226,7 @@ pub struct SidebarState {
     /// Favorite folders (#367), as "email\tpath" entries.
     pub favorites: Vec<String>,
     pub favorites_expanded: bool,
+    pub smart_expanded: bool,
     /// Account emails whose own Filtered Folders / Tags sections are open.
     pub filtered_expanded_accounts: Vec<String>,
     pub tags_expanded_accounts: Vec<String>,
@@ -3463,6 +4258,7 @@ pub fn load_sidebar_state() -> SidebarState {
             trash_expanded: s.trash_expanded,
             favorites: s.favorites,
             favorites_expanded: s.favorites_expanded,
+            smart_expanded: s.smart_expanded,
             filtered_expanded_accounts: s.filtered_expanded_accounts,
             tags_expanded_accounts: s.tags_expanded_accounts,
         })
@@ -3494,6 +4290,7 @@ pub fn save_sidebar_state(state: &SidebarState) {
         trash_expanded: state.trash_expanded,
         favorites: state.favorites.clone(),
         favorites_expanded: state.favorites_expanded,
+        smart_expanded: state.smart_expanded,
         filtered_expanded_accounts: state.filtered_expanded_accounts.clone(),
         tags_expanded_accounts: state.tags_expanded_accounts.clone(),
     };
@@ -3654,6 +4451,36 @@ struct StateFile {
     /// (#343), keyed "address␟folder path".
     #[serde(default, skip_serializing_if = "std::collections::BTreeMap::is_empty")]
     unread_seen: std::collections::BTreeMap<String, u32>,
+    /// The fonts last picked with the composer's Other Font… (#358), the
+    /// newest first, for the font menu to offer again.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    recent_fonts: Vec<RecentFont>,
+}
+
+/// A font family picked in the composer (#358), and whether it is
+/// monospaced, which decides the generic family it falls back to.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Deserialize, Serialize)]
+pub struct RecentFont {
+    pub name: String,
+    #[serde(default)]
+    pub mono: bool,
+}
+
+/// How many picked fonts the font menu keeps.
+const RECENT_FONTS: usize = 5;
+
+pub fn load_recent_fonts() -> Vec<RecentFont> {
+    load_state().recent_fonts
+}
+
+/// Put `font` at the head of the recent fonts, once, and keep the newest
+/// few.
+pub fn note_recent_font(font: RecentFont) {
+    update_state(|s| {
+        s.recent_fonts.retain(|f| !f.name.eq_ignore_ascii_case(&font.name));
+        s.recent_fonts.insert(0, font);
+        s.recent_fonts.truncate(RECENT_FONTS);
+    });
 }
 
 fn default_about_height() -> i32 {
@@ -4014,6 +4841,67 @@ pub fn save_contacts_pane_width(width: i32) {
 mod tests {
     use super::{decode_gallery_folder, encode_gallery_folder, ConfigFile, ListColumn, PrivacyFile, StateFile};
 
+    /// The keyring thread runs what is queued in order, a call made from
+    /// another thread waits behind it, one made on the keyring thread itself
+    /// runs at once, and the drain waits for the queue (#466).
+    #[test]
+    fn the_keyring_thread_keeps_the_order() {
+        use std::sync::{Arc, Mutex};
+        let seen = Arc::new(Mutex::new(Vec::new()));
+        for i in 0..5 {
+            let seen = seen.clone();
+            super::keyring_later(move || {
+                std::thread::sleep(std::time::Duration::from_millis(10));
+                seen.lock().unwrap().push(i);
+            });
+        }
+        let after = {
+            let seen = seen.clone();
+            super::on_keyring_thread(move || {
+                let inline = super::on_keyring_thread(|| 7);
+                seen.lock().unwrap().push(inline);
+                seen.lock().unwrap().len()
+            })
+        };
+        assert_eq!(after, 6, "the blocking call waited for the queue");
+        let seen_late = seen.clone();
+        super::keyring_later(move || {
+            std::thread::sleep(std::time::Duration::from_millis(50));
+            seen_late.lock().unwrap().push(9);
+        });
+        assert!(super::keyring_drain(std::time::Duration::from_secs(5)));
+        assert_eq!(*seen.lock().unwrap(), vec![0, 1, 2, 3, 4, 7, 9]);
+    }
+
+    /// An account with a protocol this build does not know (an EWS account
+    /// from 1.44.0-beta.5) leaves the others readable.
+    #[test]
+    fn an_unknown_protocol_keeps_the_file_readable() {
+        let account = |email: &str, protocol: &str| {
+            format!("[[accounts]]\nname = \"\"\nemail = \"{email}\"\nimap_host = \"\"\nusername = \"\"\nprotocol = \"{protocol}\"\n")
+        };
+        let text = account("a@x", "ews") + &account("b@x", "jmap");
+        let cfg: ConfigFile = toml::from_str(&text).expect("parses");
+        assert_eq!(cfg.accounts.len(), 2);
+        assert_eq!(cfg.accounts[0].protocol, super::Protocol::Imap);
+        assert_eq!(cfg.accounts[1].protocol, super::Protocol::Jmap);
+    }
+
+    /// #431: a file from before the badge choice keeps what its switch
+    /// said, and the choice, once made, wins over the switch.
+    #[test]
+    fn launcher_badge_follows_the_old_switch() {
+        use super::LauncherBadge::*;
+        let read = |text: &str| toml::from_str::<PrivacyFile>(text).unwrap().launcher_badge();
+        assert_eq!(read(""), AllUnread);
+        assert_eq!(read("launcher_count = true"), AllUnread);
+        assert_eq!(read("launcher_count = false"), Off);
+        assert_eq!(read("launcher_count = true\nlauncher_badge = \"new_since_front\""), NewSinceFront);
+        assert_eq!(read("launcher_count = true\nlauncher_badge = \"off\""), Off);
+        let saved = PrivacyFile { launcher_count: true, launcher_badge: Some(NewSinceFront), ..Default::default() };
+        assert_eq!(read(&toml::to_string(&saved).unwrap()), NewSinceFront);
+    }
+
     /// #367: a sidebar file from before Favorites has none, and the list
     /// starts open; the entries come back in the order they were added.
     #[test]
@@ -4266,6 +5154,76 @@ mod tests {
 mod filter_tests {
     use super::*;
 
+    fn smart_input<'a>(starred: bool, unread: bool, keywords: &'a [String], tags: &'a [String]) -> SmartInput<'a> {
+        SmartInput {
+            text: FilterInput { subject: "Quarterly invoice", from_addr: "billing@shop.example", ..Default::default() },
+            starred,
+            unread,
+            attachment: false,
+            keywords,
+            tags,
+        }
+    }
+
+    fn smart(any: bool, conditions: Vec<SmartCondition>) -> SmartFolder {
+        SmartFolder {
+            id: "x".into(),
+            name: "Test".into(),
+            account_email: String::new(),
+            folder: Some(SmartFolderKind::Sent),
+            any,
+            conditions,
+        }
+    }
+
+    fn smart_cond(field: SmartField, value: &str) -> SmartCondition {
+        SmartCondition { field, matcher: FilterMatch::Contains, value: value.into() }
+    }
+
+    /// #417's own example: sent mail that is starred or carries a tag.
+    #[test]
+    fn smart_folder_starred_or_tagged() {
+        let f = smart(true, vec![smart_cond(SmartField::Starred, ""), smart_cond(SmartField::Tagged, "")]);
+        let tags = vec!["$label1".to_string()];
+        let none: Vec<String> = Vec::new();
+        let tagged = vec!["$Label1".to_string()];
+        let server_only = vec!["$Forwarded".to_string()];
+        assert!(f.matches(&smart_input(true, false, &none, &tags)));
+        assert!(f.matches(&smart_input(false, false, &tagged, &tags)));
+        // A keyword no tag names is not a tag.
+        assert!(!f.matches(&smart_input(false, false, &server_only, &tags)));
+        assert!(!f.matches(&smart_input(false, false, &none, &tags)));
+        // Nothing can be ruled out ahead when any one condition will do.
+        assert_eq!(f.prefilter(), SmartPrefilter::default());
+    }
+
+    #[test]
+    fn smart_folder_every_condition() {
+        let f = smart(false, vec![smart_cond(SmartField::Unread, ""), smart_cond(SmartField::Subject, "invoice, receipt")]);
+        let none: Vec<String> = Vec::new();
+        assert!(f.matches(&smart_input(false, true, &none, &none)));
+        assert!(!f.matches(&smart_input(false, false, &none, &none)));
+        assert_eq!(f.prefilter(), SmartPrefilter { unread: Some(true), ..Default::default() });
+        let one_tag = smart(false, vec![smart_cond(SmartField::Tagged, "work")]);
+        let work = vec!["Work".to_string()];
+        assert!(one_tag.matches(&smart_input(false, false, &work, &none)));
+        assert!(!one_tag.matches(&smart_input(false, false, &none, &none)));
+    }
+
+    #[test]
+    fn smart_folders_file_round_trips() {
+        let f = smart(true, vec![smart_cond(SmartField::Starred, ""), smart_cond(SmartField::FromAddress, "shop")]);
+        let text = toml::to_string_pretty(&SmartFoldersFile { folders: vec![f.clone()] }).unwrap();
+        assert!(text.contains("folder = \"sent\""), "{text}");
+        let back: SmartFoldersFile = toml::from_str(&text).unwrap();
+        assert_eq!(back.folders, vec![f]);
+        // Only what a folder needs has to be written.
+        let short: SmartFoldersFile =
+            toml::from_str("[[folders]]\nid = \"a\"\nname = \"Starred\"\n[[folders.conditions]]\nfield = \"starred\"\n").unwrap();
+        assert_eq!(short.folders[0].conditions[0].matcher, FilterMatch::Contains);
+        assert!(short.folders[0].folder.is_none() && !short.folders[0].any);
+    }
+
     fn rule(field: FilterField, matcher: FilterMatch, value: &str) -> FilterRule {
         FilterRule {
             name: String::new(),
@@ -4293,6 +5251,51 @@ mod filter_tests {
         recipients: &'a str,
     ) -> FilterInput<'a> {
         FilterInput { from_addr, from_name, subject, recipients, ..Default::default() }
+    }
+
+    #[test]
+    fn draft_filter_matches_sender_and_subject() {
+        let rule = FilterRule::draft_from_message("me@x.org", "billing@shop.example", "Your invoice");
+        assert_eq!(rule.account_email, "me@x.org");
+        assert!(!rule.any, "both conditions have to match");
+        assert!(rule.dest_path.is_empty() && rule.tag.is_empty(), "the user picks what the rule does");
+        assert_eq!(
+            rule.conditions(),
+            vec![
+                FilterCondition {
+                    field: FilterField::FromAddress,
+                    matcher: FilterMatch::Equals,
+                    value: "billing@shop.example".into(),
+                },
+                FilterCondition {
+                    field: FilterField::Subject,
+                    matcher: FilterMatch::Contains,
+                    value: "Your invoice".into(),
+                },
+            ]
+        );
+    }
+
+    #[test]
+    fn draft_filter_strips_reply_and_forward_prefixes() {
+        let subject_of = |subject| {
+            FilterRule::draft_from_message("me@x.org", "a@b.org", subject).conditions()[1].value.clone()
+        };
+        assert_eq!(subject_of("Re: Invoice"), "Invoice");
+        assert_eq!(subject_of("RE: Fwd: re:  Invoice"), "Invoice");
+        assert_eq!(subject_of("Fw: Invoice"), "Invoice");
+        // Only a leading prefix goes; one inside the subject is the subject's own.
+        assert_eq!(subject_of("Invoice re: March"), "Invoice re: March");
+        assert_eq!(subject_of("Reminder: Invoice"), "Reminder: Invoice");
+    }
+
+    #[test]
+    fn draft_filter_skips_an_empty_subject() {
+        for subject in ["", "   ", "Re: ", "Fwd:"] {
+            let rule = FilterRule::draft_from_message("me@x.org", "a@b.org", subject);
+            assert_eq!(rule.conditions().len(), 1, "subject {subject:?} leaves the sender alone");
+            assert_eq!(rule.field, FilterField::FromAddress);
+        }
     }
 
     #[test]
@@ -4545,6 +5548,61 @@ dest_path = "Lists"
         assert!(!text.contains("any"), "{text}");
     }
 
+    /// Grouping by date is on for a new install and for one whose file
+    /// predates it, once; switched off afterwards, it stays off.
+    #[test]
+    fn date_groups_default_reaches_existing_installs_once() {
+        let mut old: PrivacyFile = toml::from_str("list_group_by_date = false\n").unwrap();
+        assert!(apply_new_defaults(&mut old));
+        assert!(old.list_group_by_date);
+        old.list_group_by_date = false;
+        let mut again: PrivacyFile = toml::from_str(&toml::to_string_pretty(&old).unwrap()).unwrap();
+        assert!(!apply_new_defaults(&mut again));
+        assert!(!again.list_group_by_date);
+        let mut fresh = PrivacyFile::default();
+        assert!(fresh.list_group_by_date);
+        fresh.list_group_by_date = false;
+        apply_new_defaults(&mut fresh);
+        assert!(!fresh.list_group_by_date);
+    }
+
+    /// An account from before #445 has one `signature`, which reads as a
+    /// list of one that new messages start with; a list written now keeps
+    /// `signature` on its default for an older Hylki, and no default
+    /// leaves it empty.
+    #[test]
+    fn signatures_read_old_configs_and_write_for_them() {
+        let old: AccountConfig = toml::from_str(
+            "name = \"A\"\nemail = \"a@b.c\"\nimap_host = \"h\"\nusername = \"a\"\n\
+             signature = \"<b>Ada</b>\"\nsignature_html = true\n",
+        )
+        .unwrap();
+        let (list, default) = old.signature_set();
+        assert_eq!(list.len(), 1);
+        assert_eq!(list[0].html, "<b>Ada</b>");
+        assert_eq!(default, Some(0));
+
+        let mut acc = old.clone();
+        let two = vec![
+            NamedSignature { name: "English".into(), html: "Regards".into() },
+            NamedSignature { name: "Deutsch".into(), html: "Grüße".into() },
+        ];
+        acc.set_signatures(two.clone(), Some(1));
+        assert_eq!(acc.signature.as_deref(), Some("Grüße"));
+        let back: AccountConfig = toml::from_str(&toml::to_string(&acc).unwrap()).unwrap();
+        assert_eq!(back.signature_set(), (two.clone(), Some(1)));
+
+        acc.set_signatures(two.clone(), None);
+        assert!(acc.signature.is_none());
+        let text = toml::to_string(&acc).unwrap();
+        assert!(!text.contains("default_signature"), "{text}");
+        let back: AccountConfig = toml::from_str(&text).unwrap();
+        assert_eq!(back.signature_set(), (two, None));
+
+        acc.set_signatures(Vec::new(), None);
+        assert!(!toml::to_string(&acc).unwrap().contains("signatures"));
+    }
+
     #[test]
     fn settings_bundle_roundtrip_parses() {
         // Parse-and-serialize only (no disk, no keyring): the wire format
@@ -4572,6 +5630,8 @@ dest_path = "Lists"
             gravatar: false,
             signature: None,
             signature_html: false,
+            signatures: Vec::new(),
+            default_signature: None,
             label: None,
             aliases: Vec::new(),
             enabled: true,
@@ -4587,12 +5647,17 @@ dest_path = "Lists"
             folders_seeded: false,
             sent_copy_path: None,
             server_saves_sent: false,
+            reply_copies: Default::default(),
             empty_junk_days: 0,
             empty_trash_days: 0,
+            clean_lists_days: 0,
             pgp_key: None,
             in_unified: true,
             folder_sort: None,
             sign_by_default: false,
+            graph_directory: false,
+            graph_directory_only: false,
+            graph_label_names: false,
         };
         acc.aliases = Vec::new();
         let bundle = SettingsBundle {
@@ -5301,5 +6366,32 @@ mod focus_tests {
         assert!(partial.hide_preview && partial.rail_sidebar);
         // Except the subject, which is off wherever it comes from.
         assert!(!partial.hide_subject);
+    }
+}
+
+#[cfg(test)]
+mod sound_tests {
+    use super::without_id3v2;
+
+    #[test]
+    fn id3v2_tags_come_off() {
+        let audio = [0xFFu8, 0xFB, 0x90, 0x64];
+        // An ID3v2.4 tag of 1024 bytes (syncsafe 0x00 0x00 0x08 0x00), as in #397.
+        let mut tagged = b"ID3\x04\x00\x00\x00\x00\x08\x00".to_vec();
+        tagged.extend(std::iter::repeat(0).take(1024));
+        tagged.extend(audio);
+        assert_eq!(without_id3v2(&tagged), audio);
+        // With a footer, and two tags in a row.
+        let mut footed = b"ID3\x04\x00\x10\x00\x00\x00\x02xx".to_vec();
+        footed.extend(b"3DI\x04\x00\x10\x00\x00\x00\x02");
+        footed.extend(b"ID3\x03\x00\x00\x00\x00\x00\x00");
+        footed.extend(audio);
+        assert_eq!(without_id3v2(&footed), audio);
+        // Untagged audio, a truncated tag and a broken size stay as they are.
+        assert_eq!(without_id3v2(&audio), audio);
+        let short = b"ID3\x04\x00\x00\x00\x00\x08\x00abc";
+        assert_eq!(without_id3v2(short), short);
+        let bad = b"ID3\x04\x00\x00\x80\x00\x00\x00abc";
+        assert_eq!(without_id3v2(bad), bad);
     }
 }

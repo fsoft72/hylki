@@ -216,6 +216,67 @@ pub fn preset(provider: &str) -> Option<Preset> {
     }
 }
 
+/// What searching the organization's directory needs on top of the preset
+/// (#410): the people the user works with, and everyone's name and address.
+/// Asked for only when the account's directory switch is turned on, since a
+/// tenant that lets users approve mail access may still want an
+/// administrator for these.
+pub const MICROSOFT_DIRECTORY_SCOPES: [&str; 2] =
+    ["https://graph.microsoft.com/People.Read", "https://graph.microsoft.com/User.ReadBasic.All"];
+
+/// What reading the names of the organization's sensitivity labels needs
+/// (#411), when a message's label leaves its name out. Asked for only when
+/// the account's label switch is turned on, for the same reason as the
+/// directory's.
+pub const MICROSOFT_LABEL_SCOPES: [&str; 1] = ["https://graph.microsoft.com/InformationProtectionPolicy.Read"];
+
+/// Every scope Hylki adds to its own sign-in on request.
+const MICROSOFT_EXTRA_SCOPES: [&[&str]; 2] = [&MICROSOFT_DIRECTORY_SCOPES, &MICROSOFT_LABEL_SCOPES];
+
+/// Whether `scope` is the scope `full`, written out or as Graph's short
+/// name, the way the Advanced row takes them.
+fn is_scope(scope: &str, full: &str) -> bool {
+    scope.eq_ignore_ascii_case(full)
+        || full.rsplit('/').next().is_some_and(|short| scope.eq_ignore_ascii_case(short))
+}
+
+/// Whether a sign-in with `scopes` was granted all of `set`.
+pub fn has_scopes(scopes: &str, set: &[&str]) -> bool {
+    set.iter().all(|full| scopes.split_whitespace().any(|s| is_scope(s, full)))
+}
+
+/// `scopes` with those of `set` added where missing.
+pub fn with_scopes(scopes: &str, set: &[&str]) -> String {
+    let mut list: Vec<&str> = scopes.split_whitespace().collect();
+    for full in set {
+        if !list.iter().any(|s| is_scope(s, full)) {
+            list.push(full);
+        }
+    }
+    list.join(" ")
+}
+
+/// Whether a sign-in with `scopes` was granted the directory search.
+pub fn has_directory_scopes(scopes: &str) -> bool {
+    has_scopes(scopes, &MICROSOFT_DIRECTORY_SCOPES)
+}
+
+/// `scopes` with the directory's added where missing.
+pub fn with_directory_scopes(scopes: &str) -> String {
+    with_scopes(scopes, &MICROSOFT_DIRECTORY_SCOPES)
+}
+
+/// `scopes` without the ones Hylki adds as it adds them, so a sign-in that
+/// has them still reads as Hylki's own and the Advanced row stays empty.
+/// Short names typed into that row are the user's and stay.
+fn without_extra_scopes(scopes: &str) -> String {
+    scopes
+        .split_whitespace()
+        .filter(|s| !MICROSOFT_EXTRA_SCOPES.iter().flat_map(|set| set.iter()).any(|full| s.eq_ignore_ascii_case(full)))
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
 /// Hylki's Microsoft sign-in made with another app registration (#329):
 /// its client ID, its tenant (`common`, `organizations`, `consumers`, a
 /// directory ID or domain), its scopes and its redirect. Empty values keep
@@ -257,7 +318,8 @@ pub fn microsoft_advanced_of(settings: &OAuthSettings) -> (String, String, Strin
         .filter(|t| *t != "common")
         .unwrap_or_default()
         .to_string();
-    let scopes = if settings.scopes == p.scopes { String::new() } else { settings.scopes.clone() };
+    let own = without_extra_scopes(&settings.scopes);
+    let scopes = if own == without_extra_scopes(p.scopes) { String::new() } else { own };
     (client, tenant, scopes, settings.redirect_uri.clone())
 }
 
@@ -403,6 +465,25 @@ fn open_uri_portal(uri: &str) -> Result<(), Box<dyn std::error::Error>> {
 /// Run the interactive authorization-code + PKCE flow (blocking — call off the
 /// UI thread). Opens the browser and waits for the loopback redirect.
 pub fn run_flow(settings: &OAuthSettings) -> Result<FlowResult, String> {
+    run_flow_as(settings, None)
+}
+
+/// What a Microsoft sign-in adds to its request. With the address of an
+/// account already set up (#410), Entra goes straight to that account and
+/// asks only for what it has not approved; otherwise the account picker.
+/// The picker, not a forced consent screen: in a tenant where users may not
+/// consent, `prompt=consent` asks an admin every time even after the app was
+/// approved.
+pub fn microsoft_prompt(login_hint: Option<&str>) -> String {
+    match login_hint.map(str::trim).filter(|h| !h.is_empty()) {
+        Some(hint) => format!("&login_hint={}", crate::percent::encode(hint)),
+        None => "&prompt=select_account".into(),
+    }
+}
+
+/// [`run_flow`] for the account `login_hint` names, where the provider
+/// takes a hint (Microsoft).
+pub fn run_flow_as(settings: &OAuthSettings, login_hint: Option<&str>) -> Result<FlowResult, String> {
     // Dropbox matches the redirect URI exactly, port and all, so its
     // listener sits on a fixed port the app registers; the others accept
     // any loopback port.
@@ -427,19 +508,16 @@ pub fn run_flow(settings: &OAuthSettings) -> Result<FlowResult, String> {
         format!("http://{host}:{port}/")
     };
     // What asks for a refresh token: Dropbox has its own parameter for it,
-    // and Microsoft's `offline_access` scope is the request. Microsoft gets
-    // its account picker rather than a forced consent screen: in a tenant
-    // where users may not consent, `prompt=consent` asks an admin every time
-    // even after the app was approved.
+    // and Microsoft's `offline_access` scope is the request.
     let offline = if dropbox {
-        "&token_access_type=offline"
+        "&token_access_type=offline".to_string()
     } else if microsoft {
-        "&prompt=select_account"
+        microsoft_prompt(login_hint)
     } else {
-        "&access_type=offline&prompt=consent"
+        "&access_type=offline&prompt=consent".to_string()
     };
 
-    let request = Authorization::new(settings, &redirect, offline)?;
+    let request = Authorization::new(settings, &redirect, &offline)?;
 
     // Open the system browser (via the OpenURI portal, so it works in a Flatpak).
     open_uri(&request.url);
@@ -809,6 +887,38 @@ mod tests {
         assert!(req.answer("https://login.microsoftonline.com/common/oauth2/v2.0/authorize?x", &s).is_none());
         let refused = format!("{}?error=access_denied&error_description=AADSTS65004%3A+declined", s.redirect_uri);
         assert!(matches!(req.answer(&refused, &s), Some(Err(_))));
+    }
+
+    /// #410: the directory's scopes ride along without reading as a
+    /// registration of the user's own.
+    #[test]
+    fn directory_scopes_stay_out_of_the_advanced_row() {
+        let p = preset("microsoft").unwrap();
+        assert!(!has_directory_scopes(p.scopes));
+        let with = with_directory_scopes(p.scopes);
+        assert!(has_directory_scopes(&with));
+        assert_eq!(with_directory_scopes(&with), with, "added once");
+        assert!(with.ends_with("offline_access https://graph.microsoft.com/People.Read https://graph.microsoft.com/User.ReadBasic.All"));
+        let s = OAuthSettings {
+            auth_url: p.auth_url.into(),
+            token_url: p.token_url.into(),
+            client_id: MICROSOFT_CLIENT_ID.into(),
+            scopes: with,
+            ..Default::default()
+        };
+        assert_eq!(microsoft_advanced_of(&s), Default::default());
+        // A registration's own short names count, and stay where typed.
+        let own = OAuthSettings { scopes: "Mail.ReadWrite people.read User.ReadBasic.All offline_access".into(), ..s };
+        assert!(has_directory_scopes(&own.scopes));
+        assert_eq!(microsoft_advanced_of(&own).2, own.scopes);
+        // The label scope (#411) rides along the same way.
+        let both = with_scopes(&with_directory_scopes(p.scopes), &MICROSOFT_LABEL_SCOPES);
+        assert!(has_scopes(&both, &MICROSOFT_LABEL_SCOPES) && has_directory_scopes(&both));
+        assert!(!has_scopes(p.scopes, &MICROSOFT_LABEL_SCOPES));
+        assert_eq!(microsoft_advanced_of(&OAuthSettings { scopes: both, ..own.clone() }), Default::default());
+        assert_eq!(microsoft_prompt(None), "&prompt=select_account");
+        assert_eq!(microsoft_prompt(Some(" ")), "&prompt=select_account");
+        assert_eq!(microsoft_prompt(Some("ann+x@contoso.com")), "&login_hint=ann%2Bx%40contoso.com");
     }
 
     #[test]

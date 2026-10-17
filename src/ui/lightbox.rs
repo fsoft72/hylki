@@ -23,6 +23,8 @@ pub struct Lightbox {
     zoom: i32,
     picture: gtk::Picture,
     scroller: gtk::ScrolledWindow,
+    /// The lightbox itself: zoomed, the scroller takes all of it.
+    root: gtk::Box,
     /// Whether the window's key handler has been added: once, the first
     /// time the lightbox opens, when the window it sits in is known.
     keys_added: bool,
@@ -64,9 +66,15 @@ impl Component for Lightbox {
             set_orientation: gtk::Orientation::Vertical,
             #[watch]
             set_visible: !model.items.is_empty(),
+            // Zoomed, the bars, arrows and padding step aside and the
+            // document fills the window.
+            #[watch]
+            set_class_active: ("zoomed", model.zoom != 1),
 
             gtk::CenterBox {
                 add_css_class: "gallery-lightbox-bar",
+                #[watch]
+                set_visible: model.zoom == 1,
                 #[wrap(Some)]
                 set_start_widget = &gtk::Label {
                     #[watch]
@@ -88,7 +96,8 @@ impl Component for Lightbox {
             gtk::Box {
                 set_orientation: gtk::Orientation::Horizontal,
                 set_vexpand: true,
-                set_spacing: 8,
+                #[watch]
+                set_spacing: if model.zoom == 1 { 8 } else { 0 },
 
                 gtk::Button {
                     set_icon_name: "go-previous-symbolic",
@@ -97,7 +106,7 @@ impl Component for Lightbox {
                     add_css_class: "circular",
                     add_css_class: "osd",
                     #[watch]
-                    set_visible: model.items.len() > 1,
+                    set_visible: model.items.len() > 1 && model.zoom == 1,
                     connect_clicked => LightboxInput::Prev,
                 },
 
@@ -141,13 +150,15 @@ impl Component for Lightbox {
                     add_css_class: "circular",
                     add_css_class: "osd",
                     #[watch]
-                    set_visible: model.items.len() > 1,
+                    set_visible: model.items.len() > 1 && model.zoom == 1,
                     connect_clicked => LightboxInput::Next,
                 },
             },
 
             gtk::CenterBox {
                 add_css_class: "gallery-lightbox-bar",
+                #[watch]
+                set_visible: model.zoom == 1,
                 #[wrap(Some)]
                 set_start_widget = &gtk::Label {
                     #[watch]
@@ -184,6 +195,7 @@ impl Component for Lightbox {
             zoom: 1,
             picture: gtk::Picture::new(),
             scroller: gtk::ScrolledWindow::new(),
+            root: root.clone(),
             keys_added: false,
             open: Rc::new(Cell::new(false)),
         };
@@ -370,24 +382,39 @@ impl Lightbox {
     }
 
     /// Zoom to 3x anchored at `(x, y)`, the clicked point in the fitted
-    /// picture's coordinates. The whole box scales uniformly by 3, so the
-    /// clicked content sits at exactly (3x, 3y) afterwards; once the resize
-    /// has been laid out (the scroller's range exists), the adjustments put
-    /// that point at the viewport's centre. Without this the view stayed at
-    /// the top-left of the grown, mostly-letterboxed box, the content
-    /// apparently shoved off-screen.
+    /// picture's coordinates. The zoomed scroller is the whole lightbox,
+    /// not the fitted one between the bars, so the scale is not exactly 3:
+    /// the click is turned into a point on the document first, and once the
+    /// resize has been laid out (the scroller's range exists) the
+    /// adjustments put that point at the viewport's centre. Without this the
+    /// view stayed at the top-left of the grown, mostly-letterboxed box, the
+    /// content apparently shoved off-screen.
     fn zoom_to_point(&mut self, x: f64, y: f64) {
+        let Some((tw, th)) = self.texture.as_ref().map(|t| (f64::from(t.width()), f64::from(t.height()))) else {
+            return;
+        };
+        if tw <= 0.0 || th <= 0.0 {
+            return;
+        }
+        // Where the click lands on the document, 0..1 each way.
+        let fit = move |w: f64, h: f64| {
+            let s = (w / tw).min(h / th);
+            (s, (w - tw * s) / 2.0, (h - th * s) / 2.0)
+        };
+        let (s0, ox0, oy0) = fit(f64::from(self.picture.width()), f64::from(self.picture.height()));
+        let u = ((x - ox0) / (tw * s0)).clamp(0.0, 1.0);
+        let v = ((y - oy0) / (th * s0)).clamp(0.0, 1.0);
+
         self.set_zoom(3);
         let hadj = self.scroller.hadjustment();
         let vadj = self.scroller.vadjustment();
-        let target_x = x * 3.0 - f64::from(self.scroller.width()) / 2.0;
-        let target_y = y * 3.0 - f64::from(self.scroller.height()) / 2.0;
         let tries = Cell::new(0u8);
         self.picture.add_tick_callback(move |_, _| {
             let laid_out = hadj.upper() > hadj.page_size() + 1.0 || vadj.upper() > vadj.page_size() + 1.0;
             if laid_out {
-                hadj.set_value(target_x);
-                vadj.set_value(target_y);
+                let (s1, ox1, oy1) = fit(hadj.upper(), vadj.upper());
+                hadj.set_value(ox1 + u * tw * s1 - hadj.page_size() / 2.0);
+                vadj.set_value(oy1 + v * th * s1 - vadj.page_size() / 2.0);
                 return gtk::glib::ControlFlow::Break;
             }
             tries.set(tries.get() + 1);
@@ -399,15 +426,16 @@ impl Lightbox {
     }
 
     /// At 1x the picture fits its scroller; at 3x its box grows to that
-    /// multiple of the viewport (Contain keeps the aspect) and the scroller
-    /// pans the overflow.
+    /// multiple of the whole lightbox, which the scroller fills once the
+    /// bars have gone (Contain keeps the aspect), and the scroller pans the
+    /// overflow.
     fn set_zoom(&mut self, zoom: i32) {
         self.zoom = zoom;
         if zoom <= 1 {
             self.picture.set_size_request(-1, -1);
         } else {
             self.picture
-                .set_size_request(self.scroller.width() * zoom, self.scroller.height() * zoom);
+                .set_size_request(self.root.width() * zoom, self.root.height() * zoom);
         }
     }
 
