@@ -368,6 +368,7 @@ fn graph_message(v: &serde_json::Value, account_id: u32, folder_id: u32) -> Opti
         reply_to,
         to: graph_addrs(&v["toRecipients"]),
         cc: graph_addrs(&v["ccRecipients"]),
+        bcc: graph_addrs(&v["bccRecipients"]),
         subject: v["subject"].as_str().unwrap_or("").to_string(),
         preview,
         body: String::new(),
@@ -399,7 +400,7 @@ fn graph_message(v: &serde_json::Value, account_id: u32, folder_id: u32) -> Opti
 }
 
 const GRAPH_MSG_SELECT: &str = "$select=id,internetMessageId,conversationId,subject,bodyPreview,\
-                                from,replyTo,toRecipients,ccRecipients,receivedDateTime,isRead,\
+                                from,replyTo,toRecipients,ccRecipients,bccRecipients,receivedDateTime,isRead,\
                                 flag,hasAttachments,categories,importance\
                                 &$expand=singleValueExtendedProperties($filter=id%20eq%20'Integer%200x1081')";
 
@@ -2148,7 +2149,10 @@ async fn graph_send_message(
     emit: &impl Fn(WorkerEvent),
 ) -> Result<(), String> {
     let email = build_email(account, message).map_err(|e| e.to_string())?;
-    let raw = email.formatted();
+    // `sendMail` takes its recipients from the headers, so without the Bcc
+    // header the Bcc recipients get nothing (#476). Exchange removes it on
+    // delivery and keeps it on the Sent Items copy.
+    let raw = with_bcc(&email.formatted(), &message.bcc);
     if !crate::power::reaches_internet() {
         return Err(offline_text());
     }
@@ -2216,7 +2220,7 @@ async fn graph_flush_outbox(
     let mut sent_any = false;
     for item in items {
         let t = token.clone();
-        let raw = item.raw.clone();
+        let raw = queued_with_bcc(&item.raw, &item.rcpts);
         let url = format!("{GRAPH_BASE}/me/sendMail");
         let r = blocking(move || graph_post_mime(&t, &url, &raw)).await;
         match r {

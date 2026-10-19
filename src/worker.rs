@@ -4576,7 +4576,8 @@ async fn flush_outbox(
                 );
                 let reply = reply_copy_path(account, account_id, Some(cache), &raw_in_reply_to(&item.raw));
                 if let Some(sess) = session.as_mut() {
-                    match file_sent_copy(sess, reply.as_deref(), dest.as_deref(), &item.raw).await {
+                    let copy = queued_with_bcc(&item.raw, &item.rcpts);
+                    match file_sent_copy(sess, reply.as_deref(), dest.as_deref(), &copy).await {
                         Ok(Some(path)) => {
                             index_sent_copy(
                                 account_id, session, account, &path, use_envelope, Some(cache), emit,
@@ -4657,6 +4658,51 @@ pub struct EditableMessage {
     pub attachments: Vec<crate::models::Attachment>,
 }
 
+/// Whoever the envelope names that none of the `headers` (address lists)
+/// do: the Bcc recipients of bytes lettre stripped them from.
+fn unnamed_rcpts(envelope_rcpts: &[String], headers: &[&str]) -> Vec<String> {
+    let named: Vec<String> = headers
+        .iter()
+        .flat_map(|h| parse_recipients(h))
+        .map(|(_, addr)| addr.to_lowercase())
+        .collect();
+    envelope_rcpts
+        .iter()
+        .filter(|addr| !named.contains(&addr.to_lowercase()))
+        .cloned()
+        .collect()
+}
+
+/// The bytes a sent copy is filed as (#476): the sent bytes with a `Bcc`
+/// header naming `bcc`. lettre strips Bcc from what goes over SMTP, which is
+/// right for the recipients and wrong for the sender's own copy, the only
+/// place left that says who else was sent it. Header order is free, so it
+/// goes first.
+pub(crate) fn with_bcc(raw: &[u8], bcc: &str) -> Vec<u8> {
+    let mailboxes: lettre::message::Mailboxes = parse_recipients(bcc)
+        .into_iter()
+        .filter_map(|(name, addr)| mailbox(&name, &addr).ok())
+        .collect();
+    if mailboxes.iter().next().is_none() {
+        return raw.to_vec();
+    }
+    let mut headers = lettre::message::header::Headers::new();
+    headers.set(lettre::message::header::Bcc::from(mailboxes));
+    let mut out = headers.to_string().into_bytes();
+    out.extend_from_slice(raw);
+    out
+}
+
+/// [`with_bcc`] for a queued message, whose Bcc recipients survive only in
+/// the stored envelope.
+pub(crate) fn queued_with_bcc(raw: &[u8], envelope_rcpts: &[String]) -> Vec<u8> {
+    let parsed = mail_parser::MessageParser::default().parse_headers(raw);
+    let to = parsed.as_ref().map(|p| addr_list(p.to())).unwrap_or_default();
+    let cc = parsed.as_ref().map(|p| addr_list(p.cc())).unwrap_or_default();
+    let bcc = parsed.as_ref().map(|p| addr_list(p.bcc())).unwrap_or_default();
+    with_bcc(raw, &unnamed_rcpts(envelope_rcpts, &[&to, &cc, &bcc]).join(", "))
+}
+
 /// Take a queued message or a saved draft apart so it can be edited again.
 ///
 /// The stored bytes are the source of truth, but they are not quite the whole
@@ -4692,22 +4738,10 @@ pub fn editable_from_raw(raw: &[u8], envelope_rcpts: &[String]) -> EditableMessa
     let in_reply_to = parsed.as_ref().map(|p| ids(p.in_reply_to())).unwrap_or_default();
     let references = parsed.as_ref().map(|p| ids(p.references())).unwrap_or_default();
 
-    // Whoever is in the envelope but named in neither header was a Bcc.
     let header_bcc = parsed.as_ref().map(|p| addr_list(p.bcc())).unwrap_or_default();
-    let named: Vec<String> = parse_recipients(&to)
-        .into_iter()
-        .chain(parse_recipients(&cc))
-        .chain(parse_recipients(&header_bcc))
-        .map(|(_, addr)| addr.to_lowercase())
-        .collect();
     let bcc = std::iter::once(header_bcc.clone())
         .filter(|b| !b.is_empty())
-        .chain(
-            envelope_rcpts
-                .iter()
-                .filter(|addr| !named.contains(&addr.to_lowercase()))
-                .cloned(),
-        )
+        .chain(unnamed_rcpts(envelope_rcpts, &[&to, &cc, &header_bcc]))
         .collect::<Vec<_>>()
         .join(", ");
 
@@ -5057,7 +5091,8 @@ fn build_message(
         recipients += 1;
     }
     // A draft is the user's own copy and has to come back with its Bcc
-    // recipients (#350); a sent message never carries them.
+    // recipients (#350); a sent message goes without them, and only its
+    // Sent copy gets them back, from [`with_bcc`] (#476).
     if draft {
         builder = builder.keep_bcc();
     }
@@ -5633,11 +5668,13 @@ fn smtp_refused(e: &SmtpError) -> bool {
         .is_some_and(|code| !(530..540).contains(&u16::from(code)))
 }
 
+/// Send `msg`, and hand back the bytes to file as its Sent copy: what went
+/// out, with the Bcc put back (#476).
 async fn send_smtp(account: &AccountConfig, msg: &OutgoingMessage) -> Result<Vec<u8>, SmtpError> {
     let email = build_email(account, msg)?;
     let raw = email.formatted();
     send_raw_smtp(account, email.envelope(), &raw).await?;
-    Ok(raw)
+    Ok(with_bcc(&raw, &msg.bcc))
 }
 
 /// The SASL identity for XOAUTH2 (the IMAP/SMTP username, else the email).
@@ -8757,6 +8794,7 @@ fn summary_from_headers(account_id: u32, fetch: &Fetch, folder_id: u32) -> Messa
         .unwrap_or_else(|| internal_date_summary(fetch));
     let to = parsed.as_ref().map(|p| mp_list(p.to())).unwrap_or_default();
     let cc = parsed.as_ref().map(|p| mp_list(p.cc())).unwrap_or_default();
+    let bcc = parsed.as_ref().map(|p| mp_list(p.bcc())).unwrap_or_default();
     let reply_to = parsed.as_ref().map(|p| mp_list(p.reply_to())).unwrap_or_default();
     let reply_to = if reply_to.eq_ignore_ascii_case(&from_addr) { String::new() } else { reply_to };
 
@@ -8786,6 +8824,7 @@ fn summary_from_headers(account_id: u32, fetch: &Fetch, folder_id: u32) -> Messa
         reply_to,
         to,
         cc,
+        bcc,
         subject,
         preview: String::new(),
         body: String::new(),
@@ -9322,6 +9361,8 @@ fn build_summary(account_id: u32, fetch: &Fetch, folder_id: u32) -> Message {
         .unwrap_or_else(|| internal_date_summary(fetch));
     let to = address_list(env.and_then(|e| e.to.as_ref()));
     let cc = address_list(env.and_then(|e| e.cc.as_ref()));
+    // Only a sender's own copy carries one (#476).
+    let bcc = address_list(env.and_then(|e| e.bcc.as_ref()));
     // Where the sender asked replies to go. Servers echo From here when the
     // header is absent; storing that echo would be noise, so keep it only
     // when it actually differs.
@@ -9357,6 +9398,7 @@ fn build_summary(account_id: u32, fetch: &Fetch, folder_id: u32) -> Message {
         reply_to,
         to,
         cc,
+        bcc,
         subject,
         preview: String::new(),
         body: String::new(),
@@ -9928,6 +9970,7 @@ pub(crate) fn summary_from_raw(account_id: u32, folder_id: u32, uid: u32, raw: &
     };
     let to = addr_list(parsed.as_ref().and_then(|p| p.to()));
     let cc = addr_list(parsed.as_ref().and_then(|p| p.cc()));
+    let bcc = addr_list(parsed.as_ref().and_then(|p| p.bcc()));
     let reply_to = addr_list(parsed.as_ref().and_then(|p| p.reply_to()));
     let reply_to = if reply_to.eq_ignore_ascii_case(&from_addr) { String::new() } else { reply_to };
     let has_attachment = parsed.as_ref().map(|p| p.attachment_count() > 0).unwrap_or(false);
@@ -9943,6 +9986,7 @@ pub(crate) fn summary_from_raw(account_id: u32, folder_id: u32, uid: u32, raw: &
         reply_to,
         to,
         cc,
+        bcc,
         subject,
         preview: String::new(),
         body: String::new(),
@@ -12037,6 +12081,7 @@ NIL NIL NIL NIL NIL NIL NIL))\r\n";
             reply_to: String::new(),
             to: String::new(),
             cc: String::new(),
+            bcc: String::new(),
             subject: String::new(),
             preview: String::new(),
             body: String::new(),
@@ -12529,6 +12574,42 @@ NIL NIL NIL NIL NIL NIL NIL))\r\n";
         assert!(editable.attachments.is_empty());
     }
 
+    /// The copy filed in Sent names the Bcc recipients the wire copy leaves
+    /// out (#476), whether it was sent at once or waited in the Outbox.
+    #[test]
+    fn a_sent_copy_keeps_its_bcc() {
+        let msg = OutgoingMessage {
+            to: "ada@example.com".into(),
+            cc: "carol@example.com".into(),
+            bcc: "Hidden Person <hidden@example.com>, other@example.com".into(),
+            subject: "Quarterly numbers".into(),
+            body: "Hello".into(),
+            ..sample_outgoing()
+        };
+        let email = build_email(&sample_account(), &msg).expect("builds");
+        let rcpts: Vec<String> = email.envelope().to().iter().map(|a| a.to_string()).collect();
+        let raw = email.formatted();
+        assert!(!String::from_utf8_lossy(&raw).contains("hidden@example.com"));
+
+        let bcc_of = |bytes: &[u8]| summary_from_raw(1, 1, 1, bytes).bcc;
+        let copy = with_bcc(&raw, &msg.bcc);
+        assert_eq!(bcc_of(&copy), "hidden@example.com, other@example.com");
+        // Nothing else about the message changes: the bytes that went out
+        // follow the one header put in front of them.
+        assert!(copy.ends_with(&raw));
+        let parsed = mail_parser::MessageParser::default().parse(&copy).expect("parses");
+        assert_eq!(parsed.bcc().and_then(|a| a.first()).and_then(|a| a.name()), Some("Hidden Person"));
+        assert_eq!(parsed.subject(), Some("Quarterly numbers"));
+
+        let queued = queued_with_bcc(&raw, &rcpts);
+        assert_eq!(bcc_of(&queued), "hidden@example.com, other@example.com");
+
+        // No Bcc, no change.
+        assert_eq!(with_bcc(&raw, ""), raw);
+        let to_only: Vec<String> = vec!["ada@example.com".into(), "carol@example.com".into()];
+        assert_eq!(queued_with_bcc(&raw, &to_only), raw);
+    }
+
     #[test]
     fn editing_a_queued_message_keeps_its_attachments_and_html() {
         let dir = std::env::temp_dir().join(format!("hylki-edit-{}", std::process::id()));
@@ -12851,6 +12932,7 @@ NIL NIL NIL NIL NIL NIL NIL))\r\n";
             reply_to: String::new(),
             to: String::new(),
             cc: String::new(),
+            bcc: String::new(),
             subject: "Plans".into(),
             preview: String::new(),
             body: String::new(),
@@ -14744,6 +14826,7 @@ mod gmail_label_tests {
             reply_to: String::new(),
             to: String::new(),
             cc: String::new(),
+            bcc: String::new(),
             subject: String::new(),
             preview: String::new(),
             body: String::new(),

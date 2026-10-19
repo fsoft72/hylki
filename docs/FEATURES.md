@@ -178,6 +178,12 @@ The full list. The [README](../README.md) carries a shorter one.
 - **GNOME Contacts:** names and photos from your address book, optional.
 - **Hylki address book:** a book of your own, beside the ones Evolution Data
   Server keeps, with vCard (`.vcf`) import. It works without GNOME.
+- **CardDAV accounts:** the address books of Nextcloud, iCloud, Fastmail or
+  any CardDAV server, set up in Hylki, through Evolution Data Server. See
+  [CardDAV accounts](DOCUMENTATION.md#carddav-accounts).
+- **Contact groups:** a name for several people that the composer offers
+  like a contact, optionally sent as Bcc; Evolution's contact lists work the
+  same way. See [Contact groups](DOCUMENTATION.md#contact-groups).
 - **LDAP directories:** recipients looked up in a company directory as you
   type, through Evolution Data Server, and in a Microsoft 365
   organization's directory.

@@ -1139,6 +1139,41 @@ pub fn delete_cloud_password(key: &str) {
     let _ = delete_secret(key);
 }
 
+/// A keyring item in the shape Evolution Data Server keeps its own
+/// passwords in, found by the source's UID, so EDS signs in to a source
+/// Hylki set up without asking anyone, also while Hylki is not running
+/// (#408).
+fn eds_entry(uid: &str, label: &str) -> keyring::Result<keyring::Entry> {
+    // Hylki's own attributes stay, as the keyring crate finds its items by
+    // them; EDS finds the item by the source UID alone.
+    let mut cred = keyring::secret_service::SsCredential::new_with_target(None, KEYRING_SERVICE, &format!("eds:{uid}"))?;
+    cred.attributes.extend([
+        ("xdg:schema".to_string(), "org.gnome.Evolution.Data.Source".to_string()),
+        ("e-source-uid".to_string(), uid.to_string()),
+        ("eds-origin".to_string(), "evolution-data-server".to_string()),
+    ]);
+    cred.label = format!("Evolution Data Source \"{label}\"");
+    Ok(keyring::Entry::new_with_credential(Box::new(cred)))
+}
+
+/// Store the password EDS signs in to the source `uid` with; `label` names
+/// the source in the keyring's own app.
+pub fn store_eds_password(uid: &str, label: &str, password: &str) -> keyring::Result<()> {
+    let (uid, label, password) = (uid.to_owned(), label.to_owned(), password.to_owned());
+    on_keyring_thread(move || eds_entry(&uid, &label)?.set_password(&password))
+}
+
+/// Whether the keyring holds EDS's password for the source `uid`.
+pub fn has_eds_password(uid: &str) -> bool {
+    let uid = uid.to_owned();
+    on_keyring_thread(move || eds_entry(&uid, "").and_then(|e| e.get_password()).is_ok())
+}
+
+pub fn delete_eds_password(uid: &str) {
+    let uid = uid.to_owned();
+    let _ = on_keyring_thread(move || eds_entry(&uid, "")?.delete_credential());
+}
+
 /// Write a settings file readable by the owner only (for modules outside
 /// this one that keep their own file, like `cloud.toml`).
 pub fn write_private_file(path: &std::path::Path, contents: &str) -> std::io::Result<()> {

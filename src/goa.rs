@@ -374,6 +374,51 @@ pub fn list_files_accounts() -> Vec<GoaFilesAccount> {
     }
 }
 
+/// A GNOME Online Account, as the Contacts settings name it.
+#[derive(Debug, Clone)]
+pub struct GoaContactsAccount {
+    /// GOA's `ProviderType`: "google", "ms_graph", "owncloud" (Nextcloud),
+    /// "webdav"...
+    pub provider_type: String,
+    /// GOA's own name for the provider ("Google", "Nextcloud").
+    pub provider_name: String,
+    /// The account as GOA shows it: its address or user name.
+    pub identity: String,
+    /// Contacts is switched off for the account in GNOME Settings.
+    pub contacts_disabled: bool,
+}
+
+/// Every GNOME Online Account by its ID, for the Contacts settings to name
+/// the address books EDS keeps for them (#408). Empty when GOA is not
+/// around. Blocking.
+pub fn contacts_accounts() -> HashMap<String, GoaContactsAccount> {
+    let list = || -> Result<HashMap<String, GoaContactsAccount>, String> {
+        let conn = zbus::blocking::Connection::session().map_err(|e| e.to_string())?;
+        let reply = conn
+            .call_method(Some(GOA_DEST), GOA_PATH, Some("org.freedesktop.DBus.ObjectManager"), "GetManagedObjects", &())
+            .map_err(|e| e.to_string())?;
+        let (objects,): (ManagedObjects,) = reply.body().deserialize().map_err(|e| e.to_string())?;
+        let mut out = HashMap::new();
+        for ifaces in objects.values() {
+            let Some(account) = ifaces.get(IFACE_ACCOUNT) else { continue };
+            out.insert(
+                get_str(account, "Id"),
+                GoaContactsAccount {
+                    provider_type: get_str(account, "ProviderType"),
+                    provider_name: get_str(account, "ProviderName"),
+                    identity: get_str(account, "PresentationIdentity"),
+                    contacts_disabled: get_bool(account, "ContactsDisabled"),
+                },
+            );
+        }
+        Ok(out)
+    };
+    list().unwrap_or_else(|e| {
+        tracing::debug!("GOA accounts unavailable: {e}");
+        HashMap::new()
+    })
+}
+
 /// What currently exists in GNOME Online Accounts, as far as reconciliation
 /// cares: which account objects are present at all, and which of them have their
 /// Mail service switched off in GNOME Settings.

@@ -11,6 +11,8 @@ keyboard.
 - [GNOME Online Accounts](#gnome-online-accounts)
 - [OAuth (Google / Microsoft)](#oauth-google--microsoft)
 - [Cloud attachments (Nextcloud, OneDrive, Dropbox, Seafile)](#cloud-attachments-nextcloud-onedrive-dropbox-seafile)
+- [Address books](#address-books)
+- [CardDAV accounts](#carddav-accounts)
 - [LDAP directories](#ldap-directories)
 - [Translating messages](#translating-messages)
 - [Writing in Markdown or HTML](#writing-in-markdown-or-html)
@@ -465,6 +467,38 @@ of the generated one.
   empty. Link passwords and expiry dates are a paid Dropbox feature; on a
   Basic plan leave both off, or the share step reports it.
 
+### Address books
+
+**Settings → Contacts** lists every address book Hylki reads contacts from,
+one row each, as Mail Accounts lists mail accounts: the Hylki book, the books
+on this computer that GNOME Contacts and Evolution keep, each GNOME Online
+Accounts account that keeps contacts (Google, Microsoft 365, Nextcloud,
+iCloud), each [CardDAV account](#carddav-accounts) and each
+[LDAP directory](#ldap-directories). A row names the account, what it holds,
+and where it was set up: **Hylki**, **GOA** or **Evolution**.
+
+A row's switch uses the address book in Hylki or leaves it out: of Contacts,
+the composer's suggestions, sender pictures, the
+[filters on Contacts](#filtering-on-contacts) and syncing. The switch is
+Hylki's own; GNOME Contacts and Evolution go on using the book. An account
+whose Contacts are switched off in GNOME Online Accounts has its switch
+greyed out, and says so.
+
+The arrow at the end of a row opens the address book's page. An account's
+page lists its address books, each with a switch of its own, under the
+account's switch. The Hylki book's page holds its import and export. A
+GNOME Online Accounts account's page has **Open Online Accounts**, where its
+sign-in is changed; a CardDAV account's and a directory's page is their form,
+with **Remove**.
+
+**Add Address Book…** offers a CardDAV server, iCloud, Nextcloud, Fastmail,
+Yahoo and an LDAP directory, set up in Hylki, and Google and Microsoft 365,
+which are added in GNOME Online Accounts and then listed here; the refresh
+button beside it looks again for one just added there. Every kind but the
+Hylki book is kept by Evolution Data Server; without it, the page says so.
+**Save new contacts in**, at the foot of the page, sets the book a contact
+made in Hylki goes to.
+
 ### The Hylki address book
 
 Hylki keeps an address book of its own, the **Hylki Address Book**, beside
@@ -480,20 +514,22 @@ book** row at the top of its form that picks where it is saved; it starts on
 the book the list shows, or on the default book when the list shows them
 all. A contact being edited stays in its book, which the form names.
 
-**Settings → Contacts** manages the Hylki book: how many contacts it holds,
-**Import vCard files**, **Export as a vCard file** (one `.vcf` file with every
-contact, which other apps can import) and **Delete all contacts**, which asks
-first and leaves the GNOME Contacts books alone. **Save new contacts in**
-sets the default book for contacts made in Hylki, from the Contacts view or
-with **Add Sender to Contacts**. Until it is set, a new contact goes to the
-first writable EDS book, or to the Hylki book when there is none.
+The Hylki book's page in **Settings → Contacts** shows how many contacts it
+holds, and has **Import vCard files**, **Export as a vCard file** (one `.vcf`
+file with every contact, which other apps can import) and **Delete all
+contacts**, which asks first and leaves the other books alone. **Save new
+contacts in**, on the same page as the list, sets the default book for
+contacts made in Hylki, from the Contacts view or with **Add Sender to
+Contacts**. Until it is set, a new contact goes to the first writable EDS
+book, or to the Hylki book when there is none.
 
 Importing reads `.vcf` files into the Hylki book, from Settings or from the
 import button in the Contacts view's header. A file can hold many contacts,
 in vCard 2.1, 3.0 or 4.0. A contact with the same ID as one already in the
 book updates it, and one without an ID is matched by its content, so
-importing a file twice adds nothing new. Entries with neither a name nor an
-address, and mailing lists, are skipped; truncated or oversized entries
+importing a file twice adds nothing new. A contact list in the file becomes
+a group (see [Contact groups](#contact-groups)). Entries with neither a name
+nor an address are skipped; truncated or oversized entries
 (over 5 MB) are counted as damaged; a second card with the same ID in one
 file is skipped, so the first is kept. Files over 50 MB are refused, and
 photos are used only when they are inside the file: nothing is fetched from
@@ -502,6 +538,43 @@ each, with the book named, and once in the composer's suggestions.
 
 The book is the file `local_contacts.db` in Hylki's data folder, kept apart
 from the mail cache, so clearing the cache leaves it alone.
+
+### Contact groups
+
+A group is a name for several people, such as a team or a club, that the
+composer offers like a contact. Typing part of its name in To, Cc or Bcc
+lists it among the suggestions with the number of people in it, and picking
+it adds a pill for each of them. People already in that field are not added
+twice.
+
+A group can be set to **Send as Bcc**. Picking it in any field then puts its
+people in Bcc, and opens the Bcc row, so they do not see each other's
+addresses. To still needs at least one address, your own for example.
+
+**New Group**, under the **+** button in the Contacts view, makes a group in
+the Hylki book. Add people by typing part of a name or address and picking
+from the matches under the field, or by typing or pasting addresses and
+pressing <kbd>Return</kbd>. The matches are the composer's suggestions: your
+contacts, and the addresses in the mail you have sent and received, marked
+with a clock. <kbd>↓</kbd> and <kbd>↑</kbd> move through them and
+<kbd>Return</kbd> adds the one highlighted. Anyone with an address can be in
+a group, not only people in your contacts. A contact's right-click menu has **Add to Group**,
+and a group's card has **New Message**, which writes to everyone in it. The
+group's pencil, at the top of its card, changes its name, its people and the
+Bcc switch.
+
+The lists made in Evolution, kept in the books of Evolution Data Server, are
+shown and offered too, and Evolution's **Hide addresses when sending mail to
+this list** is the same as **Send as Bcc**. They can be changed in Hylki as
+well. The groups of a CardDAV book written by other apps (vCard 4 `KIND:group`,
+and the groups of Apple Contacts and iCloud) are shown and offered with the
+people they name in the same book, but are changed in the app they came
+from.
+
+A group is saved as an Evolution list, so **Export as a vCard file** carries
+it to Evolution, and back. Groups are not counted as contacts in **Settings →
+Contacts**, and the people in a group do not count as contacts for the
+filters below.
 
 ### Filtering on Contacts
 
@@ -520,10 +593,55 @@ minute and after a contact changes.
 A version of Hylki from before these conditions reads them as a From
 address condition with no text, which matches nothing.
 
+### CardDAV accounts
+
+**Add Address Book…** in Settings → Contacts adds the address books on a
+CardDAV server, such as Nextcloud, iCloud, Fastmail, Radicale or a mail
+provider's, without GNOME Online Accounts or Evolution. Their contacts are listed in Contacts,
+in the book list above them, and suggested in the composer; a contact added
+or changed in Hylki is saved to the server.
+
+Pick **CardDAV Server**, or the service by name: iCloud, Fastmail and Yahoo
+fill in their server, and Nextcloud asks for yours. The form asks for:
+
+- **Server**: the server's address is enough for most services, such as
+  `nextcloud.example.org`, and Hylki finds the address books on it. A full
+  CardDAV address works too. A name without `https://` is taken as HTTPS;
+  write `http://` for a server without TLS, such as one on your own network.
+  For iCloud, use `contacts.icloud.com`.
+- **User name** and **Password**. A service that signs in with two steps
+  wants an app password made for Hylki: iCloud, Fastmail, and Nextcloud with
+  two-factor sign-in among them.
+
+Saving looks for the address books and says how many it found, or why it
+found none (a password the server refused, a server it could not reach). The
+account's row lists its address books by name, or what went wrong. Its page
+has the form, the address books with a switch each, and **Remove**, which
+removes the account and its address books from this computer, leaving the
+server as it is.
+
+Google and Microsoft 365 address books are added in GNOME Online Accounts
+instead, which **Add Address Book…** points to: Google takes no password over
+CardDAV, and Microsoft 365 has no CardDAV.
+
+An account is kept by Evolution Data Server, the service GNOME Contacts and
+Evolution keep their address books in, as one of Evolution's own collection
+accounts. Hylki adds no CardDAV client of its own, so an account set up in
+Evolution's collection accounts is listed here as well, and one added here
+shows in Evolution and GNOME Contacts. Evolution Data Server keeps the
+password in the keyring, signs in with it by itself and syncs the address
+books. While Hylki runs it keeps every address book that syncs with a server
+open, so they stay up to date on desktops with no GNOME Contacts to do it,
+and opening Contacts fetches what changed if that was more than five minutes
+ago. Away from GNOME, Evolution Data Server has to be installed: it is the
+`evolution-data-server` package on every major distribution and runs without
+GNOME. Without it, the page says so.
+
 ### LDAP directories
 
-Settings → LDAP Directories holds the directories the composer looks
-recipients up in. Once three characters of a name or address are typed in
+The directories the composer looks recipients up in are added in Settings →
+Contacts, with **Add Address Book…** → **LDAP Directory**, and listed there
+with the other address books. Once three characters of a name or address are typed in
 To, Cc or Bcc, each directory that is switched on is asked for people whose
 name, surname or address starts with them, and the answers join the
 suggestions from GNOME Contacts and your mail. Nothing is copied from the
@@ -566,8 +684,7 @@ why not (a password it refused, a server it could not reach or find, TLS
 that could not start). The check gives up after 30 seconds. A directory
 that fails during a search, such as one that needs a password neither
 Hylki nor Evolution has, says why under **In Directories** in Contacts, once
-in the status bar of each composer, and in its row in Settings → LDAP
-Directories. It is left alone for 30 seconds before it is asked again. The
+in the status bar of each composer, and in its row in Settings → Contacts. It is left alone for 30 seconds before it is asked again. The
 console ([the status bar](#the-status-bar) with **Settings → System → Console
 mode** on) records each directory's answer to a search: how many entries it
 found and how many of them have an address, and **Export log** saves it. The Flatpak

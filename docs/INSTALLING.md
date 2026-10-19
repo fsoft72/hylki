@@ -96,7 +96,11 @@ Flatpak (it works on every distribution) or [build from source](BUILDING.md).
 ## Runtime requirements
 
 A Secret Service provider (e.g. gnome-keyring, preinstalled on GNOME) is needed
-for password storage. Everything else the Flatpak carries; a source or RPM
+for password storage. Address books other than Hylki's own (GNOME Contacts,
+[CardDAV accounts](DOCUMENTATION.md#carddav-accounts) and LDAP directories)
+are kept by Evolution Data Server, which GNOME installs; on other desktops
+install the `evolution-data-server` package. The Flatpak uses the system's,
+so it is needed there too. Everything else the Flatpak carries; a source or RPM
 install also wants `gnupg2` for [OpenPGP](DOCUMENTATION.md#openpgp-encrypted-and-signed-mail)
 and `nautilus-python` for the
 [Files entry](DOCUMENTATION.md#send-with-hylki-from-gnome-files).

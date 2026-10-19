@@ -164,8 +164,32 @@ fn set_toggle_icon(btn: &gtk::Button, windowed: bool) {
 }
 
 /// Replace the recipient being typed with the chosen suggestion, as a pill.
-fn complete_field(row: &RecipientRow, sug: &Suggestion) {
-    row.complete(&sug.display());
+/// A group puts in its members, less those the field already has; one that
+/// hides its addresses puts them in Bcc, whichever field it was typed in.
+fn complete_field(row: &RecipientRow, bcc: &RecipientRow, sug: &Suggestion) {
+    let Some(group) = &sug.group else {
+        row.complete(&sug.display());
+        return;
+    };
+    let target = if group.hide_addresses { bcc } else { row };
+    let present: std::collections::HashSet<String> = crate::worker::parse_recipients(&target.text())
+        .into_iter()
+        .map(|(_, email)| email.to_lowercase())
+        .collect();
+    let members = group
+        .members
+        .iter()
+        .filter(|m| !present.contains(&m.email.to_lowercase()))
+        .map(|m| crate::worker::format_recipient(&m.name, &m.email))
+        .collect::<Vec<_>>()
+        .join(", ");
+    if target == row {
+        row.complete(&members);
+    } else {
+        row.complete("");
+        bcc.set_visible(true);
+        bcc.add_recipient(&members);
+    }
 }
 
 /// One selectable "from" account in the compose window.
@@ -2474,7 +2498,7 @@ impl Component for Compose {
                         let _ = s.send(ComposeInput::DirectoryLookup { field, token, generation });
                     });
                 }
-                self.show_completion(field, row);
+                self.show_completion(field, row, &widgets.bcc_row);
             }
 
             ComposeInput::DirectoriesKnown { graph, own_mail } => {
@@ -2536,7 +2560,7 @@ impl Component for Compose {
                 if generation == self.directory_generation && recipient_token(row) == token && !matches.is_empty() {
                     self.directory_matches = matches;
                     if recipient_focused(row) {
-                        self.show_completion(field, row);
+                        self.show_completion(field, row, &widgets.bcc_row);
                     }
                 }
             }
@@ -2584,7 +2608,7 @@ impl Component for Compose {
                 if !token.is_empty() {
                     let chosen = self.ranked_matches(&token).into_iter().nth(self.completion_selected);
                     if let Some(sug) = chosen {
-                        complete_field(row, &sug);
+                        complete_field(row, &widgets.bcc_row, &sug);
                     }
                 }
                 self.completion_open.set(false);
@@ -3663,7 +3687,6 @@ window.__hylkiDirty=true;})()"#
     }
 
     fn ranked_matches(&self, token: &str) -> Vec<Suggestion> {
-        let q = token.to_lowercase();
         let narrowed = self.narrowed();
         let mut matches: Vec<Suggestion> = self
             .suggestions
@@ -3688,22 +3711,14 @@ window.__hylkiDirty=true;})()"#
                 .filter(|s| !known.contains(&s.email.to_lowercase()) && seen.insert(s.email.to_lowercase()))
                 .cloned(),
         );
-        matches.sort_by(|a, b| {
-            let pa = a.email.to_lowercase().starts_with(&q) || a.name.to_lowercase().starts_with(&q);
-            let pb = b.email.to_lowercase().starts_with(&q) || b.name.to_lowercase().starts_with(&q);
-            // Own addresses come after everyone else's, prefix match or not.
-            a.own.cmp(&b.own)
-                .then(pb.cmp(&pa))
-                .then(b.score.cmp(&a.score))
-                .then(a.name.to_lowercase().cmp(&b.name.to_lowercase()))
-        });
+        crate::contacts::rank(&mut matches, token);
         matches.truncate(8);
         matches
     }
 
     /// Filter suggestions by the recipient fragment being typed and show them in
     /// a popover under the field; clicking one completes that recipient.
-    fn show_completion(&mut self, field: Field, row: &RecipientRow) {
+    fn show_completion(&mut self, field: Field, row: &RecipientRow, bcc: &RecipientRow) {
         let token = row.typed();
         if token.is_empty() {
             self.completion_open.set(false);
@@ -3740,7 +3755,9 @@ window.__hylkiDirty=true;})()"#
             item.set_margin_bottom(3);
             // Mark where the suggestion came from: a directory, the address
             // book, or mail history.
-            let icon = gtk::Image::from_icon_name(if sug.from_directory {
+            let icon = gtk::Image::from_icon_name(if sug.group.is_some() {
+                "system-users-symbolic"
+            } else if sug.from_directory {
                 "x-office-address-book-symbolic"
             } else if sug.from_contacts {
                 "avatar-default-symbolic"
@@ -3755,8 +3772,13 @@ window.__hylkiDirty=true;})()"#
             title.set_halign(gtk::Align::Start);
             title.set_xalign(0.0);
             text.append(&title);
-            if sug.name != sug.email {
-                let sub = gtk::Label::new(Some(&sug.email));
+            // A group says how many it reaches, and whether in Bcc.
+            let subtitle = match &sug.group {
+                Some(g) => crate::contacts::group_reach(g.members.len(), g.hide_addresses),
+                None => sug.email.clone(),
+            };
+            if sug.name != subtitle {
+                let sub = gtk::Label::new(Some(&subtitle));
                 sub.set_halign(gtk::Align::Start);
                 sub.set_xalign(0.0);
                 sub.add_css_class("dim-label");
@@ -3771,11 +3793,12 @@ window.__hylkiDirty=true;})()"#
 
             // Complete this recipient on click.
             let row2 = row.clone();
+            let bcc = bcc.clone();
             let pop = self.completion.downgrade();
             let sug = sug.clone();
             let gesture = gtk::GestureClick::new();
             gesture.connect_released(move |_, _, _, _| {
-                complete_field(&row2, &sug);
+                complete_field(&row2, &bcc, &sug);
                 if let Some(p) = pop.upgrade() {
                     p.popdown();
                 }

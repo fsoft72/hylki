@@ -358,6 +358,18 @@ headerbar.rail-header {
   color: @accent_fg_color;
 }
 
+/* The group form's people to add: the one the arrow keys are on, as in
+   the composer's suggestions. */
+.member-matches row:selected {
+  background-color: @accent_bg_color;
+  color: @accent_fg_color;
+}
+
+.member-matches row:selected label,
+.member-matches row:selected image {
+  color: @accent_fg_color;
+}
+
 /* The inline composer's ground: opaque, so sliding down over the reader
    actually hides it rather than blending with it. */
 .inline-compose-surface {

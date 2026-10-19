@@ -4,7 +4,9 @@
 //! run EDS can still keep contacts, and everyone can import `.vcf` files.
 //! vCards are stored verbatim, so properties Hylki does not edit (PHOTO, ADR,
 //! X-...) survive a round trip, exactly as with an EDS book. The
-//! `contact_email` table is derived data, rebuilt on every write.
+//! `contact_email` table is derived data, rebuilt on every write. A contact
+//! group is stored like a contact, as an Evolution list vCard; its members
+//! are not indexed there, since they are not the group's own addresses.
 //!
 //! This module is the only code that touches `local_contacts.db`;
 //! `contacts.rs` routes to it by [`LOCAL_BOOK_UID`].
@@ -22,6 +24,9 @@ pub const LOCAL_BOOK_UID: &str = "hylki-local";
 const MAX_FILE_BYTES: u64 = 50 * 1024 * 1024;
 /// Largest single vCard accepted (a contact with an embedded photo can be big).
 const MAX_VCARD_BYTES: usize = 5 * 1024 * 1024;
+/// The stored cards that may be groups, by their text: an Evolution list,
+/// or a vCard 4 or Apple group. LIKE ignores ASCII case.
+const GROUP_WHERE: &str = "vcard LIKE '%X-EVOLUTION-LIST:TRUE%' OR vcard LIKE '%KIND:group%'";
 /// Schema version stored in `PRAGMA user_version`.
 const SCHEMA_VERSION: i64 = 1;
 
@@ -46,7 +51,7 @@ CREATE INDEX IF NOT EXISTS contact_email_idx ON contact_email(email_lower);
 pub struct ImportOutcome {
     pub added: usize,
     pub updated: usize,
-    /// Blocks that are not people: no name and no email, or a distribution list.
+    /// Blocks with neither a name nor an email, or a group with no name.
     pub skipped: usize,
     /// Truncated or oversized vCards.
     pub errors: usize,
@@ -195,6 +200,23 @@ impl Store {
             .query_row("SELECT vcard FROM contact WHERE uid = ?1", [uid], |r| r.get(0))
             .optional()
             .map_err(|e| e.to_string())
+    }
+
+    /// The vCards of the book's contact groups. Matched on the text; the
+    /// caller parses each to be sure.
+    fn group_vcards(&self) -> Result<Vec<String>, String> {
+        let mut stmt = self
+            .conn
+            .prepare(&format!("SELECT vcard FROM contact WHERE {GROUP_WHERE} ORDER BY name COLLATE NOCASE, uid"))
+            .map_err(|e| e.to_string())?;
+        let rows = stmt.query_map([], |r| r.get::<_, String>(0)).map_err(|e| e.to_string())?;
+        rows.collect::<Result<_, _>>().map_err(|e| e.to_string())
+    }
+
+    /// How many people the book holds: its contacts less its groups.
+    fn people(&self) -> usize {
+        let sql = format!("SELECT count(*) FROM contact WHERE NOT ({GROUP_WHERE})");
+        self.conn.query_row(&sql, [], |r| r.get::<_, i64>(0)).map_or(0, |n| n as usize)
     }
 
     /// (display name, email) for every address in the book.
@@ -502,6 +524,11 @@ fn read_vcf_file(path: &Path) -> Result<String, String> {
     decode_text(&std::fs::read(path).map_err(|e| e.to_string())?)
 }
 
+/// The vCards of the local book's contact groups.
+pub fn group_vcards() -> Result<Vec<String>, String> {
+    Store::open_read()?.map_or(Ok(Vec::new()), |s| s.group_vcards())
+}
+
 /// Every stored vCard, sorted by display name.
 pub fn list_vcards() -> Result<Vec<String>, String> {
     Store::open_read()?.map_or(Ok(Vec::new()), |s| s.vcards())
@@ -537,13 +564,9 @@ pub fn delete(uid: &str) -> Result<(), String> {
     Store::open()?.delete(uid)
 }
 
-/// How many contacts the book holds.
+/// How many contacts the book holds, its groups left out.
 pub fn count() -> usize {
-    Store::open_read()
-        .ok()
-        .flatten()
-        .and_then(|s| s.conn.query_row("SELECT count(*) FROM contact", [], |r| r.get::<_, i64>(0)).ok())
-        .map_or(0, |n| n as usize)
+    Store::open_read().ok().flatten().map_or(0, |s| s.people())
 }
 
 /// Write every contact into one `.vcf` file at `path`, returning how many.
@@ -720,12 +743,25 @@ mod tests {
     }
 
     #[test]
-    fn import_skips_cards_without_name_or_email_and_lists() {
+    fn import_skips_cards_without_name_or_email() {
         let mut store = Store::in_memory();
         let text = "BEGIN:VCARD\r\nVERSION:3.0\r\nNOTE:nobody\r\nEND:VCARD\r\n\
-                    BEGIN:VCARD\r\nVERSION:3.0\r\nFN:Team\r\nX-EVOLUTION-LIST:TRUE\r\nEMAIL:t@x.org\r\nEND:VCARD\r\n";
+                    BEGIN:VCARD\r\nVERSION:3.0\r\nX-EVOLUTION-LIST:TRUE\r\nEMAIL:t@x.org\r\nEND:VCARD\r\n";
         let out = import_text_into(&mut store, text).unwrap();
         assert_eq!((out.added, out.skipped), (0, 2));
+    }
+
+    #[test]
+    fn an_imported_list_is_a_group_whose_members_are_not_contacts() {
+        let mut store = Store::in_memory();
+        let text = "BEGIN:VCARD\r\nVERSION:3.0\r\nFN:Team\r\nX-EVOLUTION-LIST:TRUE\r\nEMAIL:Tom <t@x.org>\r\nEND:VCARD\r\n\
+                    BEGIN:VCARD\r\nVERSION:4.0\r\nKIND:group\r\nFN:Kin\r\nMEMBER:mailto:k@x.org\r\nEND:VCARD\r\n";
+        let out = import_text_into(&mut store, text).unwrap();
+        assert_eq!(out.added, 2);
+        store.upsert_one(&card("Ann", "a@x.org")).unwrap();
+        assert_eq!(store.emails().unwrap(), vec![("Ann".to_string(), "a@x.org".to_string())]);
+        assert_eq!(store.group_vcards().unwrap().len(), 2);
+        assert_eq!(store.people(), 1);
     }
 
     #[test]
@@ -752,6 +788,22 @@ mod tests {
         store.delete("u1").unwrap();
         assert!(store.emails().unwrap().is_empty());
         assert!(store.vcards().unwrap().is_empty());
+    }
+
+    #[test]
+    fn a_group_made_in_the_editor_is_stored_with_a_uid() {
+        let mut store = Store::in_memory();
+        let edit = crate::contacts::GroupEdit {
+            name: "Team".into(),
+            members: vec![crate::contacts::Member { name: "Ann".into(), email: "a@x.org".into(), ..Default::default() }],
+            hide_addresses: false,
+        };
+        store.upsert_one(&crate::contacts::new_group_vcard(&edit)).unwrap();
+        let stored = store.group_vcards().unwrap();
+        assert!(stored[0].contains("\r\nUID:hylki-"));
+        // Ann is in the group, not in the book.
+        assert!(store.emails().unwrap().is_empty());
+        assert_eq!(store.people(), 0);
     }
 
     #[test]

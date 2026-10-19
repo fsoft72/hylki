@@ -167,7 +167,10 @@ highlighted attachment. In the attachments gallery's preview, <kbd>←</kbd> and
 <kbd>→</kbd> step to the previous and next one, and <kbd>Esc</kbd> closes it.
 
 In the Contacts view, <kbd>Delete</kbd> asks to delete the contact shown,
-while the contact list has the focus.
+while the contact list has the focus. In a group's form, <kbd>↓</kbd> and
+<kbd>↑</kbd> move through the people matching what is typed in the field
+that adds them, <kbd>Enter</kbd> adds the one highlighted, and <kbd>Esc</kbd>
+puts the matches away.
 
 <kbd>Ctrl+F</kbd> in the Settings window opens its search, and closes it
 again. <kbd>Esc</kbd> closes it too, wherever the focus is in the window,

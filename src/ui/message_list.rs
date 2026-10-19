@@ -5375,6 +5375,7 @@ mod tests {
             reply_to: String::new(),
             to: String::new(),
             cc: String::new(),
+            bcc: String::new(),
             subject: "S".into(),
             preview: String::new(),
             body: String::new(),

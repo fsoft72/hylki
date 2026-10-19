@@ -12,7 +12,7 @@ pub mod compose;
 pub mod contacts_browser;
 pub mod contacts_page;
 pub mod context_menu;
-pub mod directories;
+pub mod contact_sources;
 pub mod drop_zones;
 pub mod emoji;
 pub mod folder_picker;

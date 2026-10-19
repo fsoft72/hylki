@@ -4154,6 +4154,7 @@ impl MessageView {
             m.from_addr.hash(&mut h);
             m.to.hash(&mut h);
             m.cc.hash(&mut h);
+            m.bcc.hash(&mut h);
             m.body.hash(&mut h);
             m.datetime_full().hash(&mut h);
             self.no_autoread.contains(&key).hash(&mut h);
@@ -5686,21 +5687,22 @@ fn paints_own_background(body: &str) -> bool {
         .any(|needle| lower.contains(needle))
 }
 
-/// How many addresses a message's To + Cc headers name.
+/// How many addresses a message's To, Cc and Bcc headers name.
 fn recipient_count(m: &Message) -> usize {
-    [m.to.as_str(), m.cc.as_str()]
+    [m.to.as_str(), m.cc.as_str(), m.bcc.as_str()]
         .iter()
         .flat_map(|s| s.split(','))
         .filter(|a| !a.trim().is_empty())
         .count()
 }
 
-/// The collapsible To/Cc block inside a conversation card's header. Starts
-/// hidden; the header's recipients chip toggles it. Empty when the message
-/// names no recipients at all.
+/// The collapsible To/Cc/Bcc block inside a conversation card's header.
+/// Starts hidden; the header's recipients chip toggles it. Empty when the
+/// message names no recipients at all. Bcc is there only on the sender's own
+/// copy (#476).
 fn recipients_html(m: &Message, always_shown: bool) -> String {
     let mut lines = String::new();
-    for (label, list) in [("To", m.to.trim()), ("Cc", m.cc.trim())] {
+    for (label, list) in [("To", m.to.trim()), ("Cc", m.cc.trim()), ("Bcc", m.bcc.trim())] {
         if list.is_empty() {
             continue;
         }
@@ -7128,17 +7130,24 @@ fn ground_rgba(hex: &str) -> gtk::gdk::RGBA {
 // parent-attached listeners, but a click into an iframe focuses it and blurs
 // the wrapper window — caught there, the focused frame names the card, and
 // focus is handed straight back so the next click fires again.
+//
+// `zf` is the message zoom on the frame's root. Under it WebKit reports the
+// body's scroll sizes in the body's own unzoomed pixels, not the frame's, so
+// at 90% the body always looked wider than its frame: each pass of the widen
+// loop grew the frame by 1/zoom and centred mail drifted right (#473).
 const SIZE_SCRIPT: &str = "\
+function zf(d){try{return parseFloat(d.defaultView.getComputedStyle(d.documentElement).zoom)||1;}catch(_){return 1;}}\
 function s(f){if(f._s)return;f._s=1;try{var d=f.contentDocument;if(!d||d.URL==='about:blank')return;\
 f.classList.add('hylki-live');\
 var b=d.body,e=d.documentElement;\
 var sy=window.scrollY;var _r=f.getBoundingClientRect();\
 var above=_r.bottom<=0;var old=_r.height||0;\
 f.style.width='';void f.offsetWidth;\
-for(var k=0;k<8;k++){var w=Math.max(b?b.scrollWidth:0,e?e.scrollWidth:0);\
+var z=zf(d);\
+for(var k=0;k<8;k++){var w=Math.max(b?Math.ceil(b.scrollWidth*z):0,e?e.scrollWidth:0);\
 if(w<=f.clientWidth+1)break;f.style.width=w+'px';void f.offsetWidth;}\
 var prev=f.style.height;f.style.height='0px';void f.offsetHeight;\
-var h=Math.max(b?b.scrollHeight:0,e?e.scrollHeight:0,b?b.offsetHeight:0);\
+var h=Math.max(b?Math.ceil(b.scrollHeight*z):0,e?e.scrollHeight:0,b?Math.ceil(b.offsetHeight*z):0);\
 if(h>0){f.style.height=h+'px';\
 if(f.dataset.key&&f._h!==h){f._h=h;\
 try{window.webkit.messageHandlers.hylki.postMessage('size:'+f.dataset.key+':'+h);}catch(_){}}}\
@@ -7242,7 +7251,7 @@ b.classList.toggle('open',on);\
 b.setAttribute('title',on?QT[1]:QT[0]);f._qp();\
 var to=0;try{var dd=f.contentDocument,bb=dd.body,ee=dd.documentElement;\
 var prev=f.style.height;f.style.height='0px';void f.offsetHeight;\
-to=Math.max(bb?bb.scrollHeight:0,ee?ee.scrollHeight:0,bb?bb.offsetHeight:0);\
+var z=zf(dd);to=Math.max(bb?Math.ceil(bb.scrollHeight*z):0,ee?ee.scrollHeight:0,bb?Math.ceil(bb.offsetHeight*z):0);\
 f.style.height=prev;void f.offsetHeight;}catch(_){}\
 if(!to){s(f);window.scrollTo(0,sy);return;}\
 f.style.height=from+'px';f.classList.add('anim');\
@@ -7855,12 +7864,13 @@ fn print_header_html(message: Option<&Message>) -> String {
     };
     format!(
         "<div class=\"hylki-print-hdr\">\
-           <div class=\"hylki-print-subject\">{subject}</div>{from}{to}{cc}{date}\
+           <div class=\"hylki-print-subject\">{subject}</div>{from}{to}{cc}{bcc}{date}\
          </div>",
         subject = escape_text(&subject),
         from = row(&i18n("From:"), &from),
         to = row(&i18n("To:"), &m.to),
         cc = row(&i18n("Cc:"), &m.cc),
+        bcc = row(&i18n("Bcc:"), &m.bcc),
         date = row(&i18n("Date:"), &m.datetime_full()),
     )
 }
@@ -7963,6 +7973,23 @@ mod tests {
     }
 
     // ===== Meeting invitations (#223) =====
+
+    /// A sent copy's Bcc recipients are listed under To and Cc, and counted
+    /// on the chip (#476); a message without any has no Bcc line.
+    #[test]
+    fn the_recipients_block_lists_bcc() {
+        let mut m = msg_for_print();
+        assert!(!recipients_html(&m, true).contains("Bcc:"));
+        m.bcc = "hidden@example.com".into();
+        let html = recipients_html(&m, true);
+        assert!(
+            html.contains("<b>Bcc:</b> <span class=\"hylki-mail\" data-mail=\"hidden@example.com\">"),
+            "{html}"
+        );
+        assert!(html.find("<b>Cc:</b>") < html.find("<b>Bcc:</b>"));
+        assert_eq!(recipient_count(&m), 3);
+        assert!(print_header_html(Some(&m)).contains("hidden@example.com"));
+    }
 
     /// The banner's container is emitted for every card whether or not the
     /// message is about a meeting, so an invitation read after the paint has
@@ -8362,6 +8389,7 @@ mod tests {
             reply_to: String::new(),
             to: "me@example.com".into(),
             cc: "carol@example.com".into(),
+            bcc: String::new(),
             subject: "Quarterly numbers".into(),
             preview: String::new(),
             body: "<p>hi</p>".into(),

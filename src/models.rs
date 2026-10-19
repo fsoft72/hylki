@@ -269,6 +269,9 @@ pub struct Message {
     /// Original recipients (comma-separated emails), used for Reply All.
     pub to: String,
     pub cc: String,
+    /// Bcc recipients, comma-separated. Only a sender's own copy names them
+    /// (#476); a received message has none.
+    pub bcc: String,
     pub subject: String,
     pub preview: String,
     pub body: String,
@@ -930,6 +933,7 @@ impl OutboxItem {
             reply_to: String::new(),
             to: self.recipients.clone(),
             cc: String::new(),
+            bcc: String::new(),
             subject: if self.subject.trim().is_empty() {
                 "(no subject)".to_string()
             } else {
@@ -1253,6 +1257,7 @@ impl Message {
             &mut self.reply_to,
             &mut self.to,
             &mut self.cc,
+            &mut self.bcc,
             &mut self.subject,
             &mut self.preview,
             &mut self.body,

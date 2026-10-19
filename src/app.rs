@@ -1883,6 +1883,12 @@ pub enum AppMsg {
     /// Select a settings category by id (the showcase hook).
     ShowSettingsPage(String),
     ComposeTo(String),
+    /// A new message to these recipients in Bcc: a contact group that hides
+    /// its members' addresses.
+    ComposeBcc(String),
+    /// Read the composer's recipient suggestions for the Contacts view's
+    /// group form, off the main thread.
+    ContactSuggestions,
     /// Showcase only (HYLKI_SHOWCASE_FOLDER): switch to the first account's
     /// folder of this kind, so a capture can start from Drafts, Sent, etc.
     ShowcaseFolder { kind: FolderKind, account: Option<u32> },
@@ -2185,6 +2191,9 @@ pub enum AppMsg {
     OpenContacts,
     /// The background EDS read for the contacts view finished.
     ContactsLoaded(Vec<crate::contacts::ContactDetails>),
+    /// The address books that sync with a server fetched what changed
+    /// (#408): read the contacts again if they are showing.
+    ContactBooksSynced,
     /// Read with the contacts: the books new contacts can go to, chosen one
     /// first, and how many contacts the Hylki book holds.
     ContactBooksLoaded { books: Vec<crate::contacts::Book>, local_count: usize },
@@ -3214,6 +3223,7 @@ impl SimpleComponent for AppModel {
                 .launch(contacts_compose_revealer.clone())
                 .forward(sender.input_sender(), |out| match out {
                     ContactsPageOutput::Compose(email) => AppMsg::ComposeTo(email),
+                    ContactsPageOutput::ComposeBcc(field) => AppMsg::ComposeBcc(field),
                     ContactsPageOutput::ToggleSidebar => AppMsg::ToggleSidebar,
                     ContactsPageOutput::SaveContact { book_uid, vcard } => {
                         AppMsg::SaveContact { book_uid, vcard }
@@ -3225,6 +3235,7 @@ impl SimpleComponent for AppModel {
                         AppMsg::DeleteContact { book_uid, uid }
                     }
                     ContactsPageOutput::ImportContacts(paths) => AppMsg::ImportContacts(paths),
+                    ContactsPageOutput::WantSuggestions => AppMsg::ContactSuggestions,
                     ContactsPageOutput::ShowPhoto { name, data } => {
                         // The lightbox routes by extension — a bare contact
                         // name sent the JPEG down the PDF path, where poppler
@@ -3767,6 +3778,12 @@ impl SimpleComponent for AppModel {
         }
         if model.tray_enabled {
             model.start_tray(&sender);
+        }
+        // Nothing keeps a CardDAV or Online Accounts address book in step
+        // unless an app holds it open, and off GNOME there may be no other
+        // (#408). A moment after the window, not in its way.
+        if !demo_mode() {
+            sync_contact_books(&sender, false, 5000);
         }
         // Refresh visible avatars when the GNOME Contacts photo index
         // changes (first load finishing, or an EDS/CardDAV sync).
@@ -5658,18 +5675,23 @@ impl SimpleComponent for AppModel {
                         }
                     });
                 }
-                // HYLKI_SHOWCASE_CONTACTS=list|new|search:<text>[@<n>] opens
-                // Contacts at 3s, and with "new" its editor for a new contact
-                // at 5s, or with "search:" types the text into its search
+                // HYLKI_SHOWCASE_CONTACTS=list|new|group|search:<text>[@<n>]
+                // opens Contacts at 3s, and with "new" its editor for a new
+                // contact at 5s ("group": for a new group), or with "search:"
+                // types the text into its search
                 // then, so the directories are asked too (#307), and with
                 // "@<n>" picks entry n of the book filter at 6s.
                 if let Ok(which) = std::env::var("HYLKI_SHOWCASE_CONTACTS") {
                     let s = sender.clone();
                     gtk::glib::timeout_add_seconds_local_once(3, move || s.input(AppMsg::OpenContacts));
                     let page = model.contacts_page.sender().clone();
-                    if which == "new" {
+                    if which == "new" || which == "group" {
                         gtk::glib::timeout_add_seconds_local_once(5, move || {
-                            let _ = page.send(ContactsPageInput::NewContact);
+                            let _ = page.send(if which == "group" {
+                                ContactsPageInput::NewGroup
+                            } else {
+                                ContactsPageInput::NewContact
+                            });
                         });
                     } else if let Some(spec) = which.strip_prefix("search:") {
                         let (text, book) = match spec.rsplit_once('@') {
@@ -8256,6 +8278,11 @@ impl SimpleComponent for AppModel {
                 // The list skips the work when avatars are off; the
                 // reader's cards draw initials only, so it has nothing to do.
                 self.message_list.emit(MessageListInput::ContactPhotosChanged);
+                // The books' files changed: a sync landed, which EDS writes
+                // after its refresh call has already returned (#408).
+                if self.showing_contacts && !demo_mode() {
+                    reload_contacts(&sender, 0);
+                }
             }
 
             AppMsg::Pref(PrefOutput::SetFetchInterval(secs)) => {
@@ -9454,29 +9481,12 @@ impl SimpleComponent for AppModel {
                 }
             }
 
-            AppMsg::ComposeTo(addr) => {
-                // The contacts view hosts its own compose slot (the composer
-                // slides down over the contact card); from the gallery there is
-                // no slot, so bring the mail panes back first — the composer
-                // would otherwise open invisibly behind the stack.
-                self.leave_gallery();
-                let account = self
-                    .current
-                    .as_ref()
-                    .map(|m| m.account_id)
-                    .unwrap_or_else(|| self.active_account());
-                let prefill = ComposePrefill {
-                    to: addr,
-                    ..Default::default()
-                };
-                let (account, prefill) = self.new_message_from(account, prefill);
-                // Same preference as "New Message": slide down over the
-                // reader, unless composing is set to open in a window.
-                if self.compose_inline {
-                    self.open_inline_reply(account, prefill, None, &sender);
-                } else {
-                    self.open_compose(account, prefill, &sender);
-                }
+            AppMsg::ComposeTo(to) => {
+                self.compose_addressed(ComposePrefill { to, ..Default::default() }, &sender);
+            }
+
+            AppMsg::ComposeBcc(bcc) => {
+                self.compose_addressed(ComposePrefill { bcc, ..Default::default() }, &sender);
             }
 
             AppMsg::OpenWithFiles(mut paths) => {
@@ -9760,6 +9770,7 @@ impl SimpleComponent for AppModel {
                         from_contacts: false,
                         from_directory: false,
                         score: 1,
+                        group: None,
                     })
                     .collect();
                 if !fresh.is_empty() {
@@ -12311,6 +12322,32 @@ impl SimpleComponent for AppModel {
                 // page shows its loading face until the list lands.
                 self.contacts_page.emit(ContactsPageInput::SetLoading);
                 reload_contacts(&sender, 0);
+                if !demo_mode() {
+                    sync_contact_books(&sender, false, 0);
+                }
+            }
+
+            AppMsg::ContactBooksSynced => {
+                // EDS writes what it fetched just after the sync returns.
+                if self.showing_contacts {
+                    reload_contacts(&sender, 1500);
+                }
+                if self.filters.iter().any(|r| r.needs_contacts()) {
+                    self.saved_addresses.refresh();
+                }
+            }
+
+            AppMsg::Pref(PrefOutput::ContactSourcesChanged) => {
+                // A book switched on or off counts at once everywhere.
+                if self.showing_contacts {
+                    reload_contacts(&sender, 0);
+                }
+                if self.filters.iter().any(|r| r.needs_contacts()) {
+                    self.saved_addresses.refresh();
+                }
+                // Settings synced a saved account's books already; any it
+                // did not are opened and synced now.
+                sync_contact_books(&sender, false, 0);
             }
 
             AppMsg::ContactBooksLoaded { books, local_count } => {
@@ -12319,6 +12356,14 @@ impl SimpleComponent for AppModel {
                     p.emit(PrefInput::SetLocalContactCount(local_count));
                 }
                 self.contacts_page.emit(ContactsPageInput::SetBooks(books));
+            }
+
+            AppMsg::ContactSuggestions => {
+                let own: Vec<(String, String)> = self.config.iter().map(|c| (c.name.clone(), c.email.clone())).collect();
+                let page = self.contacts_page.sender().clone();
+                std::thread::spawn(move || {
+                    let _ = page.send(ContactsPageInput::SuggestionsLoaded(crate::contacts::suggestions(&own)));
+                });
             }
 
             AppMsg::ContactsLoaded(contacts) => {
@@ -12417,6 +12462,19 @@ impl SimpleComponent for AppModel {
             AppMsg::Pref(_) => {}
         }
     }
+}
+
+/// Sync the address books that sync with a server, after `delay_ms` and
+/// off the main thread, and read the contacts again if any did (#408).
+/// Unless `force`d, a book synced in the last few minutes is left alone.
+fn sync_contact_books(sender: &ComponentSender<AppModel>, force: bool, delay_ms: u64) {
+    let s = sender.clone();
+    std::thread::spawn(move || {
+        std::thread::sleep(std::time::Duration::from_millis(delay_ms));
+        if crate::carddav::sync_books(force) {
+            s.input(AppMsg::ContactBooksSynced);
+        }
+    });
 }
 
 /// Read the contacts, the books new ones can go to and the Hylki book's
@@ -18458,6 +18516,28 @@ impl AppModel {
         out
     }
 
+    /// A new message with these recipients, from the account being looked at.
+    fn compose_addressed(&mut self, prefill: ComposePrefill, sender: &ComponentSender<Self>) {
+        // The contacts view hosts its own compose slot (the composer
+        // slides down over the contact card); from the gallery there is
+        // no slot, so bring the mail panes back first — the composer
+        // would otherwise open invisibly behind the stack.
+        self.leave_gallery();
+        let account = self
+            .current
+            .as_ref()
+            .map(|m| m.account_id)
+            .unwrap_or_else(|| self.active_account());
+        let (account, prefill) = self.new_message_from(account, prefill);
+        // Same preference as "New Message": slide down over the
+        // reader, unless composing is set to open in a window.
+        if self.compose_inline {
+            self.open_inline_reply(account, prefill, None, sender);
+        } else {
+            self.open_compose(account, prefill, sender);
+        }
+    }
+
     /// Open a standalone compose window (New Message, compose-to, edit-draft).
     fn open_compose(
         &mut self,
@@ -18679,6 +18759,7 @@ impl AppModel {
             reply_to: out.reply_to.clone(),
             to: out.to.clone(),
             cc: out.cc.clone(),
+            bcc: out.bcc.clone(),
             subject: out.subject.clone(),
             preview: out.body.chars().take(200).collect(),
             body,
@@ -27468,6 +27549,7 @@ mod tests {
             reply_to: String::new(),
             to: String::new(),
             cc: String::new(),
+            bcc: String::new(),
             subject: String::new(),
             preview: String::new(),
             body: String::new(),
@@ -27776,6 +27858,7 @@ mod tests {
             reply_to: String::new(),
             to: String::new(),
             cc: String::new(),
+            bcc: String::new(),
             subject: String::new(),
             preview: String::new(),
             body: String::new(),

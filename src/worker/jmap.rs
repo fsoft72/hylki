@@ -54,7 +54,7 @@ const IMPORT_REFUSED: &str = "the server would not take the message";
 /// The summary properties one listing asks `Email/get` for.
 const EMAIL_PROPS: &[&str] = &[
     "id", "blobId", "threadId", "mailboxIds", "keywords", "hasAttachment", "receivedAt",
-    "subject", "from", "replyTo", "to", "cc", "messageId", "inReplyTo", "references", "preview",
+    "subject", "from", "replyTo", "to", "cc", "bcc", "messageId", "inReplyTo", "references", "preview",
     "header:X-Priority:asText", "header:Importance:asText", "header:Priority:asText",
 ];
 
@@ -749,6 +749,7 @@ fn jmap_message(v: &serde_json::Value, account_id: u32, folder_id: u32) -> Optio
         reply_to,
         to: jmap_addrs(&v["to"]),
         cc: jmap_addrs(&v["cc"]),
+        bcc: jmap_addrs(&v["bcc"]),
         subject: v["subject"].as_str().unwrap_or("").to_string(),
         preview,
         body: String::new(),
@@ -1823,7 +1824,9 @@ async fn jmap_send_message(
     let envelope = email.envelope().clone();
     let from = envelope.from().map(|f| f.to_string()).unwrap_or_else(|| account.email.clone());
     let rcpts: Vec<String> = envelope.to().iter().map(|a| a.to_string()).collect();
-    let raw = email.formatted();
+    // The copy keeps its Bcc (#476); the server removes it on delivery
+    // (RFC 8621, 7.5).
+    let raw = with_bcc(&email.formatted(), &message.bcc);
     let sent = jmap_sent_target(account, state, sent_path)
         .ok_or_else(|| "the account has no Sent folder to file the copy in".to_string())?;
     let reply = jmap_reply_target(account, account_id, state, cache, &message.in_reply_to);
@@ -1953,7 +1956,7 @@ async fn jmap_flush_outbox(
         };
         let reply = jmap_reply_target(account, account_id, state, Some(cache), &raw_in_reply_to(&item.raw));
         let sess = s.clone();
-        let raw = item.raw.clone();
+        let raw = queued_with_bcc(&item.raw, &item.rcpts);
         let from = item.from_addr.clone();
         let rcpts = item.rcpts.clone();
         match blocking(move || jmap_submit_filed(&sess, &raw, &from, &rcpts, reply, sent)).await {

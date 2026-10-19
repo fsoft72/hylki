@@ -1202,6 +1202,33 @@ msgid_plural "{n} unread messages"
 msgstr[0] ""
 msgstr[1] ""
 
+msgid "Enter the server's address."
+msgstr ""
+
+msgid "“{text}” is not a server address."
+msgstr ""
+
+msgid "The address starts with https:// or http://."
+msgstr ""
+
+msgid "Evolution Data Server is not available"
+msgstr ""
+
+msgid "Enter the password to sign in."
+msgstr ""
+
+msgid "The server did not accept the user name or password."
+msgstr ""
+
+msgid "The server's certificate could not be verified."
+msgstr ""
+
+msgid "The server's certificate could not be verified: {error}"
+msgstr ""
+
+msgid "Could not connect to the server."
+msgstr ""
+
 msgid "Signature"
 msgstr ""
 
@@ -1268,11 +1295,46 @@ msgstr ""
 msgid "Find"
 msgstr ""
 
+msgid "{n} address book"
+msgid_plural "{n} address books"
+msgstr[0] ""
+msgstr[1] ""
+
 msgid "Hylki Address Book"
 msgstr ""
 
+msgid "{n} contact, kept by Hylki"
+msgid_plural "{n} contacts, kept by Hylki"
+msgstr[0] ""
+msgstr[1] ""
+
 msgid "On This Computer"
 msgstr ""
+
+msgid "{books} · kept by GNOME Contacts and Evolution"
+msgstr ""
+
+msgid "Online account"
+msgstr ""
+
+msgid "Contacts is switched off for this account in GNOME Online Accounts."
+msgstr ""
+
+msgid "Looking for address books…"
+msgstr ""
+
+msgid "This address book is switched off in Evolution."
+msgstr ""
+
+msgid "{n} person, in Bcc"
+msgid_plural "{n} people, in Bcc"
+msgstr[0] ""
+msgstr[1] ""
+
+msgid "{n} person"
+msgid_plural "{n} people"
+msgstr[0] ""
+msgstr[1] ""
 
 msgid "CardDAV Address Book"
 msgstr ""
@@ -1280,12 +1342,9 @@ msgstr ""
 msgid "{date} at {time}"
 msgstr ""
 
-msgid "Evolution Data Server is not available"
-msgstr ""
-
 msgid ""
-"The directory cannot be searched without signing in. Add a sign-in in "
-"Settings → LDAP Directories."
+"The directory cannot be searched without signing in. Add a sign-in to it in "
+"Settings → Contacts."
 msgstr ""
 
 msgid "The directory did not accept the password."
@@ -1313,7 +1372,7 @@ msgstr ""
 msgid "Could not reach {server}. Check the server's name and the network."
 msgstr ""
 
-msgid "The directory needs a password. Add it in Settings → LDAP Directories."
+msgid "The directory needs a password. Add it in Settings → Contacts."
 msgstr ""
 
 msgid "{name} did not answer: {error}"
@@ -2919,9 +2978,6 @@ msgid ""
 "token obtained another way can be pasted in the password field."
 msgstr ""
 
-msgid "Online account"
-msgstr ""
-
 msgid "Dropbox app key"
 msgstr ""
 
@@ -3457,7 +3513,7 @@ msgstr ""
 msgid "Open GNOME Contacts"
 msgstr ""
 
-msgid "New contact"
+msgid "New contact or group"
 msgstr ""
 
 msgid "Import vCard files into the Hylki address book"
@@ -3487,6 +3543,14 @@ msgstr ""
 msgid "In Directories"
 msgstr ""
 
+msgid "Delete Group?"
+msgstr ""
+
+msgid ""
+"{name} is removed from your address book, and for a synced book, from the "
+"server too. The people in it are not."
+msgstr ""
+
 msgid "Delete Contact?"
 msgstr ""
 
@@ -3499,6 +3563,9 @@ msgid "All Address Books"
 msgstr ""
 
 msgid "Edit"
+msgstr ""
+
+msgid "Add to Group"
 msgstr ""
 
 msgid "Delete…"
@@ -3535,6 +3602,21 @@ msgstr ""
 msgid "Details"
 msgstr ""
 
+msgid "Edit Group"
+msgstr ""
+
+msgid "New Group"
+msgstr ""
+
+msgid "Group"
+msgstr ""
+
+msgid "Send as Bcc"
+msgstr ""
+
+msgid "Members do not see each other's addresses."
+msgstr ""
+
 msgid "Edit Contact"
 msgstr ""
 
@@ -3563,6 +3645,18 @@ msgstr ""
 msgid "Add website"
 msgstr ""
 
+msgid "Members"
+msgstr ""
+
+msgid "No one is in this group yet."
+msgstr ""
+
+msgid "Changed in the app it came from"
+msgstr ""
+
+msgid "This group names its members by contact, which Hylki does not edit."
+msgstr ""
+
 msgid "Import Contacts"
 msgstr ""
 
@@ -3572,30 +3666,64 @@ msgstr ""
 msgid "All files"
 msgstr ""
 
-msgid "LDAP Directories"
+msgid "Add a person by name or address"
 msgstr ""
 
-msgid "LDAP directories"
+msgid "Use an app-specific password, not your usual one."
+msgstr ""
+
+msgid "CardDAV Server"
 msgstr ""
 
 msgid ""
-"The composer looks up recipients in these directories as you type an "
-"address, and a search in Contacts looks in them too. They are kept by "
-"Evolution Data Server, so a directory set up in Evolution is listed here too."
+"The server's address is enough for most services; Hylki finds the address "
+"books on it. Services that sign in with two steps want an app password."
 msgstr ""
 
-msgid "Add Directory…"
+msgid ""
+"Your Nextcloud's address, such as cloud.example.org. With two-factor sign-"
+"in, make an app password in Nextcloud under Settings → Security."
 msgstr ""
 
-msgid "No directories yet."
+msgid ""
+"Use an app password with access to contacts, made in Fastmail under Settings "
+"→ Privacy & Security."
 msgstr ""
 
 msgid "LDAP Directory"
 msgstr ""
 
+msgid "Address Books"
+msgstr ""
+
 msgid ""
-"Evolution Data Server, which keeps the directories, is not available on this "
-"system."
+"Where Hylki finds contacts: for Contacts, the composer's suggestions, sender "
+"pictures and the filters. Switch one off to leave it out of Hylki; GNOME and "
+"Evolution keep using it."
+msgstr ""
+
+msgid "Look again for address books"
+msgstr ""
+
+msgid "Add Address Book…"
+msgstr ""
+
+msgid ""
+"The address books of GNOME Contacts, CardDAV accounts and LDAP directories "
+"are kept by Evolution Data Server, which is not installed. Install the "
+"evolution-data-server package, which runs without GNOME, and open this page "
+"again."
+msgstr ""
+
+msgid "New Contacts"
+msgstr ""
+
+msgid "Save new contacts in"
+msgstr ""
+
+msgid ""
+"The address book a contact made in Hylki goes to, unless another is picked "
+"when it is made."
 msgstr ""
 
 msgid ""
@@ -3603,19 +3731,128 @@ msgid ""
 "apps that use it stop seeing it too. Nothing on the server changes."
 msgstr ""
 
+msgid ""
+"The account and its address books are removed from this computer, so "
+"Evolution and other apps that use them stop seeing them too. Nothing on the "
+"server changes."
+msgstr ""
+
+msgid "Looking for address books on {name}…"
+msgstr ""
+
+msgid "{name}: {problem}"
+msgstr ""
+
+msgid "No address books were found on {name} yet."
+msgstr ""
+
+msgid "Found {n} address book on {name}"
+msgid_plural "Found {n} address books on {name}"
+msgstr[0] ""
+msgstr[1] ""
+
 msgid "Connected to {name}"
 msgstr ""
 
 msgid "The server took too long to answer."
 msgstr ""
 
-msgid "Edit Directory"
+msgid "Kept by Evolution Data Server"
 msgstr ""
 
-msgid "Add Directory"
+msgid ""
+"The address books GNOME Contacts and Evolution keep on this computer. They "
+"are changed there, and in Hylki's Contacts."
 msgstr ""
 
-msgid "Look up recipients in this directory"
+msgid "Set up in GNOME Online Accounts"
+msgstr ""
+
+msgid ""
+"The account's sign-in, and whether it keeps contacts at all, are changed in "
+"GNOME Settings."
+msgstr ""
+
+msgid "Open Online Accounts"
+msgstr ""
+
+msgid "Add Address Book"
+msgstr ""
+
+msgid "Added in GNOME Online Accounts"
+msgstr ""
+
+msgid ""
+"Google and Microsoft 365 sign in through the browser, which Evolution Data "
+"Server leaves to GNOME Online Accounts. Add the account there with Contacts "
+"switched on, and it is listed here."
+msgstr ""
+
+msgid ""
+"Contacts Hylki keeps itself, in its own data folder. They work without GNOME."
+msgstr ""
+
+msgid "Contacts in the Hylki book"
+msgstr ""
+
+msgid "Import vCard files"
+msgstr ""
+
+msgid ""
+"Adds the contacts in .vcf files to the Hylki book. Importing a file again "
+"updates its contacts."
+msgstr ""
+
+msgid "Export as a vCard file"
+msgstr ""
+
+msgid ""
+"Saves every contact in the Hylki book in one .vcf file, which other apps can "
+"import."
+msgstr ""
+
+msgid "Delete all contacts"
+msgstr ""
+
+msgid "Empties the Hylki book. The other address books are not touched."
+msgstr ""
+
+msgid "Set up in Hylki"
+msgstr ""
+
+msgid "From GNOME Online Accounts"
+msgstr ""
+
+msgid "Evolution"
+msgstr ""
+
+msgid "Kept by Evolution Data Server, set up in Evolution or GNOME Contacts"
+msgstr ""
+
+msgid "Use in Hylki"
+msgstr ""
+
+msgid "Address books"
+msgstr ""
+
+msgid "Switch off an address book to leave it out of Hylki."
+msgstr ""
+
+msgid "Sign-in"
+msgstr ""
+
+msgid "Password (saved; type to replace it)"
+msgstr ""
+
+msgid "Enter the user name."
+msgstr ""
+
+msgid "Enter the password."
+msgstr ""
+
+msgid ""
+"The composer looks up recipients in the directory as you type an address, "
+"and a search in Contacts looks in it too."
 msgstr ""
 
 msgid "Encryption"
@@ -3639,17 +3876,11 @@ msgstr ""
 msgid "First level"
 msgstr ""
 
-msgid "Sign-in"
-msgstr ""
-
 msgid ""
 "Leave these empty for a directory that can be searched without signing in."
 msgstr ""
 
 msgid "Sign in as, such as cn=jane,ou=people,dc=example,dc=com"
-msgstr ""
-
-msgid "Password (saved; type to replace it)"
 msgstr ""
 
 msgid "Enter the directory's server."
@@ -4301,6 +4532,9 @@ msgstr ""
 msgid "Cc:"
 msgstr ""
 
+msgid "Bcc:"
+msgstr ""
+
 msgid "Date:"
 msgstr ""
 
@@ -4673,6 +4907,13 @@ msgstr ""
 msgid "No Results"
 msgstr ""
 
+#. Translators: words the settings search finds the Contacts page by,
+#. separated by spaces; keep "CardDAV" and "LDAP".
+msgid ""
+"address books CardDAV LDAP directory directories Online Accounts Nextcloud "
+"iCloud Google Microsoft vCard"
+msgstr ""
+
 msgid "Save the filter?"
 msgstr ""
 
@@ -4697,12 +4938,12 @@ msgid ""
 "on."
 msgstr ""
 
-msgid "Save the directory?"
+msgid "Save the address book?"
 msgstr ""
 
 msgid ""
-"The directory editor is open. Save what you changed, or discard it, before "
-"moving on."
+"The address book editor is open. Save what you changed, or discard it, "
+"before moving on."
 msgstr ""
 
 msgid "Save the account?"
@@ -4711,48 +4952,6 @@ msgstr ""
 msgid ""
 "The account editor is open. Save what you changed, or discard it, before "
 "moving on."
-msgstr ""
-
-msgid ""
-"Contacts Hylki keeps itself, in its own data folder. They are listed in "
-"Contacts beside the address books of GNOME Contacts, and work without GNOME."
-msgstr ""
-
-msgid "Contacts in the Hylki book"
-msgstr ""
-
-msgid "Import vCard files"
-msgstr ""
-
-msgid ""
-"Adds the contacts in .vcf files to the Hylki book. Importing a file again "
-"updates its contacts."
-msgstr ""
-
-msgid "Export as a vCard file"
-msgstr ""
-
-msgid ""
-"Saves every contact in the Hylki book in one .vcf file, which other apps can "
-"import."
-msgstr ""
-
-msgid "Delete all contacts"
-msgstr ""
-
-msgid ""
-"Empties the Hylki book. The address books of GNOME Contacts are not touched."
-msgstr ""
-
-msgid "New Contacts"
-msgstr ""
-
-msgid "Save new contacts in"
-msgstr ""
-
-msgid ""
-"The address book a contact made in Hylki goes to, unless another is picked "
-"when it is made."
 msgstr ""
 
 msgid ""

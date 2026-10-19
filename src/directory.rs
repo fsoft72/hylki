@@ -220,7 +220,7 @@ impl Directory {
 /// One session-bus connection for the process: EDS closes a book when the
 /// connection that opened it goes, so a connection per search would open
 /// and close the directory every time.
-fn bus() -> Result<zbus::blocking::Connection, String> {
+pub(crate) fn bus() -> Result<zbus::blocking::Connection, String> {
     static BUS: Mutex<Option<zbus::blocking::Connection>> = Mutex::new(None);
     let mut guard = BUS.lock().map_err(|e| e.to_string())?;
     if let Some(c) = guard.as_ref() {
@@ -382,7 +382,7 @@ fn connect_error(dir: &Directory, last: &LastCredentials, fallback: String) -> S
         // Still waiting for a password: neither Hylki nor the keyring EDS
         // reads has one for it.
         "required" if !dir.bind_dn.trim().is_empty() => needs_password(),
-        "required" => i18n("The directory cannot be searched without signing in. Add a sign-in in Settings → LDAP Directories."),
+        "required" => i18n("The directory cannot be searched without signing in. Add a sign-in to it in Settings → Contacts."),
         "rejected" => i18n("The directory did not accept the password."),
         "ssl_failed" if detail.is_empty() => i18n("The directory's certificate could not be verified."),
         "ssl_failed" => i18n_f("The directory's certificate could not be verified: {error}", &[("error", detail)]),
@@ -492,7 +492,7 @@ fn wait_for_answer(
 }
 
 fn needs_password() -> String {
-    i18n("The directory needs a password. Add it in Settings → LDAP Directories.")
+    i18n("The directory needs a password. Add it in Settings → Contacts.")
 }
 
 /// An EDS query string: a quoted, escaped literal.
@@ -513,7 +513,7 @@ const RETRY_AFTER: Duration = Duration::from_secs(30);
 static LIST_STALE: AtomicBool = AtomicBool::new(false);
 
 /// Hylki changed a directory: read the list again at the next lookup.
-fn list_changed() {
+pub(crate) fn list_changed() {
     LIST_STALE.store(true, Ordering::Relaxed);
 }
 
@@ -527,8 +527,9 @@ fn enabled() -> Vec<Directory> {
             return dirs;
         }
     }
+    let off = crate::contact_sources::off();
     let dirs: Vec<Directory> = match list() {
-        Ok(d) => d.into_iter().filter(|d| d.enabled).collect(),
+        Ok(d) => d.into_iter().filter(|d| d.enabled && !off.contains(&d.uid)).collect(),
         Err(e) => {
             tracing::debug!("LDAP directories unavailable: {e}");
             Vec::new()
@@ -703,7 +704,7 @@ pub fn search_contacts(typed: &str, limit: usize) -> (Vec<crate::contacts::Conta
     for (dir, cards) in found {
         let mut entries = Vec::new();
         for card in cards {
-            let Some(mut c) = crate::contacts::parse_vcard_fields(&card) else { continue };
+            let Some(mut c) = crate::contacts::parse_vcard_fields(&card).filter(|c| !c.is_group()) else { continue };
             // A directory's photo is carried in the card; nothing on disk is
             // read for it.
             c.photo = crate::contacts::vcard_photo_with(&card, false);
@@ -755,7 +756,15 @@ fn suggestions_from_vcard(card: &str) -> Vec<Suggestion> {
     }
     emails
         .into_iter()
-        .map(|email| Suggestion { name: name.clone(), email, from_contacts: true, from_directory: true, score: 0, own: false })
+        .map(|email| Suggestion {
+            name: name.clone(),
+            email,
+            from_contacts: true,
+            from_directory: true,
+            score: 0,
+            own: false,
+            group: None,
+        })
         .collect()
 }
 

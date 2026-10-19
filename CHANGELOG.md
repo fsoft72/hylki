@@ -2,6 +2,49 @@
 
 ## Unreleased
 
+- **Changed: one Contacts page in Settings.** Settings → Contacts lists
+  every address book Hylki reads, as Mail Accounts lists mail accounts: the
+  Hylki book, the books on this computer, each GNOME Online Accounts account
+  that keeps contacts, CardDAV accounts and LDAP directories, which had pages
+  of their own. Each has a switch that uses it in Hylki or leaves it out of
+  Contacts, the suggestions, sender pictures, the filters and syncing,
+  without changing it for GNOME or Evolution, and a page with its address
+  books, switched one by one, its sign-in or the Hylki book's import and
+  export. **Add Address Book…** adds a CardDAV server, iCloud, Nextcloud,
+  Fastmail, Yahoo or an LDAP directory, and points Google and Microsoft 365
+  to GNOME Online Accounts.
+
+- **Added: CardDAV accounts** (#408, requested by Michael-Zebratrix).
+  Settings → Contacts adds the address books on a CardDAV server
+  (Nextcloud, iCloud, Fastmail, Radicale and others) from the server's
+  address, a user name and a password, without GNOME Online Accounts or
+  Evolution. The accounts are Evolution Data Server collection accounts, so
+  they show in Evolution and GNOME Contacts too and Evolution's are listed
+  here. The password is kept in the keyring where Evolution Data Server looks
+  for its own, so it signs in and syncs by itself. While Hylki runs, every
+  address book that syncs with a server is held open, which keeps it up to
+  date on desktops without GNOME Contacts, and opening Contacts fetches what
+  changed. Away from GNOME, `evolution-data-server` has to be installed.
+
+- **Added: contact groups.** A group is a name for several people that the
+  composer suggests like a contact; picking it adds a pill for each of them,
+  less those the field already has. **New Group**, under the **+** button in
+  the Contacts view, makes one in the Hylki book; people are added from
+  the composer's suggestions (Contacts and the addresses of mail sent and
+  received) or by address, and a contact's menu has **Add to Group**. A
+  group's card lists its people and has **New Message**. **Send as Bcc**
+  puts the people in Bcc whichever field the group is picked in. Groups are
+  saved as Evolution lists. Evolution's lists in the Evolution Data Server
+  books are shown, offered and editable too, their "Hide addresses" option
+  being Send as Bcc; vCard 4 and Apple (iCloud) groups are shown and
+  offered but not edited. A `.vcf` import keeps its lists as groups instead
+  of skipping them.
+
+- **Fixed: an Evolution contact list offered as a broken recipient.** The
+  composer suggested each member of a list under the list's name with the
+  member's whole line as the address ("Book Club", `alice able
+  <alice@example.org>`), which made an invalid recipient.
+
 - **Added: replied and forwarded arrows in the message list** (#454,
   requested by rhuhxx). A message that was replied to shows a reply arrow
   beside the sender, one that was forwarded a forward arrow; a
@@ -50,8 +93,15 @@
   when the connection came back** (#442). Only IMAP accounts sent it by
   themselves; the others waited for Retry. All now send it once the network
   is back.
-- **Fixed: a sender logo that could not be fetched offline was taken for
-  none at all** (#442), and initials showed for that sender for a week.
+- **Fixed: a sent message did not show its Bcc recipients** (#476,
+  reported by benjaminkriss). The reader lists them under To and Cc, and
+  a printed message names them too. The copy Hylki files in Sent now keeps
+  the Bcc header, which the recipients never see. Mail already in Sent
+  shows its Bcc where the copy there names it, once its folder syncs again.
+- **Fixed: Bcc recipients of a Microsoft 365 account were not sent the
+  message** (#476). Microsoft 365 takes the recipients from the message's
+  headers, and the Bcc header was left off. It is now included, and Microsoft
+  365 removes it on delivery.
 
 - **Fixed: a conversation opened at its top instead of its new mail**
   (PR #463 by Christian Dandachi). A conversation handed to the reader
@@ -102,6 +152,20 @@
   that zooms an image or PDF in the lightbox now hides the title bar, the
   arrows, the bottom bar and the padding around them, so the zoomed
   document fills the window. A second click or Escape brings them back.
+- **Fixed: mail zoomed out below 100% drifted right** (#473, reported by
+  bstegmaier75). A centred message moved further right at each zoom step
+  out, and off the screen at 70%. It now stays where it is at every zoom.
+
+- **Fixed: deleting one message of the open conversation closed it.**
+  Deleting, archiving or moving a card other than the one the conversation
+  opened on left it on screen; deleting that one closed the whole
+  conversation and took its row out of the list. The card now goes, the
+  rest of the conversation stays open and its row stays selected.
+
+- **Fixed: a deleted reply filed in another folder stayed counted.** A
+  reply in Sent deleted from the conversation left the row's message count
+  and newest message as they were.
+
 - **Fixed: a keyring that asks first was taken for no keyring** (PR #466 by
   Comodino). Every keyring read gave up after two seconds, so a Secret
   Service provider that waits on the user, like pass-secret-service

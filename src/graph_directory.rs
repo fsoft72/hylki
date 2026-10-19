@@ -101,6 +101,7 @@ fn suggestion(name: &str, address: &str) -> Option<Suggestion> {
         from_directory: true,
         score: 0,
         own: false,
+        group: None,
     })
 }
 
@@ -373,7 +374,15 @@ mod tests {
     use super::*;
 
     fn s(name: &str, email: &str) -> Suggestion {
-        Suggestion { name: name.into(), email: email.into(), from_contacts: true, from_directory: true, score: 0, own: false }
+        Suggestion {
+            name: name.into(),
+            email: email.into(),
+            from_contacts: true,
+            from_directory: true,
+            score: 0,
+            own: false,
+            group: None,
+        }
     }
 
     #[test]
