@@ -211,7 +211,7 @@ def check_credits_files() -> None:
 # The release notes slid back into paragraphs of bold run-on text more than
 # once, so the shape in docs/RELEASING.md is checked rather than remembered.
 # Only the newest section: the older ones are a record of what was published.
-NOTES_GROUPS = ["New features:", "Fixes:", "Translations:"]
+NOTES_GROUPS = ["### New features:", "### Fixes:", "### Translations:"]
 NOTES_ITEM_MAX = 90
 
 

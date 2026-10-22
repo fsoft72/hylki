@@ -16,6 +16,7 @@ use crate::ui::context_menu::{show_context_menu, MenuEntry};
 use crate::ui::lightbox::{Lightbox, LightboxInput};
 use crate::ui::message_list::RowAction;
 use crate::ui::message_view::{MessageView, MessageViewInput, MessageViewOutput};
+use crate::app::Shortcut;
 use crate::i18n::i18n;
 
 /// Everything needed to open a popout reader for one message.
@@ -64,6 +65,10 @@ pub struct MessageWindowInit {
     pub tags: Vec<crate::config::Tag>,
     /// The OpenPGP chip says its verdict in words (#300).
     pub pgp_labels: bool,
+    /// The main window's single-key and Gmail switches, shared so a change
+    /// in Settings reaches an open window too (#392).
+    pub single_key: std::rc::Rc<std::cell::Cell<bool>>,
+    pub gmail_keys: std::rc::Rc<std::cell::Cell<bool>>,
 }
 
 pub struct MessageWindow {
@@ -94,6 +99,7 @@ pub struct MessageWindow {
     window: adw::Window,
     content: gtk::Overlay,
     bar: Toolbar,
+    gmail_keys: std::rc::Rc<std::cell::Cell<bool>>,
 }
 
 /// The header's buttons, one per toolbar item, packed in the saved order.
@@ -187,6 +193,8 @@ pub enum MessageWindowInput {
     TagMenu,
     OverflowMenu,
     Find,
+    /// A single-key shortcut pressed in this window (#392).
+    Key(Shortcut),
     // ---- from the embedded reader ----
     /// Fetch a message's body again (its OpenPGP verdict changed, #133).
     ReloadBody(Box<Message>),
@@ -251,6 +259,9 @@ pub enum MessageWindowOutput {
     LoadAttachments(Box<Message>),
     /// The folder picker for this message, at window point (x, y).
     MoveTo { message: Box<Message>, x: f64, y: f64 },
+    /// A shortcut that reaches past this message: to the rest of the
+    /// conversation, or to the app (#392).
+    Shortcut { action: Shortcut, message: Box<Message>, thread: Vec<Message> },
     /// Put a tag on this message, or take it off (#71).
     SetTag { message: Box<Message>, keyword: String, add: bool },
     /// Take this attachment out of the message on the server (#289).
@@ -423,6 +434,7 @@ impl Component for MessageWindow {
                     adw::LengthUnit::Px,
                 )),
             },
+            gmail_keys: init.gmail_keys.clone(),
         };
 
         let widgets = view_output!();
@@ -444,27 +456,80 @@ impl Component for MessageWindow {
 
         // Ctrl+P prints and Ctrl+F finds, matching the main window. This
         // window has no menu bar to hang an action off, so the accelerators
-        // are wired directly.
+        // are wired directly. The single keys are the main window's too
+        // (#392), read through the same maps, so the two cannot drift.
         {
             let keys = gtk::EventControllerKey::new();
             let s = sender.clone();
+            let window = root.clone();
+            let single_key = init.single_key;
+            let gmail = init.gmail_keys;
+            // When Gmail's g or * came: the key after it names a folder or a
+            // selection in the main window, and is no action here.
+            let sequence: std::rc::Rc<std::cell::Cell<Option<std::time::Instant>>> = Default::default();
             keys.connect_key_pressed(move |_, keyval, _, state| {
+                use gtk::gdk::Key;
+                let key = |action| {
+                    s.input_sender().emit(MessageWindowInput::Key(action));
+                    gtk::glib::Propagation::Stop
+                };
+                let shift = state.contains(gtk::gdk::ModifierType::SHIFT_MASK);
                 if state.contains(gtk::gdk::ModifierType::CONTROL_MASK) {
                     // Shift+P is the preview; the keyval arrives capitalised.
-                    if keyval == gtk::gdk::Key::P {
-                        s.input(MessageWindowInput::PrintPreview);
+                    if keyval == Key::P {
+                        s.input_sender().emit(MessageWindowInput::PrintPreview);
                         return gtk::glib::Propagation::Stop;
                     }
-                    if keyval == gtk::gdk::Key::p {
-                        s.input(MessageWindowInput::Print);
+                    if keyval == Key::p {
+                        s.input_sender().emit(MessageWindowInput::Print);
                         return gtk::glib::Propagation::Stop;
                     }
-                    if keyval == gtk::gdk::Key::f {
-                        s.input(MessageWindowInput::Find);
+                    if keyval == Key::f {
+                        s.input_sender().emit(MessageWindowInput::Find);
+                        return gtk::glib::Propagation::Stop;
+                    }
+                    if keyval == Key::z && !shift && !crate::app::focus_is_text(&window) {
+                        return key(Shortcut::Undo);
+                    }
+                    return gtk::glib::Propagation::Proceed;
+                }
+                if state.contains(gtk::gdk::ModifierType::ALT_MASK) || crate::app::focus_is_text(&window) {
+                    return gtk::glib::Propagation::Proceed;
+                }
+                // Escape closes the window, as it backs out of a message in
+                // the main one, with or without the single keys.
+                if keyval == Key::Escape {
+                    return key(Shortcut::BackToList);
+                }
+                // Delete and Shift+Delete too, as in the list (#486).
+                if matches!(keyval, Key::Delete | Key::KP_Delete) {
+                    return key(if shift { Shortcut::DeleteForever } else { Shortcut::Delete });
+                }
+                if !single_key.get() || matches!(keyval, Key::Shift_L | Key::Shift_R) {
+                    return gtk::glib::Propagation::Proceed;
+                }
+                if crate::app::focus_takes_keys(&window) && crate::app::reader_keeps(keyval) {
+                    return gtk::glib::Propagation::Proceed;
+                }
+                if gmail.get() {
+                    let after = sequence.take().is_some_and(|at| at.elapsed() < std::time::Duration::from_millis(1500));
+                    if after {
+                        return gtk::glib::Propagation::Stop;
+                    }
+                    if matches!(keyval, Key::g | Key::asterisk) {
+                        sequence.set(Some(std::time::Instant::now()));
                         return gtk::glib::Propagation::Stop;
                     }
                 }
-                gtk::glib::Propagation::Proceed
+                let action = if gmail.get() {
+                    crate::app::gmail_shortcut_for(keyval, shift)
+                } else {
+                    crate::app::shortcut_for(keyval, shift)
+                };
+                match action {
+                    Some(action) => key(action),
+                    None => gtk::glib::Propagation::Proceed,
+                }
             });
             root.add_controller(keys);
         }
@@ -534,6 +599,10 @@ impl Component for MessageWindow {
             }
             MessageWindowInput::SetPgpLabels(on) => self.view.emit(MessageViewInput::SetPgpLabels(on)),
             MessageWindowInput::SetSenderCheck(check) => {
+                // Decrypted, the window is named by the subject inside (#493).
+                if let Some(subject) = check.pgp.as_ref().and_then(|p| p.subject.as_deref()) {
+                    root.set_title(Some(subject));
+                }
                 // Light the popout's header seal too (#88).
                 self.view.emit(MessageViewInput::SenderCheckFor {
                     account_id: self.msg.account_id,
@@ -710,6 +779,7 @@ impl Component for MessageWindow {
             MessageWindowInput::MoveToAt { message, x, y } => {
                 let _ = sender.output(MessageWindowOutput::MoveTo { message, x, y });
             }
+            MessageWindowInput::Key(action) => self.run_key(action, &sender, root),
             MessageWindowInput::TagMenu => self.show_tag_menu(&sender),
             MessageWindowInput::OverflowMenu => self.show_overflow_menu(&sender),
             MessageWindowInput::AllowSender(addr) => {
@@ -747,6 +817,75 @@ impl Component for MessageWindow {
 }
 
 impl MessageWindow {
+    /// A single-key shortcut (#392). The window does what concerns its own
+    /// message and reader, as its toolbar does; the rest goes to the app.
+    fn run_key(&mut self, action: Shortcut, sender: &ComponentSender<Self>, root: &adw::Window) {
+        let conversation = self.thread.len() > 1;
+        let input = |msg| sender.input_sender().emit(msg);
+        match action {
+            Shortcut::BackToList => root.close(),
+            Shortcut::OpenMessage => self.view.emit(MessageViewInput::FocusBody),
+            Shortcut::NextInThread if conversation => self.view.emit(MessageViewInput::StepCard(1)),
+            Shortcut::PrevInThread if conversation => self.view.emit(MessageViewInput::StepCard(-1)),
+            Shortcut::FoldAll(folded) if conversation => self.view.emit(MessageViewInput::FoldAll(folded)),
+            Shortcut::Star => input(MessageWindowInput::ToggleStar),
+            Shortcut::ToggleRead => input(MessageWindowInput::ToggleRead),
+            Shortcut::Delete => input(MessageWindowInput::Delete),
+            Shortcut::Spam => input(MessageWindowInput::Spam),
+            Shortcut::MoveTo => input(MessageWindowInput::MoveTo),
+            Shortcut::Label => input(MessageWindowInput::TagMenu),
+            Shortcut::Tag(n) => {
+                if let Some(tag) = self.tags.get(usize::from(n).saturating_sub(1)) {
+                    let _ = sender.output(MessageWindowOutput::SetTag {
+                        message: Box::new(self.msg.clone()),
+                        keyword: tag.keyword.clone(),
+                        add: !self.msg.has_tag(tag),
+                    });
+                }
+            }
+            Shortcut::ClearTags => {
+                for tag in self.tags.iter().filter(|t| self.msg.has_tag(t)) {
+                    let _ = sender.output(MessageWindowOutput::SetTag {
+                        message: Box::new(self.msg.clone()),
+                        keyword: tag.keyword.clone(),
+                        add: false,
+                    });
+                }
+            }
+            Shortcut::Reply
+            | Shortcut::ReplyAll
+            | Shortcut::Forward
+            | Shortcut::InWindow(_)
+            | Shortcut::Compose
+            | Shortcut::Undo
+            | Shortcut::Shortcuts
+            | Shortcut::Refresh
+            | Shortcut::DeleteForever
+            | Shortcut::MarkRead(_)
+            | Shortcut::MarkUnreadFrom
+            | Shortcut::Archive
+            | Shortcut::ArchiveAndStep(_) => {
+                let _ = sender.output(MessageWindowOutput::Shortcut {
+                    action,
+                    message: Box::new(self.msg.clone()),
+                    thread: self.thread.clone(),
+                });
+                // The conversation has left this folder, or, with Gmail's
+                // keys, been put back unread: the window has done its job,
+                // as a conversation closes in the main window.
+                let unread = matches!(action, Shortcut::MarkRead(false) | Shortcut::MarkUnreadFrom);
+                if matches!(action, Shortcut::Archive | Shortcut::ArchiveAndStep(_))
+                    || (unread && self.gmail_keys.get())
+                {
+                    root.close();
+                }
+            }
+            // The list's keys, and Gmail's g and * sequences, have nothing
+            // to act on in a window of one conversation.
+            _ => {}
+        }
+    }
+
     fn emit_action(&self, action: RowAction, sender: &ComponentSender<Self>) {
         let _ = sender.output(MessageWindowOutput::Action {
             action,
@@ -935,8 +1074,13 @@ impl MessageWindow {
         if self.tags.is_empty() {
             return;
         }
-        let Some(b) = self.button(ToolbarItem::Tags) else { return };
-        show_context_menu(b, f64::from(b.width() / 2), f64::from(b.height()), vec![self.tag_entries(sender)]);
+        // Gmail's l asks for the menu with the button folded away or left
+        // out of the toolbar: then it hangs from the middle of the header.
+        let b: gtk::Widget = match self.button(ToolbarItem::Tags).filter(|b| b.is_mapped()) {
+            Some(b) => b.clone().upcast(),
+            None => self.bar.header.clone().upcast(),
+        };
+        show_context_menu(&b, f64::from(b.width() / 2), f64::from(b.height()), vec![self.tag_entries(sender)]);
     }
 
     /// The folded toolbar's ⋯ menu: the right group, in its own order, with

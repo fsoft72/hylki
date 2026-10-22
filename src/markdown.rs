@@ -312,7 +312,10 @@ fn find_urls(text: &str) -> Vec<(usize, usize, UrlKind)> {
         // word-boundary rule below, because an address's `@` is never at
         // the start of a word.
         if b[i] == b'@' && i > 0 {
-            let start = text[..i].rfind(is_break_char).map(|p| p + 1).unwrap_or(0);
+            let start = text[..i]
+                .char_indices()
+                .rfind(|&(_, c)| is_break_char(c))
+                .map_or(0, |(p, c)| p + c.len_utf8());
             let end = i + text[i..].find(is_break_char).unwrap_or(text.len() - i);
             let end = trim_trailing(text, i, end);
             let domain = text.get(i + 1..end).unwrap_or("");
@@ -324,7 +327,7 @@ fn find_urls(text: &str) -> Vec<(usize, usize, UrlKind)> {
             }
         }
         // A URL only ever starts at a word boundary.
-        if i == 0 || is_break(b[i - 1]) {
+        if text[..i].chars().next_back().is_none_or(is_break) {
             let rest = &text[i..];
             let kind = if rest.starts_with("https://") || rest.starts_with("http://") {
                 Some(UrlKind::Web)
@@ -351,8 +354,8 @@ fn find_urls(text: &str) -> Vec<(usize, usize, UrlKind)> {
     found
 }
 
-fn is_break(c: u8) -> bool {
-    (c as char).is_whitespace() || matches!(c, b'(' | b'[' | b'<' | b'"' | b'\'')
+fn is_break(c: char) -> bool {
+    c.is_whitespace() || matches!(c, '(' | '[' | '<' | '"' | '\'')
 }
 
 fn is_break_char(c: char) -> bool {
@@ -1270,6 +1273,16 @@ mod tests {
         let html = to_html("Read https://example.com/page, then stop.");
         has(&html, "href=\"https://example.com/page\"");
         has(&html, ", then stop.");
+    }
+
+    #[test]
+    fn links_after_multibyte_whitespace_and_symbols() {
+        // A no-break space right before an address used to slice
+        // mid-character (#479).
+        has(&to_html("mail\u{a0}ada@example.com"), "href=\"mailto:ada@example.com\"");
+        has(&to_html("svp\u{a0}www.example.com"), "href=\"https://www.example.com\"");
+        // `†` ends in the byte 0xA0, which is not a word break.
+        assert!(!to_html("\u{2020}www.example.com").contains("href"));
     }
 
     #[test]

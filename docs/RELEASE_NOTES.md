@@ -4,7 +4,7 @@ Hylki (formerly Vireo) is a clean, fast, GNOME-native email client built with Ru
 
 ## What's new in 1.44.0
 
-New features:
+### New features:
 
 - Gmail keyboard shortcuts, switched on in Settings → System - (#392)
 - A command palette on Ctrl+K - (#399)
@@ -43,7 +43,7 @@ New features:
 - Hylki's own icons on every desktop, with a switch back to the desktop's
 - Animations follow GNOME's Reduce Animation switch
 
-Fixes:
+### Fixes:
 
 - a crash at startup on some folder names, by @Elliot-32 - (#409)
 - Hylki closing at launch when the session's locale is missing from the runtime - (#437)
@@ -65,7 +65,7 @@ Fixes:
 - an account added to GNOME Online Accounts being slow to appear
 - confirming a contact's deletion deleting another contact
 
-Translations:
+### Translations:
 
 - Italian, new, by @amivaleo
 - French, complete, by @frenchy82
@@ -76,7 +76,7 @@ Translations:
 
 ## What's new in 1.43.2
 
-Fixes:
+### Fixes:
 
 - Hylki crashing when an MP3 is chosen as the new-mail sound - (#397)
 - Hylki showing twice in docks on X11 - (#402)
@@ -85,7 +85,7 @@ Fixes:
 
 ## What's new in 1.43.1
 
-Fixes:
+### Fixes:
 
 - the new-mail sound not playing when GNOME's alert sound is None - (#337)
 

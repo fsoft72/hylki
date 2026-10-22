@@ -174,6 +174,10 @@ pub struct RowMeta {
     pub appear: bool,
     /// The group the row heads, for asking the cache how big it is (#222).
     pub group: Option<(u32, String)>,
+    /// A head row past the list's window, described only as far as the
+    /// conversation maps need, by this key: the rest is worked out when it
+    /// comes on screen (a large folder holds tens of thousands).
+    pub pending: Option<(u32, String)>,
 }
 
 /// The date heading a row sits under while the list is grouped by date
@@ -507,6 +511,11 @@ impl MessageModel {
         self.imp().rows.borrow().len()
     }
 
+    /// Every row, in order.
+    pub fn rows(&self) -> Vec<Rc<RowData>> {
+        self.imp().rows.borrow().clone()
+    }
+
     pub fn row(&self, pos: usize) -> Option<Rc<RowData>> {
         self.imp().rows.borrow().get(pos).cloned()
     }
@@ -795,6 +804,11 @@ pub struct RowShared {
     pub thread_drag: RefCell<ThreadDragKeys>,
     /// Every row widget the view has made, by its list item.
     rows: RefCell<HashMap<usize, Rc<Row>>>,
+    /// Rows the view let go of, kept for the next it asks for. A short list
+    /// (an Inbox of ten) gives most of its rows back, and the next long one
+    /// asked for them all again, at a few milliseconds each, inside the
+    /// switch.
+    spare: RefCell<Vec<Rc<Row>>>,
     /// The row Gmail's j/k cursor is on (#392), drawn with its own outline.
     cursor: Cell<Option<(u32, u32)>>,
     /// The row whose palette is open: one at a time.
@@ -826,6 +840,7 @@ impl RowShared {
             view: glib::WeakRef::new(),
             thread_drag: RefCell::new(HashMap::new()),
             rows: RefCell::new(HashMap::new()),
+            spare: RefCell::new(Vec::new()),
             cursor: Cell::new(None),
             open_palette: RefCell::new(Weak::new()),
             wanted: RefCell::new(Vec::new()),
@@ -923,6 +938,32 @@ impl RowShared {
     }
 }
 
+/// How many rows the view's spares hold at most. A long list keeps about
+/// two hundred rows made, far more than a window shows: GTK's list view
+/// fills rows well beyond the visible ones.
+const SPARE_ROWS: usize = 220;
+
+/// How many rows are made ahead, while the app is idle, so the first long
+/// list does not make them inside its switch.
+const SPARE_AHEAD: usize = 210;
+
+/// Make spare rows ahead, a few per idle pass.
+pub fn make_spare_rows(shared: &Rc<RowShared>) {
+    let weak = Rc::downgrade(shared);
+    glib::idle_add_local(move || {
+        let Some(shared) = weak.upgrade() else { return glib::ControlFlow::Break };
+        let made = shared.rows.borrow().len() + shared.spare.borrow().len();
+        if made >= SPARE_AHEAD {
+            return glib::ControlFlow::Break;
+        }
+        for _ in 0..4 {
+            let row = Row::new(&shared);
+            shared.spare.borrow_mut().push(row);
+        }
+        glib::ControlFlow::Continue
+    });
+}
+
 /// The view's row factory: makes rows, binds them to items and back.
 pub fn factory(shared: &Rc<RowShared>) -> gtk::SignalListItemFactory {
     let factory = gtk::SignalListItemFactory::new();
@@ -933,7 +974,9 @@ pub fn factory(shared: &Rc<RowShared>) -> gtk::SignalListItemFactory {
             let (Some(shared), Some(item)) = (shared.upgrade(), obj.downcast_ref::<gtk::ListItem>()) else {
                 return;
             };
-            let row = Row::new(&shared, item);
+            let spare = shared.spare.borrow_mut().pop();
+            let row = spare.unwrap_or_else(|| Row::new(&shared));
+            row.list_item.replace(item.downgrade());
             item.set_child(Some(&row.w.host));
             shared.rows.borrow_mut().insert(key(obj), row);
         });
@@ -966,6 +1009,14 @@ pub fn factory(shared: &Rc<RowShared>) -> gtk::SignalListItemFactory {
             let row = shared.rows.borrow_mut().remove(&key(obj));
             if let Some(row) = row {
                 row.unbind();
+                if let Some(item) = obj.downcast_ref::<gtk::ListItem>() {
+                    item.set_child(None::<&gtk::Widget>);
+                }
+                row.list_item.replace(glib::WeakRef::new());
+                let mut spare = shared.spare.borrow_mut();
+                if spare.len() < SPARE_ROWS {
+                    spare.push(row);
+                }
             }
         });
     }
@@ -1699,21 +1750,21 @@ pub struct Row {
     shared: Weak<RowShared>,
     pub w: RowWidgets,
     st: RefCell<RowState>,
-    list_item: glib::WeakRef<gtk::ListItem>,
+    list_item: RefCell<glib::WeakRef<gtk::ListItem>>,
     /// Kept alive for as long as the row: the tracker stops firing once
     /// dropped.
     tracker: RefCell<Option<adw::SwipeTracker>>,
 }
 
 impl Row {
-    fn new(shared: &Rc<RowShared>, list_item: &gtk::ListItem) -> Rc<Self> {
+    fn new(shared: &Rc<RowShared>) -> Rc<Self> {
         let w = build_widgets();
         let row = Rc::new_cyclic(|me| Row {
             me: me.clone(),
             shared: Rc::downgrade(shared),
             w,
             st: RefCell::new(RowState { avatar_shown: true, ..Default::default() }),
-            list_item: list_item.downgrade(),
+            list_item: RefCell::new(glib::WeakRef::new()),
             tracker: RefCell::new(None),
         });
         row.wire();
@@ -1736,7 +1787,7 @@ impl Row {
 
     /// The list position this row shows, while bound.
     pub fn position(&self) -> Option<usize> {
-        let item = self.list_item.upgrade()?;
+        let item = self.list_item.borrow().upgrade()?;
         self.st.borrow().item.as_ref()?;
         let pos = item.position();
         (pos != gtk::INVALID_LIST_POSITION).then_some(pos as usize)
@@ -2122,8 +2173,16 @@ impl Row {
                 self.load_face(&email, &look);
             }
         }
-        w.avatar.set_text(Some(&self.face_name(&data, &look)));
-        w.avatar.set_custom_image(self.avatar_image(&data, &look).as_ref());
+        // Only what changed: an avatar given its text again restyles and
+        // lays out its initials, and a list switch fills two hundred rows.
+        let name = self.face_name(&data, &look);
+        if w.avatar.text().as_deref() != Some(name.as_str()) {
+            w.avatar.set_text(Some(&name));
+        }
+        let image = self.avatar_image(&data, &look);
+        if w.avatar.custom_image() != image {
+            w.avatar.set_custom_image(image.as_ref());
+        }
 
         // Faded rather than hidden: the slot is always reserved and only
         // the dot's ink changes, so text never jitters as mail is read.

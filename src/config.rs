@@ -611,6 +611,12 @@ pub struct AccountConfig {
     /// for one message.
     #[serde(default, skip_serializing_if = "is_false")]
     pub sign_by_default: bool,
+    /// Encrypted mail from this account keeps its subject outside, where
+    /// anyone who handles the message can read it, rather than inside with
+    /// "..." outside (#493). Off by default, as in Thunderbird. Kept the
+    /// negative way round so every account built in code hides it.
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub plain_subject: bool,
     /// The composer's recipient suggestions also search the organization's
     /// directory through Microsoft Graph (#410). Only for a Microsoft 365
     /// account signed in within Hylki: the scopes it needs are asked for
@@ -1565,10 +1571,6 @@ pub(crate) struct PrivacyFile {
     /// gallery of every account's attachments).
     #[serde(default = "default_on")]
     pub(crate) show_attachments: bool,
-    /// Whether the sidebar's pinned footer shows the "Contacts" shortcut row
-    /// (above Attachments); it opens the app-wide contacts browser.
-    #[serde(default = "default_on")]
-    pub(crate) show_contacts: bool,
     /// Whether the combined Accounts & Preferences window opens showing the
     /// Accounts view instead of Preferences (the default).
     #[serde(default)]
@@ -1768,6 +1770,12 @@ pub(crate) struct PrivacyFile {
     /// search button (#446). Off by default.
     #[serde(default)]
     pub(crate) list_search_open: bool,
+    /// The search field and the bulk bar open under the list instead of
+    /// above it (#496). Off by default.
+    #[serde(default)]
+    pub(crate) list_search_bottom: bool,
+    #[serde(default)]
+    pub(crate) list_bulk_bar_bottom: bool,
     /// The widths columns were dragged to, in pixels, by column name.
     #[serde(default)]
     pub(crate) list_column_widths: std::collections::BTreeMap<String, i32>,
@@ -1834,33 +1842,38 @@ pub(crate) struct PrivacyFile {
     /// Filtered Folders. Sent never counts.
     #[serde(default)]
     pub(crate) unified_chips: UnifiedChips,
-    /// Whether the unified section lists the folders that filter rules file
-    /// into, in a Filtered Folders section of its own. Off hides the section.
-    #[serde(default = "default_on")]
-    pub(crate) unified_filtered: bool,
     /// The unified section's Starred / Sent / Drafts rows, one switch each
     /// (All Inboxes is `show_unified` above).
     #[serde(default)]
     pub(crate) unified_kinds: UnifiedKinds,
-    /// Whether the unified section lists the tags (every account's mail with
-    /// the tag). Off hides that section; each account keeps its own.
-    #[serde(default = "default_on")]
-    pub(crate) unified_tags: bool,
     /// Whether the account sections are shown at all. Off leaves the unified
     /// section alone, for those who only ever work from it.
     #[serde(default = "default_on")]
     pub(crate) show_accounts: bool,
-    /// Where the Filtered Folders section sits (#71 follow-up): inside All
-    /// Inboxes, or in the scrolling sidebar above or below the accounts.
+    /// How Filters, Tags, Favorites and Contacts are drawn wherever they sit.
+    #[serde(default)]
+    pub(crate) section_style: SectionStyle,
+    /// Where the Filters section sits (#71 follow-up): above or below the
+    /// accounts, or nowhere.
     #[serde(default)]
     pub(crate) filtered_placement: SectionPlacement,
-    /// Where the Tags section sits, the same three choices.
+    /// Where the Tags section sits, the same choices.
     #[serde(default)]
     pub(crate) tags_placement: SectionPlacement,
+    /// Where Favorites sit, the same choices.
+    #[serde(default)]
+    pub(crate) favorites_placement: SectionPlacement,
+    /// Where Contacts sits, the same choices.
+    #[serde(default)]
+    pub(crate) contacts_placement: SectionPlacement,
     /// Whether the sidebar's disclosure chevrons (All Inboxes, account
     /// headers) LEAD their rows; off puts them back at the row's end.
     #[serde(default = "default_chevrons_left")]
     pub(crate) chevrons_left: bool,
+    /// Whether a click anywhere on an account's header folds it, as it
+    /// once did. Off (the default): its chevron, or a double click.
+    #[serde(default)]
+    pub(crate) account_click_folds: bool,
     /// Console mode (#status-bar): the verbose activity console is offered in
     /// the status bar. Off by default.
     #[serde(default)]
@@ -1974,13 +1987,15 @@ impl Default for PrivacyFile {
             show_unified: true,
             unified_chip: true,
             unified_chips: UnifiedChips::default(),
-            unified_filtered: true,
             unified_kinds: UnifiedKinds::default(),
-            unified_tags: true,
             show_accounts: true,
-            filtered_placement: SectionPlacement::default(),
-            tags_placement: SectionPlacement::default(),
+            section_style: SectionStyle::default(),
+            filtered_placement: SectionPlacement::AboveAccounts,
+            tags_placement: SectionPlacement::AboveAccounts,
+            favorites_placement: SectionPlacement::AboveAccounts,
+            contacts_placement: SectionPlacement::AboveAccounts,
             chevrons_left: default_chevrons_left(),
+            account_click_folds: false,
             console_mode: false,
             status_bar_top: false,
             read_mark: ReadMark::default(),
@@ -2032,7 +2047,6 @@ impl Default for PrivacyFile {
             notification_content: true,
             notification_buttons: default_notification_buttons(),
             show_attachments: true,
-            show_contacts: true,
             settings_open_accounts: false,
             card_actions_hover: true,
             card_actions_auto: default_card_actions_auto(),
@@ -2079,6 +2093,8 @@ impl Default for PrivacyFile {
             list_pills_below: false,
             date_groups_default_applied: true,
             list_search_open: false,
+            list_search_bottom: false,
+            list_bulk_bar_bottom: false,
             list_column_widths: Default::default(),
             single_key_shortcuts: false,
             gmail_keys: false,
@@ -2107,12 +2123,48 @@ pub(crate) fn load_privacy() -> PrivacyFile {
         return PrivacyFile::default();
     };
     let mut file = toml::from_str::<PrivacyFile>(&text).unwrap_or_default();
-    if apply_new_defaults(&mut file) {
+    let moved = toml::from_str::<LegacySwitches>(&text).is_ok_and(|old| old.place(&mut file));
+    if apply_new_defaults(&mut file) || moved {
         if let Ok(toml) = toml::to_string_pretty(&file) {
             let _ = write_private(&path, &toml);
         }
     }
     file
+}
+
+/// The switches that once kept Filters, Tags, Favorites and Contacts in
+/// the unified section. That section no longer holds them: a file from
+/// then has them placed above the accounts where their switch was on, and
+/// off where it was off.
+#[derive(serde::Deserialize)]
+struct LegacySwitches {
+    #[serde(default = "default_on")]
+    unified_filtered: bool,
+    #[serde(default = "default_on")]
+    unified_tags: bool,
+    #[serde(default = "default_on")]
+    unified_favorites: bool,
+    #[serde(default = "default_on")]
+    show_contacts: bool,
+}
+
+impl LegacySwitches {
+    /// Whether any placement moved.
+    fn place(&self, file: &mut PrivacyFile) -> bool {
+        let mut moved = false;
+        for (at, on) in [
+            (&mut file.filtered_placement, self.unified_filtered),
+            (&mut file.tags_placement, self.unified_tags),
+            (&mut file.favorites_placement, self.unified_favorites),
+            (&mut file.contacts_placement, self.show_contacts),
+        ] {
+            if *at == SectionPlacement::AllInboxes {
+                *at = if on { SectionPlacement::AboveAccounts } else { SectionPlacement::Off };
+                moved = true;
+            }
+        }
+        moved
+    }
 }
 
 /// Bring a file from before a default changed up to it, once: every save
@@ -2239,8 +2291,6 @@ pub struct UnifiedChips {
     pub junk: bool,
     #[serde(default = "default_on")]
     pub trash: bool,
-    #[serde(default = "default_on")]
-    pub filtered: bool,
 }
 
 impl Default for UnifiedChips {
@@ -2252,7 +2302,6 @@ impl Default for UnifiedChips {
             archive: true,
             junk: true,
             trash: true,
-            filtered: true,
         }
     }
 }
@@ -2276,10 +2325,6 @@ impl UnifiedChips {
 impl UnifiedKinds {
     pub const NONE: UnifiedKinds =
         UnifiedKinds { starred: false, sent: false, drafts: false, archive: false, junk: false, trash: false };
-
-    pub fn any(self) -> bool {
-        self.starred || self.sent || self.drafts || self.archive || self.junk || self.trash
-    }
 
     /// Whether the row for `kind` is on (Inbox and custom folders have none
     /// of their own here, so they are `false`).
@@ -2305,18 +2350,42 @@ impl UnifiedKinds {
 
 
 
-/// Where a sidebar section (Filtered Folders, Tags) is drawn.
+/// Where a sidebar section (Filters, Tags, Favorites, Contacts) is drawn.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum SectionPlacement {
-    /// Inside the All Inboxes block, folding away with it. With All
-    /// Inboxes hidden (a single account) this reads as `AboveAccounts`.
+    /// In the unified section, as older files have it. Only
+    /// ever read: loading moves it (see `LegacySwitches`), and a file
+    /// missing the key reads as this so that its old switch decides.
     #[default]
     AllInboxes,
     /// In the scrolling sidebar, above the first account.
     AboveAccounts,
     /// In the scrolling sidebar, after the last account.
     BelowAccounts,
+    /// Not in the sidebar at all.
+    Off,
+}
+
+/// How Filters, Tags, Favorites and Contacts are drawn (Settings → Sidebar → Sections).
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum SectionStyle {
+    /// As the unified section's rows: a pill whose header opens the
+    /// combined view, with a chevron on the right.
+    #[default]
+    Unified,
+    /// As a tree: the caret that opens and closes the list in the icon's
+    /// place, no chevron at the row's end; the name still opens the view.
+    #[serde(alias = "headings")]
+    Tree,
+}
+
+impl SectionPlacement {
+    /// Whether the section is in the sidebar.
+    pub fn shown(self) -> bool {
+        matches!(self, Self::AboveAccounts | Self::BelowAccounts)
+    }
 }
 
 /// What the main window shows at launch (#256).
@@ -4218,6 +4287,12 @@ struct SidebarFile {
     /// Whether the Smart Folders list (#417) is open.
     #[serde(default = "default_on")]
     smart_expanded: bool,
+    /// Whether the Contacts row's address books are shown.
+    #[serde(default)]
+    contacts_expanded: bool,
+    /// The accounts and books folded under the Contacts row, by key.
+    #[serde(default)]
+    contacts_folded: Vec<String>,
     /// Account emails whose own Filtered Folders / Tags sections are open
     /// (closed by default, like their custom folders).
     #[serde(default)]
@@ -4262,6 +4337,8 @@ pub struct SidebarState {
     pub favorites: Vec<String>,
     pub favorites_expanded: bool,
     pub smart_expanded: bool,
+    pub contacts_expanded: bool,
+    pub contacts_folded: Vec<String>,
     /// Account emails whose own Filtered Folders / Tags sections are open.
     pub filtered_expanded_accounts: Vec<String>,
     pub tags_expanded_accounts: Vec<String>,
@@ -4294,6 +4371,8 @@ pub fn load_sidebar_state() -> SidebarState {
             favorites: s.favorites,
             favorites_expanded: s.favorites_expanded,
             smart_expanded: s.smart_expanded,
+            contacts_expanded: s.contacts_expanded,
+            contacts_folded: s.contacts_folded,
             filtered_expanded_accounts: s.filtered_expanded_accounts,
             tags_expanded_accounts: s.tags_expanded_accounts,
         })
@@ -4326,6 +4405,8 @@ pub fn save_sidebar_state(state: &SidebarState) {
         favorites: state.favorites.clone(),
         favorites_expanded: state.favorites_expanded,
         smart_expanded: state.smart_expanded,
+        contacts_expanded: state.contacts_expanded,
+        contacts_folded: state.contacts_folded.clone(),
         filtered_expanded_accounts: state.filtered_expanded_accounts.clone(),
         tags_expanded_accounts: state.tags_expanded_accounts.clone(),
     };
@@ -4876,6 +4957,27 @@ pub fn save_contacts_pane_width(width: i32) {
 mod tests {
     use super::{decode_gallery_folder, encode_gallery_folder, ConfigFile, ListColumn, PrivacyFile, StateFile};
 
+    /// A section once kept in the unified section moves above the accounts
+    /// where its switch was on, and off where it was off; one already
+    /// placed stays put.
+    #[test]
+    fn unified_placements_move_out() {
+        use super::{LegacySwitches, SectionPlacement::*};
+        let text = "filtered_placement = \"all_inboxes\"\nunified_filtered = true\n\
+                    tags_placement = \"all_inboxes\"\nunified_tags = false\n\
+                    favorites_placement = \"below_accounts\"\nshow_contacts = false\n";
+        let mut file: PrivacyFile = toml::from_str(text).unwrap();
+        let old: LegacySwitches = toml::from_str(text).unwrap();
+        assert!(old.place(&mut file));
+        assert_eq!(file.filtered_placement, AboveAccounts);
+        assert_eq!(file.tags_placement, Off);
+        assert_eq!(file.favorites_placement, BelowAccounts);
+        // A file from before the key: its old switch decides.
+        assert_eq!(file.contacts_placement, Off);
+        assert!(!old.place(&mut file));
+        assert_eq!(PrivacyFile::default().contacts_placement, AboveAccounts);
+    }
+
     /// The keyring thread runs what is queued in order, a call made from
     /// another thread waits behind it, one made on the keyring thread itself
     /// runs at once, and the drain waits for the queue (#466).
@@ -4958,7 +5060,7 @@ mod tests {
         assert_eq!(kinds.listed(), vec![Sent, Drafts, Archive]);
         let all = super::UnifiedKinds { junk: true, trash: true, ..Default::default() };
         assert_eq!(all.listed(), vec![Starred, Sent, Drafts, Archive, Junk, Trash]);
-        assert!(super::UnifiedKinds { trash: true, ..super::UnifiedKinds::NONE }.any());
+        assert_eq!(super::UnifiedKinds { trash: true, ..super::UnifiedKinds::NONE }.listed(), vec![Trash]);
     }
 
     /// #334: the saved columns come back in order; a name this version does
@@ -5690,6 +5792,7 @@ dest_path = "Lists"
             in_unified: true,
             folder_sort: None,
             sign_by_default: false,
+            plain_subject: false,
             graph_directory: false,
             graph_directory_only: false,
             graph_label_names: false,
@@ -5750,6 +5853,15 @@ dest_path = "Lists"
         assert!(text.contains("sign_by_default = true"), "{text}");
         let back: SettingsBundle = toml::from_str(&text).unwrap();
         assert!(back.accounts[0].sign_by_default);
+        // Hiding the subject of encrypted mail (#493) is the default, so
+        // only turning it off is written.
+        assert!(!text.contains("plain_subject"), "{text}");
+        let mut plain = signing;
+        plain.accounts[0].plain_subject = true;
+        let text = toml::to_string_pretty(&plain).unwrap();
+        assert!(text.contains("plain_subject = true"), "{text}");
+        let back: SettingsBundle = toml::from_str(&text).unwrap();
+        assert!(back.accounts[0].plain_subject);
     }
 
     #[test]

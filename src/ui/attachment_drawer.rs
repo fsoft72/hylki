@@ -250,7 +250,7 @@ impl SimpleComponent for AttachmentDrawer {
             set_resize_end_child: false,
             set_shrink_end_child: false,
             connect_position_notify[sender] => move |_| {
-                sender.input(AttachmentDrawerInput::PositionChanged);
+                sender.input_sender().emit(AttachmentDrawerInput::PositionChanged);
             },
 
             #[wrap(Some)]
@@ -304,7 +304,7 @@ impl SimpleComponent for AttachmentDrawer {
                             i18n("Hide the attachments")
                         }.as_str()),
                         connect_clicked[sender] => move |_| {
-                            sender.input(AttachmentDrawerInput::CountClicked);
+                            sender.input_sender().emit(AttachmentDrawerInput::CountClicked);
                         },
 
                         #[wrap(Some)]
@@ -359,7 +359,7 @@ impl SimpleComponent for AttachmentDrawer {
                         #[watch]
                         set_visible: !model.collapsed && !model.list_view,
                         connect_value_changed[sender] => move |s| {
-                            sender.input(AttachmentDrawerInput::SetThumbSize(s.value() as i32));
+                            sender.input_sender().emit(AttachmentDrawerInput::SetThumbSize(s.value() as i32));
                         },
                     },
                     gtk::Image {
@@ -384,7 +384,7 @@ impl SimpleComponent for AttachmentDrawer {
                         #[watch]
                         set_tooltip_text: Some(if model.sort_desc { i18n("Sorted Z to A — switch to A to Z") } else { i18n("Sorted A to Z — switch to Z to A") }.as_str()),
                         connect_clicked[sender] => move |_| {
-                            sender.input(AttachmentDrawerInput::ToggleSortOrder);
+                            sender.input_sender().emit(AttachmentDrawerInput::ToggleSortOrder);
                         },
                     },
                     gtk::Button {
@@ -401,7 +401,7 @@ impl SimpleComponent for AttachmentDrawer {
                         #[watch]
                         set_tooltip_text: Some(if model.list_view { i18n("Show as thumbnails") } else { i18n("Show as a list") }.as_str()),
                         connect_clicked[sender] => move |_| {
-                            sender.input(AttachmentDrawerInput::ToggleListView);
+                            sender.input_sender().emit(AttachmentDrawerInput::ToggleListView);
                         },
                     },
                     // Rightmost by design: the header's one real action, with
@@ -414,7 +414,7 @@ impl SimpleComponent for AttachmentDrawer {
                         set_margin_end: 3,
                         set_tooltip_text: Some(i18n("Save every attachment to a folder").as_str()),
                         connect_clicked[sender] => move |_| {
-                            sender.input(AttachmentDrawerInput::SaveAll);
+                            sender.input_sender().emit(AttachmentDrawerInput::SaveAll);
                         },
                     },
                 },
@@ -471,7 +471,7 @@ impl SimpleComponent for AttachmentDrawer {
                 use gtk::gdk::Key;
                 if matches!(keyval, Key::space | Key::KP_Space | Key::Return | Key::KP_Enter) {
                     if let Some(child) = flow_ref.selected_children().first() {
-                        s.input(AttachmentDrawerInput::Activate(child.index() as usize));
+                        s.input_sender().emit(AttachmentDrawerInput::Activate(child.index() as usize));
                         return gtk::glib::Propagation::Stop;
                     }
                 }
@@ -498,13 +498,13 @@ impl SimpleComponent for AttachmentDrawer {
             crate::ui::grab_pill::attach_drag(
                 &pill,
                 &root,
-                move |_| s.input(AttachmentDrawerInput::PillDragBegin),
-                move |want| s2.input(AttachmentDrawerInput::PillDrag { want }),
+                move |_| s.input_sender().emit(AttachmentDrawerInput::PillDragBegin),
+                move |want| s2.input_sender().emit(AttachmentDrawerInput::PillDrag { want }),
             );
             let click = gtk::GestureClick::new();
             let s = sender.clone();
             click.connect_released(move |_, _, _, _| {
-                s.input(AttachmentDrawerInput::PillReleased);
+                s.input_sender().emit(AttachmentDrawerInput::PillReleased);
             });
             pill.add_controller(click);
         }
@@ -618,7 +618,7 @@ impl SimpleComponent for AttachmentDrawer {
             let click = gtk::GestureClick::new();
             let s = sender.clone();
             click.connect_released(move |_, _, _, _| {
-                s.input(AttachmentDrawerInput::EdgeClicked);
+                s.input_sender().emit(AttachmentDrawerInput::EdgeClicked);
             });
             widgets.drawer_edge.add_controller(click);
             // The bar lives in the zone above; hovering the strip is hovering
@@ -639,8 +639,8 @@ impl SimpleComponent for AttachmentDrawer {
             crate::ui::grab_pill::attach_drag(
                 &widgets.drawer_edge,
                 &root,
-                move |_| s.input(AttachmentDrawerInput::PillDragBegin),
-                move |want| s2.input(AttachmentDrawerInput::PillDrag { want }),
+                move |_| s.input_sender().emit(AttachmentDrawerInput::PillDragBegin),
+                move |want| s2.input_sender().emit(AttachmentDrawerInput::PillDrag { want }),
             );
         }
         // HYLKI_SHOWCASE_DRAWER=N clicks the header's count button N times,
@@ -673,7 +673,7 @@ impl SimpleComponent for AttachmentDrawer {
                     let gen = self.empty_gen;
                     let s = sender.clone();
                     glib::idle_add_local_full(glib::Priority::HIGH_IDLE, move || {
-                        s.input(AttachmentDrawerInput::SettleEmpty(gen));
+                        s.input_sender().emit(AttachmentDrawerInput::SettleEmpty(gen));
                         glib::ControlFlow::Break
                     });
                     return;
@@ -784,7 +784,7 @@ impl SimpleComponent for AttachmentDrawer {
                     .and_then(|i| self.flow.child_at_index(i as i32));
                 self.fading += 1;
                 let s = sender.clone();
-                let done = move || s.input(AttachmentDrawerInput::FadeDone(name.clone(), len));
+                let done = move || s.input_sender().emit(AttachmentDrawerInput::FadeDone(name.clone(), len));
                 match shown {
                     Some(child) => fade_out(&child, done),
                     None => done(),
@@ -1115,7 +1115,7 @@ impl AttachmentDrawer {
         // handler restores state in the right order instead.
         anim.connect_done(move |_| {
             cell.borrow_mut().take();
-            s.input(AttachmentDrawerInput::ToggleSettled { collapsed: closing, gen });
+            s.input_sender().emit(AttachmentDrawerInput::ToggleSettled { collapsed: closing, gen });
         });
         *self.toggle_anim.borrow_mut() = Some((anim.clone(), closing));
         anim.play();
@@ -1331,22 +1331,22 @@ impl AttachmentDrawer {
     /// Server, matching the gallery's actions.
     fn show_context_menu(&self, index: usize, x: f64, y: f64, sender: &ComponentSender<Self>) {
         let s = sender.clone();
-        let open = MenuEntry::new(i18n("Open"), move || s.input(AttachmentDrawerInput::Open(index)))
+        let open = MenuEntry::new(i18n("Open"), move || s.input_sender().emit(AttachmentDrawerInput::Open(index)))
             .icon("document-open-symbolic");
         let s = sender.clone();
         let download =
-            MenuEntry::new(i18n("Download…"), move || s.input(AttachmentDrawerInput::Download(index)))
+            MenuEntry::new(i18n("Download…"), move || s.input_sender().emit(AttachmentDrawerInput::Download(index)))
                 .icon("folder-download-symbolic");
         // The drawer gathers the whole conversation's files; this finds the
         // message a file came with (#213).
         let s = sender.clone();
         let show = MenuEntry::new(i18n("Show in Message"), move || {
-            s.input(AttachmentDrawerInput::ShowInMessage(index))
+            s.input_sender().emit(AttachmentDrawerInput::ShowInMessage(index))
         })
         .icon("mail-unread-symbolic");
         let s = sender.clone();
         let delete = MenuEntry::new(i18n("Delete from Server…"), move || {
-            s.input(AttachmentDrawerInput::DeleteFromServer(index))
+            s.input_sender().emit(AttachmentDrawerInput::DeleteFromServer(index))
         })
         .icon("user-trash-symbolic");
 
@@ -1460,17 +1460,17 @@ fn build_cell(
     };
     let download = action_btn("folder-download-symbolic", &i18n("Download"));
     let s = sender.clone();
-    download.connect_clicked(move |_| s.input(AttachmentDrawerInput::Download(index)));
+    download.connect_clicked(move |_| s.input_sender().emit(AttachmentDrawerInput::Download(index)));
     actions.append(&download);
     let open = action_btn("document-open-symbolic", &i18n("Open"));
     let s = sender.clone();
-    open.connect_clicked(move |_| s.input(AttachmentDrawerInput::Open(index)));
+    open.connect_clicked(move |_| s.input_sender().emit(AttachmentDrawerInput::Open(index)));
     actions.append(&open);
     // An attached public key (#133): one click puts it in the keyring.
     if is_key_attachment(att) {
         let import = action_btn("channel-secure-symbolic", &i18n("Import OpenPGP key"));
         let s = sender.clone();
-        import.connect_clicked(move |_| s.input(AttachmentDrawerInput::ImportKey(index)));
+        import.connect_clicked(move |_| s.input_sender().emit(AttachmentDrawerInput::ImportKey(index)));
         actions.append(&import);
     }
     if deleting {
@@ -1512,7 +1512,7 @@ fn build_cell(
     right.set_button(gtk::gdk::BUTTON_SECONDARY);
     let s = sender.clone();
     right.connect_pressed(move |_, _, x, y| {
-        s.input(AttachmentDrawerInput::ContextMenu { index, x, y });
+        s.input_sender().emit(AttachmentDrawerInput::ContextMenu { index, x, y });
     });
     child.add_controller(right);
     add_double_click_open(&child, index, sender);
@@ -1532,7 +1532,7 @@ fn add_double_click_open(
     let s = sender.clone();
     dbl.connect_pressed(move |_, n, _, _| {
         if n == 2 {
-            s.input(AttachmentDrawerInput::Activate(index));
+            s.input_sender().emit(AttachmentDrawerInput::Activate(index));
         }
     });
     child.add_controller(dbl);
@@ -1579,11 +1579,11 @@ fn build_list_row(
     let actions = gtk::Box::new(gtk::Orientation::Horizontal, 8);
     let download = action_btn("folder-download-symbolic", &i18n("Download"));
     let s = sender.clone();
-    download.connect_clicked(move |_| s.input(AttachmentDrawerInput::Download(index)));
+    download.connect_clicked(move |_| s.input_sender().emit(AttachmentDrawerInput::Download(index)));
     actions.append(&download);
     let open = action_btn("document-open-symbolic", &i18n("Open"));
     let s = sender.clone();
-    open.connect_clicked(move |_| s.input(AttachmentDrawerInput::Open(index)));
+    open.connect_clicked(move |_| s.input_sender().emit(AttachmentDrawerInput::Open(index)));
     actions.append(&open);
     if deleting {
         row.append(&deleting_over(&actions));
@@ -1606,7 +1606,7 @@ fn build_list_row(
     right.set_button(gtk::gdk::BUTTON_SECONDARY);
     let s = sender.clone();
     right.connect_pressed(move |_, _, x, y| {
-        s.input(AttachmentDrawerInput::ContextMenu { index, x, y });
+        s.input_sender().emit(AttachmentDrawerInput::ContextMenu { index, x, y });
     });
     child.add_controller(right);
     add_double_click_open(&child, index, sender);

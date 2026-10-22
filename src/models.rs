@@ -515,6 +515,11 @@ pub struct PgpStatus {
     /// it carried one: the first place a missing key is looked for.
     #[serde(default)]
     pub autocrypt: Option<String>,
+    /// The real subject an encrypted message carries inside (protected
+    /// headers, #493), where the outer one is a placeholder such as
+    /// Thunderbird's "...". Plaintext, so never written to the cache.
+    #[serde(skip)]
+    pub subject: Option<String>,
 }
 
 impl PgpStatus {

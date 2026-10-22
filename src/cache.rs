@@ -71,6 +71,12 @@ CREATE TABLE IF NOT EXISTS messages (
     PRIMARY KEY (account_id, folder_path, uid)
 );
 CREATE INDEX IF NOT EXISTS messages_by_message_id ON messages (message_id);
+-- Starred mail across an account's folders (the unified Starred view, #482,
+-- and smart folders asking for stars): a few rows out of a whole mailbox.
+CREATE INDEX IF NOT EXISTS messages_starred ON messages (account_id, ts) WHERE starred = 1;
+-- A folder's newest messages, read first so a list shows before the rest of
+-- a large folder is in.
+CREATE INDEX IF NOT EXISTS messages_by_folder_ts ON messages (account_id, folder_path, ts);
 CREATE TABLE IF NOT EXISTS local_tags (
     account_id  INTEGER NOT NULL,
     message_id  TEXT    NOT NULL,
@@ -978,10 +984,31 @@ impl Cache {
     }
 
     pub fn load_messages(&self, account_id: u32, folder_path: &str, folder_id: u32) -> Vec<Message> {
+        self.load_folder(account_id, folder_path, folder_id, "ORDER BY uid DESC")
+    }
+
+    /// How many messages a folder holds.
+    pub fn count_messages(&self, account_id: u32, folder_path: &str) -> usize {
+        self.conn
+            .query_row(
+                "SELECT COUNT(*) FROM messages WHERE account_id = ?1 AND folder_path = ?2",
+                params![account_id, folder_path],
+                |r| r.get::<_, i64>(0),
+            )
+            .map_or(0, |n| n as usize)
+    }
+
+    /// A folder's `limit` newest messages, newest first: what a list shows
+    /// at once while the whole folder is read.
+    pub fn load_newest(&self, account_id: u32, folder_path: &str, folder_id: u32, limit: usize) -> Vec<Message> {
+        self.load_folder(account_id, folder_path, folder_id, &format!("ORDER BY ts DESC LIMIT {limit}"))
+    }
+
+    fn load_folder(&self, account_id: u32, folder_path: &str, folder_id: u32, order: &str) -> Vec<Message> {
         let run = || -> rusqlite::Result<Vec<Message>> {
             let mut stmt = self.conn.prepare(&format!(
                 "SELECT uid, from_name, from_addr, subject, date, ts, unread, starred, has_attachment, recipients, cc, message_id, references_, preview, reply_to, {KEYWORDS_COL}, importance, due, gmail_labels, answered, forwarded, bcc
-                 FROM messages WHERE account_id = ?1 AND folder_path = ?2 ORDER BY uid DESC",
+                 FROM messages WHERE account_id = ?1 AND folder_path = ?2 {order}",
             ))?;
             let rows = stmt.query_map(params![account_id, folder_path], |row| {
                 let uid: u32 = row.get(0)?;

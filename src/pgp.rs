@@ -253,7 +253,11 @@ fn unwrap_shape(shape: Shape, _raw: &[u8], gpg: &Gpg) -> Unwrapped {
                     text_entity(&out.stdout)
                 }
             });
-            Unwrapped { inner, status: PgpStatus { encrypted: true, decrypted, signature, notes, ..Default::default() } }
+            let subject = inner.as_deref().and_then(protected_subject);
+            Unwrapped {
+                inner,
+                status: PgpStatus { encrypted: true, decrypted, signature, notes, subject, ..Default::default() },
+            }
         }
         Shape::Signed { data, signature } => {
             let out = run(gpg, &["--verify"], &data, Some(&signature));
@@ -286,6 +290,39 @@ fn unwrap_shape(shape: Shape, _raw: &[u8], gpg: &Gpg) -> Unwrapped {
     }
 }
 
+/// The Subject on a decrypted entity (#493). Thunderbird, Enigmail,
+/// Mailvelope and RFC 9788 put the real one there and leave a placeholder
+/// outside, so this is what the reader shows. A plain entity has no Subject
+/// of its own, so its presence is the signal; the `protected-headers` or
+/// `hp` flag is not required, as not every sender sets it.
+fn protected_subject(entity: &[u8]) -> Option<String> {
+    use mail_parser::MessageParser;
+    let parsed = MessageParser::default().parse(entity)?;
+    let subject = parsed.subject()?.trim();
+    (!subject.is_empty()).then(|| subject.to_string())
+}
+
+/// The legacy display part of a message with protected headers: a first
+/// text part that repeats the Subject for clients that do not read it from
+/// the headers inside. This one does, so the part is hidden, never shown in
+/// the body or listed as a file. `None` unless the entity is flagged as
+/// carrying protected headers, so ordinary mail is never touched.
+pub fn legacy_display_part(parsed: &mail_parser::Message) -> Option<usize> {
+    use mail_parser::MimeHeaders;
+    let root = parsed.root_part();
+    let ct = root.content_type()?;
+    if !(ct.has_attribute("protected-headers") || ct.has_attribute("hp")) {
+        return None;
+    }
+    let first = *root.sub_parts()?.first()?;
+    let ct = parsed.part(first)?.content_type()?;
+    let legacy = ct.ctype().eq_ignore_ascii_case("text")
+        && (ct.subtype().is_some_and(|s| s.eq_ignore_ascii_case("rfc822-headers"))
+            || ct.has_attribute("protected-headers")
+            || ct.attribute("hp-legacy-display").is_some_and(|v| v.trim() == "1"));
+    legacy.then_some(first)
+}
+
 /// Whether decrypted bytes are a MIME entity (headers first) rather than
 /// bare text.
 fn looks_like_mime(bytes: &[u8]) -> bool {
@@ -296,6 +333,29 @@ fn looks_like_mime(bytes: &[u8]) -> bool {
         || lower.starts_with("content-transfer-encoding:")
         || lower.starts_with("content-disposition:")
         || lower.starts_with("mime-version:")
+        || protected_header_block(&String::from_utf8_lossy(&bytes[..bytes.len().min(16 * 1024)]))
+}
+
+/// Whether text opens with a header block that has a Content-Type in it:
+/// an entity with protected headers may put its Subject or From first.
+fn protected_header_block(head: &str) -> bool {
+    let mut content_type = false;
+    for line in head.lines() {
+        if line.trim().is_empty() {
+            return content_type;
+        }
+        if line.starts_with([' ', '\t']) {
+            continue;
+        }
+        let Some((name, _)) = line.split_once(':') else {
+            return false;
+        };
+        if name.is_empty() || !name.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'-') {
+            return false;
+        }
+        content_type |= name.eq_ignore_ascii_case("content-type");
+    }
+    false
 }
 
 /// Bare text as a `text/plain` entity the renderer understands.
@@ -1016,6 +1076,58 @@ Content-Type: multipart/encrypted; protocol=\"application/pgp-encrypted\"; bound
         assert!(!looks_like_mime(b"Hello there\r\n"));
         let e = text_entity(b"hi");
         assert!(e.starts_with(b"Content-Type: text/plain"));
+        // Protected headers may come first; bare text that merely starts
+        // like a header is still text.
+        assert!(looks_like_mime(b"Subject: Plans\r\nFrom: a@b.c\r\nContent-Type: text/plain\r\n\r\nx"));
+        assert!(!looks_like_mime(b"Subject: Plans\r\n\r\nSee you at noon."));
+        assert!(!looks_like_mime(b"Note: Content-Type: text/plain is fine\r\n"));
+    }
+
+    /// The inner entity as Thunderbird sends it: protected headers on a
+    /// flagged multipart/mixed, then the legacy display part.
+    const PROTECTED: &str = "Content-Type: multipart/mixed; boundary=\"pp\";\r\n protected-headers=\"v1\"\r\n\
+From: Ann <ann@example.com>\r\nTo: bob@example.com\r\n\
+Subject: =?UTF-8?Q?Caf=C3=A9_at_noon?=\r\n\r\n\
+--pp\r\nContent-Type: text/plain; charset=UTF-8; protected-headers=\"v1\"\r\n\
+Content-Disposition: inline\r\n\r\nSubject: Caf\u{e9} at noon\r\n\r\n\
+--pp\r\nContent-Type: text/plain; charset=UTF-8\r\n\r\nSee you there.\r\n--pp--\r\n";
+
+    #[test]
+    fn protected_subject_comes_from_the_inner_entity() {
+        assert_eq!(protected_subject(PROTECTED.as_bytes()).as_deref(), Some("Caf\u{e9} at noon"));
+        assert_eq!(protected_subject(b"Content-Type: text/plain\r\n\r\nhi"), None);
+        assert_eq!(protected_subject(b"Subject:  \r\nContent-Type: text/plain\r\n\r\nhi"), None);
+    }
+
+    #[test]
+    fn legacy_display_part_is_found_only_under_protected_headers() {
+        use mail_parser::MessageParser;
+        let parsed = MessageParser::default().parse(PROTECTED.as_bytes()).unwrap();
+        let first = parsed.root_part().sub_parts().unwrap()[0];
+        assert_eq!(legacy_display_part(&parsed), Some(first));
+        // Enigmail's form.
+        let enigmail = PROTECTED.replace("text/plain; charset=UTF-8; protected-headers", "text/rfc822-headers; protected-headers");
+        let parsed = MessageParser::default().parse(enigmail.as_bytes()).unwrap();
+        assert_eq!(legacy_display_part(&parsed), Some(first));
+        // RFC 9788's form.
+        let rfc = PROTECTED
+            .replace("protected-headers=\"v1\"\r\n\r\nSubject", "hp-legacy-display=\"1\"\r\n\r\nSubject")
+            .replace("\r\n protected-headers=\"v1\"", "\r\n hp=\"cipher\"");
+        let parsed = MessageParser::default().parse(rfc.as_bytes()).unwrap();
+        assert_eq!(legacy_display_part(&parsed), Some(first));
+        // Without the flag on the root, nothing is hidden.
+        let plain = PROTECTED.replace(";\r\n protected-headers=\"v1\"", "");
+        let parsed = MessageParser::default().parse(plain.as_bytes()).unwrap();
+        assert_eq!(legacy_display_part(&parsed), None);
+    }
+
+    #[test]
+    fn protected_subject_is_never_serialized() {
+        let status = PgpStatus { encrypted: true, decrypted: true, subject: Some("secret".into()), ..Default::default() };
+        let json = serde_json::to_string(&status).unwrap();
+        assert!(!json.contains("secret"), "{json}");
+        let back: PgpStatus = serde_json::from_str(&json).unwrap();
+        assert_eq!(back.subject, None);
     }
 
     #[test]
@@ -1108,6 +1220,20 @@ uid:r::::1757000000::ABCDEF::Old Name <old@example.org>::::::::::0:\n";
         let inner = String::from_utf8(u.inner.clone().unwrap()).unwrap();
         assert!(inner.contains("secret hello"), "{inner}");
         assert!(matches!(u.status.signature, PgpSignature::Good { trust: PgpTrust::Full, .. }), "{:?}", u.status);
+        assert_eq!(u.status.subject, None);
+
+        // Protected headers (#493): the subject inside replaces the "..." outside.
+        let enc = status(&["--armor", "--trust-model", "always", "--recipient", "test@hylki.invalid", "--encrypt"], PROTECTED.as_bytes());
+        let armored = String::from_utf8(enc.stdout.clone()).unwrap();
+        let mail = format!(
+            "From: test@hylki.invalid\r\nSubject: ...\r\nMIME-Version: 1.0\r\n\
+             Content-Type: multipart/encrypted; protocol=\"application/pgp-encrypted\"; boundary=\"enc\"\r\n\r\n\
+             --enc\r\nContent-Type: application/pgp-encrypted\r\n\r\nVersion: 1\r\n\
+             --enc\r\nContent-Type: application/octet-stream\r\n\r\n{armored}\r\n--enc--\r\n"
+        );
+        let u = unwrap_message(mail.as_bytes(), &gpg).expect("recognised");
+        assert!(u.status.decrypted, "{:?}", u.status);
+        assert_eq!(u.status.subject.as_deref(), Some("Caf\u{e9} at noon"));
 
         // Detached signature over a MIME part, verified the RFC 3156 way.
         let part = b"Content-Type: text/plain; charset=utf-8\r\n\r\nsigned hello";

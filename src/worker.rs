@@ -3997,7 +3997,11 @@ fn attachment_parts(
 ) -> Vec<(usize, crate::models::Attachment)> {
     use mail_parser::MimeHeaders;
     let mut out = Vec::new();
+    let legacy = crate::pgp::legacy_display_part(parsed);
     for (i, &id) in parsed.attachments.iter().enumerate() {
+        if Some(id) == legacy {
+            continue;
+        }
         let Some(part) = parsed.parts.get(id) else { continue };
         // What is left where an attachment was removed, here or by
         // Thunderbird (#289): a note, not a file.
@@ -5076,6 +5080,7 @@ fn build_message(
         None => (mailbox(&account.name, &account.email)?, account.email.clone()),
     };
     let sender_address = from.email.clone();
+    let from_mailbox = from.clone();
     let mut builder = LettreMessage::builder().from(from);
     let mut recipients = 0;
     for (name, addr) in parse_recipients(&msg.to) {
@@ -5107,8 +5112,12 @@ fn build_message(
     // server assigns it on the way out — so the copy filed in Sent has no id at
     // all, and nothing that replies to it can ever be linked back. Setting it
     // here means the copy we keep and the copy that arrives share the same id.
+    // Encrypted, the real subject travels inside unless the account says
+    // otherwise (#493); see `protect_headers`.
+    let protect = msg.encrypt && !account.plain_subject;
+    let subject = if protect { PROTECTED_SUBJECT.to_string() } else { msg.subject.clone() };
     let mut builder = builder
-        .subject(msg.subject.clone())
+        .subject(subject)
         .message_id(Some(new_message_id(&from_addr)));
     // Threading headers, re-wrapped in the angle brackets the wire format wants
     // (they are stored stripped). References carries the whole chain so a client
@@ -5189,6 +5198,7 @@ fn build_message(
         } else {
             PgpEntity::Multi(attachments_multipart(content, msg)?)
         };
+        let entity = if protect { protect_headers(entity, msg, &from_mailbox)? } else { entity };
         let wrapped = pgp_wrap(account, msg, &from_addr, entity)?;
         return Ok(builder.multipart(wrapped)?);
     }
@@ -5259,6 +5269,48 @@ impl PgpEntity {
             PgpEntity::Single(s) => s.formatted(),
         }
     }
+}
+
+/// The outer Subject of an encrypted message, as Thunderbird sends it.
+const PROTECTED_SUBJECT: &str = "...";
+
+/// Protected headers (#493, RFC 9788): the encrypted entity carries the real
+/// Subject and who the message is from and to, flagged so the reader takes
+/// them from there, and the Subject outside is [`PROTECTED_SUBJECT`]. Bcc
+/// stays out, as every recipient can decrypt what is inside.
+fn protect_headers(entity: PgpEntity, msg: &OutgoingMessage, from: &Mailbox) -> Result<PgpEntity, SmtpError> {
+    use lettre::message::header::{Cc, ContentType, From, ReplyTo, Subject, To};
+    use lettre::message::{Mailboxes, MultiPart};
+    let mut multi = match entity {
+        PgpEntity::Multi(m) => m,
+        PgpEntity::Single(s) => MultiPart::mixed().singlepart(s),
+    };
+    let mailboxes = |field: &str| -> Result<Option<Mailboxes>, SmtpError> {
+        let list = parse_recipients(field)
+            .into_iter()
+            .map(|(name, addr)| mailbox(&name, &addr))
+            .collect::<Result<Vec<_>, _>>()?;
+        Ok((!list.is_empty()).then(|| list.into_iter().collect()))
+    };
+    let flagged = multi
+        .headers()
+        .get_raw("Content-Type")
+        .and_then(|ct| ContentType::parse(&format!("{ct}; protected-headers=\"v1\"")).ok())
+        .ok_or("could not mark the encrypted part as carrying the subject")?;
+    let headers = multi.headers_mut();
+    headers.set(flagged);
+    headers.set(From::from(Mailboxes::from(from.clone())));
+    if let Some(to) = mailboxes(&msg.to)? {
+        headers.set(To::from(to));
+    }
+    if let Some(cc) = mailboxes(&msg.cc)? {
+        headers.set(Cc::from(cc));
+    }
+    if let Some(reply_to) = mailboxes(&msg.reply_to)? {
+        headers.set(ReplyTo::from(reply_to));
+    }
+    headers.set(Subject::from(msg.subject.clone()));
+    Ok(PgpEntity::Multi(multi))
 }
 
 /// The user's key for an outgoing message: the account's chosen key, else
@@ -10991,7 +11043,14 @@ pub fn extract_body(raw: &[u8]) -> String {
         return wrap_plain(&String::from_utf8_lossy(raw));
     };
 
-    let bodies: Vec<_> = parsed.html_bodies().collect();
+    // The protected-headers stand-in that only repeats the Subject (#493).
+    let legacy = crate::pgp::legacy_display_part(&parsed);
+    let bodies: Vec<_> = parsed
+        .html_body
+        .iter()
+        .filter(|&&id| Some(id) != legacy)
+        .filter_map(|&id| parsed.part(id))
+        .collect();
     let mut budget = INLINE_IMAGE_BUDGET;
     // Content-IDs rendered in place by `inline_cid_images`, so the loop below
     // doesn't also append them as standalone images.
@@ -11442,6 +11501,7 @@ pub(super) fn sample_account() -> AccountConfig {
         in_unified: true,
         folder_sort: None,
         sign_by_default: false,
+        plain_subject: false,
         graph_directory: false,
         graph_directory_only: false,
         graph_label_names: false,
@@ -12404,16 +12464,36 @@ NIL NIL NIL NIL NIL NIL NIL))\r\n";
         msg.attachments.clear();
         msg.encrypt = true;
         msg.body = "secret body text".into();
+        msg.subject = "Secret plans".into();
+        msg.bcc = "Hidden <sender@hylki.invalid>".into();
         let raw = build_email(&account, &msg).expect("builds").formatted();
         let text = String::from_utf8_lossy(&raw);
         assert!(text.contains("multipart/encrypted"), "{text}");
         assert!(!text.contains("secret body text"), "plaintext must not appear: {text}");
+        // Protected headers (#493): the subject is inside, "..." outside.
+        assert!(!text.contains("Secret plans"), "the subject must not appear: {text}");
+        assert!(text.contains("Subject: ...\r\n"), "{text}");
         assert!(!has_bare_lf(&raw), "{text}");
         let u = crate::pgp::unwrap_message(&raw, &gpg).expect("recognised");
         assert!(u.status.encrypted && u.status.decrypted, "{:?}", u.status);
         assert!(matches!(u.status.signature, crate::models::PgpSignature::Good { .. }), "{:?}", u.status);
+        assert_eq!(u.status.subject.as_deref(), Some("Secret plans"));
         let inner = String::from_utf8_lossy(&u.inner.unwrap()).to_string();
         assert!(inner.contains("secret body text"), "{inner}");
+        assert!(inner.contains("protected-headers=\"v1\""), "{inner}");
+        assert!(inner.contains("peer@hylki.invalid"), "the To travels inside: {inner}");
+        assert!(!inner.contains("Hidden"), "Bcc must stay out of what every recipient reads: {inner}");
+        assert_eq!(extract_body(inner.as_bytes()).matches("secret body text").count(), 1);
+        msg.bcc.clear();
+        // An account that leaves the subject readable (#493) sends it outside.
+        account.plain_subject = true;
+        let raw = build_email(&account, &msg).expect("builds").formatted();
+        let text = String::from_utf8_lossy(&raw);
+        assert!(text.contains("Subject: Secret plans\r\n"), "{text}");
+        assert!(!text.contains("secret body text"), "plaintext must not appear: {text}");
+        let u = crate::pgp::unwrap_message(&raw, &gpg).expect("recognised");
+        assert!(u.status.decrypted && u.status.subject.is_none(), "{:?}", u.status);
+        account.plain_subject = false;
 
         // A recipient without a key is refused by name; a From without a key too.
         msg.cc = "nobody@hylki.invalid".into();
@@ -13847,6 +13927,31 @@ NIL NIL NIL NIL NIL NIL NIL))\r\n";
         let graph = graph_before_date(30);
         assert!(chrono::DateTime::parse_from_rfc3339(&graph).is_ok(), "{graph}");
         assert!(graph < chrono::Utc::now().format("%Y-%m-%dT%H:%M:%SZ").to_string());
+    }
+
+    /// A decrypted entity with protected headers (#493): the part that only
+    /// repeats the Subject is neither shown nor listed as a file.
+    #[test]
+    fn protected_headers_legacy_part_is_hidden() {
+        let entity = |legacy_type: &str| {
+            format!(
+                "Content-Type: multipart/mixed; boundary=\"pp\"; protected-headers=\"v1\"\r\n\
+                 Subject: Plans\r\n\r\n\
+                 --pp\r\nContent-Type: {legacy_type}; protected-headers=\"v1\"\r\n\
+                 Content-Disposition: inline\r\n\r\nSubject: Plans\r\n\r\n\
+                 --pp\r\nContent-Type: text/plain; charset=UTF-8\r\n\r\nSee you there.\r\n--pp--\r\n"
+            )
+        };
+        for legacy_type in ["text/plain; charset=UTF-8", "text/rfc822-headers"] {
+            let raw = entity(legacy_type);
+            let body = extract_body(raw.as_bytes());
+            assert!(body.contains("See you there."), "{body}");
+            assert!(!body.contains("Subject: Plans"), "{legacy_type}: {body}");
+            assert!(extract_attachments(raw.as_bytes()).is_empty(), "{legacy_type}");
+        }
+        // The same first part without the flag on the root is ordinary text.
+        let raw = entity("text/plain; charset=UTF-8").replacen("; protected-headers=\"v1\"", "", 1);
+        assert!(extract_body(raw.as_bytes()).contains("Subject: Plans"));
     }
 
     #[test]

@@ -245,7 +245,7 @@ impl Component for Lightbox {
             let s = sender.clone();
             click.connect_released(move |_, n, x, y| {
                 if n == 1 && moved.get() < 8.0 {
-                    s.input(LightboxInput::ZoomCycle { x, y });
+                    s.input_sender().emit(LightboxInput::ZoomCycle { x, y });
                 }
             });
             model.picture.add_controller(click);
@@ -288,7 +288,7 @@ impl Component for Lightbox {
                 if self.zoom != 1 {
                     self.set_zoom(1);
                 } else {
-                    sender.input(LightboxInput::Close);
+                    sender.input_sender().emit(LightboxInput::Close);
                 }
             }
             LightboxInput::OpenCurrent => {

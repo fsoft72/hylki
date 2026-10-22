@@ -95,7 +95,7 @@ impl SimpleComponent for CloudAccounts {
                             set_child = &adw::PreferencesPage {
                                 add = &adw::PreferencesGroup {
                                     set_title: &i18n("Cloud storage"),
-                                    set_description: Some(&i18n("Connect your cloud storage provider to upload and share large files instead of an attachment. A cloud icon appears in the compose toolbar once a provider is added.\n\nSupported providers: Nextcloud, ownCloud, OpenCloud, OneDrive, Dropbox and Seafile.")),
+                                    set_description: Some(&i18n("Upload large files and send a link instead of attaching them.\n\nSupported providers: Nextcloud, ownCloud, OpenCloud, OneDrive, Dropbox and Seafile.")),
                                     // Across from the heading: the services' marks
                                     // (picker order), with Add Account under them.
                                     #[wrap(Some)]
@@ -279,7 +279,7 @@ impl SimpleComponent for CloudAccounts {
                 let dialog = adw::MessageDialog::new(
                     parent.as_ref(),
                     Some(&i18n_f("Remove {name}?", &[("name", &name)])),
-                    Some(&i18n("Hylki forgets the account and its sign-in. Files already uploaded, and the links in messages you sent, stay where they are.")),
+                    Some(&i18n("Files already uploaded and links sent stay active on the provider's service.")),
                 );
                 dialog.add_response("cancel", &i18n("Cancel"));
                 dialog.add_response("remove", &i18n("Remove"));
@@ -543,10 +543,10 @@ fn build_editor(
     user.set_text(&account.user);
     let pass = adw::PasswordEntryRow::new();
     let code = adw::EntryRow::new();
-    code.set_title(&i18n("Two-step verification code, if the account uses it"));
+    code.set_title(&i18n("Two-step verification code (if used)"));
     code.set_input_purpose(gtk::InputPurpose::Digits);
     let seafile_hint = gtk::Label::new(Some(&i18n(
-        "Sign in with your Seafile password. If the account uses two-step verification, also enter the current code from your authenticator app: Hylki turns it into an API token once and keeps that instead of the password. A token obtained another way can be pasted in the password field.",
+        "Your Seafile password, and the current code if two-step verification is on. They are swapped once for an API token, which is kept instead. A token can also be pasted as the password.",
     )));
     seafile_hint.set_wrap(true);
     seafile_hint.set_xalign(0.0);
@@ -587,16 +587,16 @@ fn build_editor(
     let cloudflare = adw::SwitchRow::new();
     cloudflare.set_title(&i18n("Server is behind Cloudflare"));
     cloudflare.set_subtitle(&i18n(
-        "Cloudflare's proxy refuses a request over 100 MB, so bigger files are uploaded in 90 MB pieces the server puts back together. For a self-hosted server on a Cloudflare domain or tunnel.",
+        "For a self-hosted server behind Cloudflare: files over 100 MB go up in 90 MB pieces.",
     ));
     cloudflare.set_active(account.cloudflare);
     let expire = adw::SpinRow::with_range(0.0, 365.0, 1.0);
     expire.set_title(&i18n("Links expire after"));
-    expire.set_subtitle(&i18n("Days; 0 keeps the link indefinitely"));
+    expire.set_subtitle(&i18n("Days. 0 keeps links forever."));
     expire.set_value(account.expire_days as f64);
     let protect = adw::SwitchRow::new();
     protect.set_title(&i18n("Protect links with a password"));
-    protect.set_subtitle(&i18n("A download password is made for each file and shown to you, to pass on separately"));
+    protect.set_subtitle(&i18n("Each file gets its own password, shown to you to pass on."));
     protect.set_active(account.password);
     group.add(&kind);
     group.add(&name);
@@ -614,7 +614,7 @@ fn build_editor(
     let defaults = adw::PreferencesGroup::new();
     defaults.set_title(&i18n("Link defaults"));
     defaults.set_description(Some(&i18n(
-        "How share links from this account are made unless you choose otherwise for an email: the upload dialog in the composer shows these values and lets you change them for that upload alone.",
+        "Used unless you change them in the upload dialog for one email.",
     )));
     defaults.set_margin_top(28);
     defaults.add(&expire);
@@ -681,13 +681,13 @@ fn build_editor(
             }
             goa_row.set_sensitive(!listed.is_empty());
             let mut hint = if listed.is_empty() {
-                i18n("No Microsoft 365 account in GNOME Online Accounts yet. Add one under Settings, Online Accounts; OneDrive then signs in through it, and nothing more is needed here.")
+                i18n("No Microsoft 365 account in GNOME Online Accounts yet. Add one in Settings, Online Accounts.")
             } else {
-                i18n("OneDrive signs in through the GNOME Online Accounts account chosen above; there is no password to enter. An account marked Files is off still works here, but you may want to turn Files on for it under Settings, Online Accounts.")
+                i18n("OneDrive signs in through the online account above. No password needed.")
             };
             hint.push_str("\n\n");
             hint.push_str(&i18n(
-                "Uploads and plain share links work with any OneDrive. Link expiry and download passwords are a Microsoft 365 subscription or OneDrive for Business feature: on a free personal OneDrive the link is refused when either is set, so keep Links expire after at 0 and the password switch off there.",
+                "Link expiry and passwords need Microsoft 365 or OneDrive for Business. A free personal OneDrive refuses links with either set.",
             ));
             goa_hint.set_label(&hint);
             *goa_listed.borrow_mut() = listed;
@@ -754,8 +754,8 @@ fn build_editor(
             if goa {
                 fill_goa(k);
                 check.set_label(&i18n("Check Connection"));
-                expire.set_subtitle(&i18n("Days; 0 keeps the link indefinitely. Needs Microsoft 365 or OneDrive for Business"));
-                protect.set_subtitle(&i18n("A download password is made for each file and shown to you, to pass on separately. Needs Microsoft 365 or OneDrive for Business"));
+                expire.set_subtitle(&i18n("Days. 0 keeps links forever. Needs Microsoft 365 or OneDrive for Business."));
+                protect.set_subtitle(&i18n("Each file gets its own password, shown to you to pass on. Needs Microsoft 365 or OneDrive for Business."));
                 // A new OneDrive account starts with both off, so a free
                 // personal OneDrive works as it is.
                 if !editing {
@@ -768,34 +768,27 @@ fn build_editor(
                 }
                 return;
             }
-            expire.set_subtitle(&i18n("Days; 0 keeps the link indefinitely"));
+            expire.set_subtitle(&i18n("Days. 0 keeps links forever."));
             match k {
                 CloudKind::Nextcloud => {
                     user.set_title(&i18n("User name"));
                     pass.set_title(&if editing { i18n("App password (leave empty to keep)") } else { i18n("App password") });
-                    protect.set_subtitle(&i18n("A download password is made for each file and shown to you, to pass on separately"));
+                    protect.set_subtitle(&i18n("Each file gets its own password, shown to you to pass on."));
                     check.set_label(&i18n("Check Connection"));
                 }
                 CloudKind::Seafile => {
                     user.set_title(&i18n("E-mail"));
                     pass.set_title(&if editing { i18n("Password (leave empty to keep)") } else { i18n("Password") });
-                    protect.set_subtitle(&i18n("A download password is made for each file and shown to you, to pass on separately"));
+                    protect.set_subtitle(&i18n("Each file gets its own password, shown to you to pass on."));
                     check.set_label(&i18n("Check Connection"));
                 }
                 // Handled above, before the return.
                 CloudKind::OneDrive => {}
                 CloudKind::Dropbox => {
-                    protect.set_subtitle(&i18n("A download password is made for each file and shown to you, to pass on separately. Dropbox allows link passwords and expiry dates on paid plans only."));
+                    protect.set_subtitle(&i18n("Each file gets its own password, shown to you to pass on. Paid Dropbox plans only."));
                     check.set_label(&i18n("Connect with Dropbox…"));
                     app_key_hint.set_label(&i18n_f(
-                        "Dropbox only lets an app sign in when it is registered, so make one for yourself (it takes a minute and stays private):\n\
-                         1. Open dropbox.com/developers/apps, signed in to your Dropbox, and press Create app.\n\
-                         2. Choose Scoped access, then App folder (Hylki sees only its own folder under Apps) or Full Dropbox (uploads go to the folder named above).\n\
-                         3. Give the app a name that no one else has used, such as Hylki for your name, and press Create app.\n\
-                         4. On the Permissions tab, tick account_info.read, files.content.write and sharing.write, then press Submit.\n\
-                         5. On the Settings tab, under OAuth 2, add the redirect URI {uri} and press Add.\n\
-                         6. Copy the App key from the top of the Settings tab into the field above.\n\
-                         The app may stay in Development status; that allows your own account. Leave the field empty to use the app key this build was made with, when it has one.",
+                        "Dropbox needs an app registered to you:\n1. At dropbox.com/developers/apps, press Create app.\n2. Choose Scoped access, then App folder or Full Dropbox.\n3. Give it a name no one else has used and press Create app.\n4. On Permissions, tick account_info.read, files.content.write and sharing.write, then press Submit.\n5. On Settings, under OAuth 2, add the redirect URI {uri} and press Add.\n6. Copy the App key into the field above.\nDevelopment status is enough. Leave the field empty to use this build's own key, if it has one.",
                         &[("uri", &format!("http://localhost:{}/", crate::oauth::DROPBOX_REDIRECT_PORT))],
                     ));
                 }
@@ -997,13 +990,13 @@ fn build_editor(
                         // what it lacks: uploading and plain links work.
                         let terms = match (a.expiry_allowed(), a.password_allowed()) {
                             (false, false) => Some(i18n(
-                                "You can upload files and share plain links with this OneDrive. Link expiry and download passwords are not available on a free personal OneDrive (they need a Microsoft 365 subscription), so both are turned off for this account.",
+                                "Uploads and plain links work. Link expiry and passwords need a Microsoft 365 subscription, so both are off for this account.",
                             )),
                             (true, false) => Some(i18n(
-                                "You can upload files, share links and set an expiry with this OneDrive. Download passwords are not available on OneDrive for Business links, so that option is turned off for this account.",
+                                "Uploads, links and expiry work. OneDrive for Business links take no password, so that is off for this account.",
                             )),
                             (false, true) => Some(i18n(
-                                "You can upload files and share links with this OneDrive, with a download password. Link expiry is not available on it, so that option is turned off for this account.",
+                                "Uploads, links and passwords work. Link expiry is not available, so it is off for this account.",
                             )),
                             (true, true) => None,
                         };

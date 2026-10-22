@@ -19,7 +19,7 @@ pub fn build() -> adw::PreferencesPage {
     let service_group = adw::PreferencesGroup::new();
     service_group.set_title(&i18n("Translation"));
     service_group.set_description(Some(&i18n(
-        "Translate messages with a service you have an account with, under your own key. The text of a message you translate is sent to that service, and nothing is sent until you ask.",
+        "Uses a translation service under your own key. A message's text is sent only when you translate it.",
     )));
 
     let names: Vec<String> = Service::ALL.iter().map(|s| s.name()).collect();
@@ -45,7 +45,7 @@ pub fn build() -> adw::PreferencesPage {
 
     let check_row = adw::ActionRow::new();
     check_row.set_title(&i18n("Check the settings"));
-    check_row.set_subtitle(&i18n("Translates a greeting, to see that the service answers."));
+    check_row.set_subtitle(&i18n("Translates a greeting to test the service."));
     check_row.set_subtitle_lines(3);
     let check = gtk::Button::with_label(&i18n("Check"));
     check.set_valign(gtk::Align::Center);
@@ -71,7 +71,7 @@ pub fn build() -> adw::PreferencesPage {
     let offer_row = adw::SwitchRow::new();
     offer_row.set_title(&i18n("Offer to translate"));
     offer_row.set_subtitle(&i18n(
-        "Messages in another language show a Translate button. Which language a message is in is worked out on this computer.",
+        "Messages in another language show a Translate button. The language is detected on this computer.",
     ));
     offer_row.set_active(settings.borrow().offer);
     reading_group.add(&offer_row);
@@ -156,7 +156,7 @@ pub fn build() -> adw::PreferencesPage {
             save(&|s| s.service = service);
             shape(service);
             load_key(service);
-            check_row.set_subtitle(&i18n("Translates a greeting, to see that the service answers."));
+            check_row.set_subtitle(&i18n("Translates a greeting to test the service."));
         });
     }
     {

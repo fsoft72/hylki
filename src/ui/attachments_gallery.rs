@@ -329,7 +329,6 @@ impl Component for AttachmentsGallery {
 
                 gtk::Stack {
                     set_vexpand: true,
-                    set_transition_type: gtk::StackTransitionType::Crossfade,
                     #[watch]
                     set_visible_child_name: model.page(),
 

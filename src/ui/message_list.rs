@@ -10,7 +10,7 @@ use relm4::prelude::*;
 use crate::models::{Message, ThreadSummary};
 use crate::ui::context_menu::{show_context_menu_popover, MenuEntry};
 use crate::i18n::i18n;
-use crate::ui::message_row::{DaySection, RowData, RowMeta, RowShared};
+use crate::ui::message_row::{DaySection, RowData, RowMeta, RowShared, Slot};
 pub use crate::ui::message_row::{tag_menu_entries, RowAction};
 
 /// The message-list pane's floor: exactly what a conversation-member card
@@ -302,9 +302,72 @@ fn unasked_threads(
 /// window, so covering the whole mailbox costs no more than covering a day of
 /// it; what a conversation costs to *open* is bounded separately, by
 /// `THREAD_MEMBER_LIMIT`.
+/// What working out conversations reads of each message, to take to a
+/// thread.
+fn thread_inputs(source: &[Rc<Message>]) -> Vec<ThreadInput> {
+    source
+        .iter()
+        .map(|m| ThreadInput {
+            account_id: m.account_id,
+            folder_id: m.folder_id,
+            id: m.id,
+            uid: m.uid,
+            message_id: m.message_id.clone(),
+            references: m.references.clone(),
+        })
+        .collect()
+}
+
+/// What `compute_rows` hands the view: the window's rows, whether they go
+/// under date headings, and whether a conversation is opened out.
+struct Built {
+    rows: Vec<Rc<RowData>>,
+    by_date: bool,
+    any_expanded: bool,
+}
+
+/// A list as a rebuild left it (see `MessageList::keep_view`).
+struct ViewSnapshot {
+    key: u64,
+    fp: u64,
+    sig: u64,
+    all: Vec<Rc<Message>>,
+    threads: Option<std::rc::Rc<SourceThreads>>,
+    rows: Vec<Rc<RowData>>,
+    shown: Vec<Rc<Message>>,
+    tail: Vec<Rc<RowData>>,
+    groups: std::collections::HashMap<(u32, String), Vec<Rc<Message>>>,
+    msg_thread: std::collections::HashMap<(u32, u32), (u32, String)>,
+    thread_members: std::collections::HashMap<(u32, String), Vec<(u32, u32)>>,
+    nested: std::collections::HashMap<(u32, u32), Rc<Message>>,
+    listed_folders: std::collections::HashSet<(u32, u32)>,
+    total_matches: usize,
+    thread_drag: crate::ui::message_row::ThreadDragKeys,
+    window: usize,
+}
+
+/// How many views the list keeps as built: the unified rows built ahead
+/// after a start, and the views visited since. Each holds its messages,
+/// which for a large Archive is tens of megabytes.
+pub const KEPT_VIEWS: usize = 8;
+
+/// The most messages a view may hold and still be kept as built, or built
+/// ahead. A kept view holds its own copy of every message and its
+/// conversation maps besides: an 81,000-message unified Archive came to
+/// some 150 MB for a click made once a session, if at all (#504). Larger
+/// views are built at each visit, the newest first.
+pub const KEEP_AT_MOST: usize = 20_000;
+
+/// Free `held` once the main loop is idle, not inside the pass that let go
+/// of it.
+fn later_drop<T: 'static>(held: T) {
+    let mut held = Some(held);
+    glib::idle_add_local_once(move || drop(held.take()));
+}
+
 /// How many rows a large list puts on screen at once, and adds each time it
 /// is scrolled near the end of them.
-const LIST_WINDOW: usize = 1200;
+const LIST_WINDOW: usize = 300;
 
 /// What working out conversations reads of a message: from the message
 /// itself, or from the copy of just these fields that a large list hands to
@@ -545,6 +608,19 @@ pub struct MessageList {
     /// copy, fresh thread links, a view switch's flag changes) collapse into
     /// one rebuild instead of one each.
     rebuild_queued: Option<bool>,
+    /// The view on show, as the app named it (`SetView`), and its content's
+    /// fingerprint: a unified view is kept as built when left, and shown
+    /// again from that if nothing in it changed.
+    view_key: Option<u64>,
+    view_fp: u64,
+    views: std::collections::VecDeque<ViewSnapshot>,
+    /// A kept view to show at the next queued rebuild, in place of one.
+    pending_restore: Option<ViewSnapshot>,
+    /// A view being built ahead (`Prebuild`) while its conversations are
+    /// worked out off the main thread: its number, key, fingerprint and
+    /// messages.
+    prebuild: Option<(u64, u64, u64, Vec<Rc<Message>>)>,
+    prebuild_gen: u64,
     /// Another view was opened: its first rebuild waits for a frame, and
     /// fills the rows for the new look in passing (#401).
     switched: bool,
@@ -582,6 +658,13 @@ pub struct MessageList {
     search_closed_at: Option<std::time::Instant>,
     /// The search toolbar never hides (#446): closing only clears it.
     search_pinned: bool,
+    /// The search field and the bulk bar open under the rows instead of
+    /// above them (#496).
+    search_bottom: bool,
+    bulk_bottom: bool,
+    /// The two bars and the boxes above and below the rows they move
+    /// between.
+    bars: Option<BarSlots>,
     /// The rows, in order: what the model shows, one message each.
     shown: Vec<Rc<Message>>,
     /// Total messages matching the current filter.
@@ -927,11 +1010,22 @@ impl SearchScope {
     }
 }
 
+/// The search field's and the bulk bar's revealers, and the boxes above
+/// and below the rows that hold them (#496).
+struct BarSlots {
+    top: gtk::Box,
+    bottom: gtk::Box,
+    search: gtk::Revealer,
+    bulk: gtk::Revealer,
+}
+
 /// The search scope's button and popover (#374): each scope by name, with
 /// an info button that tells what it searches.
 struct ScopePicker {
     button: gtk::MenuButton,
     label: gtk::Label,
+    /// Follows the way the popover opens (#496).
+    arrow: gtk::Image,
     radios: Vec<(SearchScope, gtk::CheckButton)>,
     /// Each scope's info button, in the same order.
     infos: Vec<gtk::MenuButton>,
@@ -945,7 +1039,8 @@ impl ScopePicker {
         label.set_ellipsize(gtk::pango::EllipsizeMode::End);
         let face = gtk::Box::new(gtk::Orientation::Horizontal, 6);
         face.append(&label);
-        face.append(&gtk::Image::from_icon_name("pan-down-symbolic"));
+        let arrow = gtk::Image::from_icon_name("pan-down-symbolic");
+        face.append(&arrow);
         button.set_child(Some(&face));
 
         let popover = gtk::Popover::new();
@@ -993,7 +1088,7 @@ impl ScopePicker {
         }
         popover.set_child(Some(&list));
         button.set_popover(Some(&popover));
-        Self { button: button.clone(), label, radios, infos }
+        Self { button: button.clone(), label, arrow, radios, infos }
     }
 
     fn sync(&self, scope: SearchScope) {
@@ -1196,6 +1291,19 @@ pub enum MessageListInput {
         contacts: Option<std::sync::Arc<std::collections::HashSet<String>>>,
     },
     SetMessages { messages: Vec<Message> },
+    /// The view now on show (`None` for any other), and its content's
+    /// fingerprint. With `restore`, the list shows the view as kept when it
+    /// was last left (the app checked with `has_view`) and no messages
+    /// follow.
+    SetView { key: Option<u64>, fp: u64, restore: bool },
+    /// The fingerprint of the content about to be set for the view on show.
+    SetViewFp(u64),
+    /// Build a view that is not on show and keep it, so its first visit
+    /// is shown as kept: the unified rows, once a start has read their
+    /// folders.
+    Prebuild { key: u64, fp: u64, messages: Vec<Message> },
+    /// The conversations of the view being built ahead.
+    PrebuildThreads { gen: u64, threads: Box<SourceThreads> },
     /// Merge more indexed messages into the current list (background backfill),
     /// preserving the current search query and view.
     AppendMessages { messages: Vec<Message> },
@@ -1300,6 +1408,9 @@ pub enum MessageListInput {
     SetColumnScroll(bool),
     /// Keep the search toolbar open (#446).
     SetSearchPinned(bool),
+    /// Where the search field and the bulk bar open: under the rows when
+    /// true, above them when false (#496).
+    SetBarsPlacement { search_bottom: bool, bulk_bottom: bool },
     /// The rows are this wide now.
     PaneWidth(i32),
     /// Each account's name for the Account column, and which accounts are
@@ -1462,6 +1573,9 @@ pub enum MessageListInput {
 
 #[derive(Debug)]
 pub enum MessageListOutput {
+    /// The view the app asked to be shown as kept was not: send its
+    /// messages.
+    ViewMissed,
     /// A message was selected. `thread` holds the whole conversation (newest
     /// first) when the newest/head row was chosen, so the reader can show it as a
     /// scrollable conversation; otherwise it's just `[message]`.
@@ -1471,8 +1585,10 @@ pub enum MessageListOutput {
     /// only that message — so the reader must not go looking for its siblings.
     Selected { message: Message, thread: Vec<Message>, solo: bool },
     /// Every selected message, whenever that changes — the reader outlines the
-    /// matching cards.
-    SelectionKeys(Vec<(u32, u32)>),
+    /// matching cards. Each comes with its folder: a view of several folders
+    /// can hold one UID twice in an account, and the app has to act on the
+    /// row selected, not another folder's message (#481).
+    SelectionKeys(Vec<Slot>),
     /// Gmail's o or Enter opened a row (#392); `already_open` when it was
     /// the one already in the reader, so no new selection follows.
     OpenedByKey { already_open: bool },
@@ -1542,175 +1658,13 @@ impl SimpleComponent for MessageList {
             set_orientation: gtk::Orientation::Vertical,
             add_css_class: "message-list-pane",
 
+            // The bars set to open above the rows (#496): `place_bars`
+            // moves the search field and the bulk bar between this and
+            // the foot.
+            #[name = "bars_top"]
             gtk::Box {
                 add_css_class: "list-toolbar",
                 set_orientation: gtk::Orientation::Vertical,
-                set_spacing: 8,
-
-                // The folder name, count and sort control live in the pane's
-                // header bar now (app.rs) — only search needs this toolbar,
-                // and it stays hidden until asked for (#102).
-                gtk::Revealer {
-                    set_transition_type: gtk::RevealerTransitionType::SlideDown,
-                    #[watch]
-                    set_reveal_child: model.search_open || model.search_pinned,
-
-                gtk::Box {
-                    set_spacing: 6,
-                    add_css_class: "list-search-row",
-
-                    #[name = "search_entry"]
-                    gtk::SearchEntry {
-                        set_hexpand: true,
-                        // Its own default minimum is wider than the rows need.
-                        set_width_chars: 3,
-                        #[watch]
-                        set_placeholder_text: Some(model.search_placeholder().as_str()),
-                        connect_search_changed[sender] => move |entry| {
-                            sender.input(MessageListInput::Search(entry.text().to_string()));
-                        },
-                        // Esc closes (SearchEntry's own stop signal).
-                        connect_stop_search[sender] => move |_| {
-                            sender.input(MessageListInput::CloseSearch);
-                        },
-                        // Leaving an empty entry closes too.
-                        add_controller = gtk::EventControllerFocus {
-                            connect_leave[sender] => move |ctl| {
-                                let Some(entry) = ctl.widget().and_downcast::<gtk::SearchEntry>() else { return };
-                                let sender = sender.clone();
-                                crate::ui::close_if_focus_left_row(&entry, move || sender.input(MessageListInput::CloseSearch));
-                            },
-                        },
-                    },
-
-                    // The scope picker; its popover is built in `init`
-                    // (`ScopePicker`).
-                    #[name = "scope_button"]
-                    gtk::MenuButton {
-                        set_valign: gtk::Align::Center,
-                        set_tooltip_text: Some(i18n("Choose which folders to search").as_str()),
-                    },
-                },
-                },
-            },
-
-            // Bulk-action bar, revealed while more than one message is selected.
-            gtk::Revealer {
-                set_transition_type: gtk::RevealerTransitionType::SlideDown,
-                #[watch]
-                set_reveal_child: model.selection_count > 1 || (model.checking && model.selection_count > 0),
-
-                // A revealer sliding *down* still reserves its child's width while
-                // collapsed, so this bar of seven buttons was setting the whole
-                // pane's minimum width — 340px — however narrow the rows became
-                // (#29). Scrolled, its minimum is nothing and its natural size is
-                // unchanged, so it only clips when the list is genuinely too narrow
-                // to hold it.
-                gtk::ScrolledWindow {
-                    set_vscrollbar_policy: gtk::PolicyType::Never,
-                    set_hscrollbar_policy: gtk::PolicyType::External,
-                    set_propagate_natural_width: true,
-                    set_propagate_natural_height: true,
-
-                gtk::Box {
-                    add_css_class: "bulk-bar",
-                    set_spacing: 2,
-                    // The buttons never take focus from the list: the
-                    // selection keeps its focused highlight and the
-                    // single-key shortcuts keep working after a click.
-
-                    gtk::Label {
-                        #[watch]
-                        set_label: &format!("{} selected", model.selection_count),
-                        set_hexpand: true,
-                        set_halign: gtk::Align::Start,
-                        set_ellipsize: gtk::pango::EllipsizeMode::End,
-                        add_css_class: "bulk-count",
-                    },
-                    // One toggle, like the star: it shows what a click will
-                    // do. Drafts are neither read nor unread: it goes when
-                    // the list shows them.
-                    gtk::Button {
-                        #[watch]
-                        set_icon_name: if model.selection_any_unread() {
-                            "hylki-mail-read-symbolic"
-                        } else {
-                            "mail-unread-symbolic"
-                        },
-                        #[watch]
-                        set_tooltip_text: Some(if model.selection_any_unread() { i18n("Mark as Read") } else { i18n("Mark as Unread") }.as_str()),
-                        add_css_class: "flat",
-                        set_focus_on_click: false,
-                        #[watch]
-                        set_visible: !model.in_drafts,
-                        connect_clicked => MessageListInput::BulkToggleRead,
-                    },
-                    // Mapped to Unflag by the Bulk handler once every
-                    // selected message is starred (#313).
-                    gtk::Button {
-                        #[watch]
-                        set_icon_name: if model.selection_all_starred() {
-                            "hylki-non-starred-symbolic"
-                        } else {
-                            "starred-symbolic"
-                        },
-                        #[watch]
-                        set_tooltip_text: Some(if model.selection_all_starred() { i18n("Remove Star") } else { i18n("Star") }.as_str()),
-                        add_css_class: "flat",
-                        set_focus_on_click: false,
-                        connect_clicked => MessageListInput::Bulk(BulkAction::Flag),
-                    },
-                    // Only once a tag exists, like the row menu's Tags.
-                    #[local_ref]
-                    bulk_tag_btn -> gtk::Button {
-                        set_icon_name: "tag-outline-symbolic",
-                        set_tooltip_text: Some(i18n("Tags").as_str()),
-                        add_css_class: "flat",
-                        set_focus_on_click: false,
-                        #[watch]
-                        set_visible: !model.shared.tags.borrow().is_empty(),
-                        connect_clicked => MessageListInput::BulkTagMenu,
-                    },
-                    gtk::Button {
-                        set_icon_name: "mail-archive-symbolic",
-                        set_tooltip_text: Some(i18n("Archive").as_str()),
-                        add_css_class: "flat",
-                        set_focus_on_click: false,
-                        connect_clicked => MessageListInput::Bulk(BulkAction::Archive),
-                    },
-                    gtk::Button {
-                        #[watch]
-                        set_icon_name: if model.in_junk {
-                            "mail-mark-notjunk-symbolic"
-                        } else {
-                            "mail-mark-junk-symbolic"
-                        },
-                        #[watch]
-                        set_tooltip_text: Some(if model.in_junk { i18n("Not Spam") } else { i18n("Mark as Spam") }.as_str()),
-                        add_css_class: "flat",
-                        set_focus_on_click: false,
-                        // Mapped to NotSpam in Junk by the Bulk handler.
-                        connect_clicked => MessageListInput::Bulk(BulkAction::Spam),
-                    },
-                    gtk::Button {
-                        set_icon_name: "user-trash-symbolic",
-                        set_tooltip_text: Some(i18n("Delete").as_str()),
-                        add_css_class: "flat",
-                        set_focus_on_click: false,
-                        connect_clicked => MessageListInput::Bulk(BulkAction::Delete),
-                    },
-                    gtk::Separator {
-                        set_orientation: gtk::Orientation::Vertical,
-                    },
-                    gtk::Button {
-                        set_icon_name: "edit-clear-symbolic",
-                        set_tooltip_text: Some(i18n("Clear selection").as_str()),
-                        add_css_class: "flat",
-                        set_focus_on_click: false,
-                        connect_clicked => MessageListInput::ClearSelection,
-                    },
-                },
-                },
             },
 
             // The single line's column headings (#334), filled by
@@ -1807,6 +1761,180 @@ impl SimpleComponent for MessageList {
                     set_visible: model.is_empty_state(),
                 },
             },
+
+            // The bars set to open below the rows (#496): one coming up
+            // shrinks the list from its foot and never moves the rows being
+            // read or clicked, as the status bar does (#433). The view
+            // builds both bars here; `place_bars` puts them where the
+            // settings say.
+            #[name = "bars_bottom"]
+            gtk::Box {
+                add_css_class: "list-footer",
+                set_orientation: gtk::Orientation::Vertical,
+
+                // Bulk-action bar, revealed while more than one message is selected.
+                #[name = "bulk_revealer"]
+                gtk::Revealer {
+                    #[watch]
+                    set_reveal_child: model.selection_count > 1 || (model.checking && model.selection_count > 0),
+
+                    // A collapsed revealer still reserves its child's width,
+                    // so this bar of seven buttons was setting the whole
+                    // pane's minimum width — 340px — however narrow the rows
+                    // became (#29). Scrolled, its minimum is nothing and its
+                    // natural size is unchanged, so it only clips when the
+                    // list is genuinely too narrow to hold it.
+                    gtk::ScrolledWindow {
+                        set_vscrollbar_policy: gtk::PolicyType::Never,
+                        set_hscrollbar_policy: gtk::PolicyType::External,
+                        set_propagate_natural_width: true,
+                        set_propagate_natural_height: true,
+
+                    gtk::Box {
+                        add_css_class: "bulk-bar",
+                        set_spacing: 2,
+                        // The buttons never take focus from the list: the
+                        // selection keeps its focused highlight and the
+                        // single-key shortcuts keep working after a click.
+
+                        gtk::Label {
+                            #[watch]
+                            set_label: &format!("{} selected", model.selection_count),
+                            set_hexpand: true,
+                            set_halign: gtk::Align::Start,
+                            set_ellipsize: gtk::pango::EllipsizeMode::End,
+                            add_css_class: "bulk-count",
+                        },
+                        // One toggle, like the star: it shows what a click will
+                        // do. Drafts are neither read nor unread: it goes when
+                        // the list shows them.
+                        gtk::Button {
+                            #[watch]
+                            set_icon_name: if model.selection_any_unread() {
+                                "hylki-mail-read-symbolic"
+                            } else {
+                                "mail-unread-symbolic"
+                            },
+                            #[watch]
+                            set_tooltip_text: Some(if model.selection_any_unread() { i18n("Mark as Read") } else { i18n("Mark as Unread") }.as_str()),
+                            add_css_class: "flat",
+                            set_focus_on_click: false,
+                            #[watch]
+                            set_visible: !model.in_drafts,
+                            connect_clicked => MessageListInput::BulkToggleRead,
+                        },
+                        // Mapped to Unflag by the Bulk handler once every
+                        // selected message is starred (#313).
+                        gtk::Button {
+                            #[watch]
+                            set_icon_name: if model.selection_all_starred() {
+                                "hylki-non-starred-symbolic"
+                            } else {
+                                "starred-symbolic"
+                            },
+                            #[watch]
+                            set_tooltip_text: Some(if model.selection_all_starred() { i18n("Remove Star") } else { i18n("Star") }.as_str()),
+                            add_css_class: "flat",
+                            set_focus_on_click: false,
+                            connect_clicked => MessageListInput::Bulk(BulkAction::Flag),
+                        },
+                        // Only once a tag exists, like the row menu's Tags.
+                        #[local_ref]
+                        bulk_tag_btn -> gtk::Button {
+                            set_icon_name: "tag-outline-symbolic",
+                            set_tooltip_text: Some(i18n("Tags").as_str()),
+                            add_css_class: "flat",
+                            set_focus_on_click: false,
+                            #[watch]
+                            set_visible: !model.shared.tags.borrow().is_empty(),
+                            connect_clicked => MessageListInput::BulkTagMenu,
+                        },
+                        gtk::Button {
+                            set_icon_name: "mail-archive-symbolic",
+                            set_tooltip_text: Some(i18n("Archive").as_str()),
+                            add_css_class: "flat",
+                            set_focus_on_click: false,
+                            connect_clicked => MessageListInput::Bulk(BulkAction::Archive),
+                        },
+                        gtk::Button {
+                            #[watch]
+                            set_icon_name: if model.in_junk {
+                                "mail-mark-notjunk-symbolic"
+                            } else {
+                                "mail-mark-junk-symbolic"
+                            },
+                            #[watch]
+                            set_tooltip_text: Some(if model.in_junk { i18n("Not Spam") } else { i18n("Mark as Spam") }.as_str()),
+                            add_css_class: "flat",
+                            set_focus_on_click: false,
+                            // Mapped to NotSpam in Junk by the Bulk handler.
+                            connect_clicked => MessageListInput::Bulk(BulkAction::Spam),
+                        },
+                        gtk::Button {
+                            set_icon_name: "user-trash-symbolic",
+                            set_tooltip_text: Some(i18n("Delete").as_str()),
+                            add_css_class: "flat",
+                            set_focus_on_click: false,
+                            connect_clicked => MessageListInput::Bulk(BulkAction::Delete),
+                        },
+                        gtk::Separator {
+                            set_orientation: gtk::Orientation::Vertical,
+                        },
+                        gtk::Button {
+                            set_icon_name: "edit-clear-symbolic",
+                            set_tooltip_text: Some(i18n("Clear selection").as_str()),
+                            add_css_class: "flat",
+                            set_focus_on_click: false,
+                            connect_clicked => MessageListInput::ClearSelection,
+                        },
+                    },
+                    },
+                },
+
+                // Search stays hidden until asked for (#102).
+                #[name = "search_revealer"]
+                gtk::Revealer {
+                    #[watch]
+                    set_reveal_child: model.search_open || model.search_pinned,
+
+                gtk::Box {
+                    set_spacing: 6,
+                    add_css_class: "list-search-row",
+
+                    #[name = "search_entry"]
+                    gtk::SearchEntry {
+                        set_hexpand: true,
+                        // Its own default minimum is wider than the rows need.
+                        set_width_chars: 3,
+                        #[watch]
+                        set_placeholder_text: Some(model.search_placeholder().as_str()),
+                        connect_search_changed[sender] => move |entry| {
+                            sender.input(MessageListInput::Search(entry.text().to_string()));
+                        },
+                        // Esc closes (SearchEntry's own stop signal).
+                        connect_stop_search[sender] => move |_| {
+                            sender.input(MessageListInput::CloseSearch);
+                        },
+                        // Leaving an empty entry closes too.
+                        add_controller = gtk::EventControllerFocus {
+                            connect_leave[sender] => move |ctl| {
+                                let Some(entry) = ctl.widget().and_downcast::<gtk::SearchEntry>() else { return };
+                                let sender = sender.clone();
+                                crate::ui::close_if_focus_left_row(&entry, move || sender.input(MessageListInput::CloseSearch));
+                            },
+                        },
+                    },
+
+                    // The scope picker; its popover is built in `init`
+                    // (`ScopePicker`).
+                    #[name = "scope_button"]
+                    gtk::MenuButton {
+                        set_valign: gtk::Align::Center,
+                        set_tooltip_text: Some(i18n("Choose which folders to search").as_str()),
+                    },
+                },
+                },
+            },
         }
     }
 
@@ -1822,6 +1950,7 @@ impl SimpleComponent for MessageList {
         );
         shared.view.set(Some(&list_view));
         Self::wire_list(&list_view, &shared, sender.input_sender());
+        crate::ui::message_row::make_spare_rows(&shared);
 
         let color_provider = crate::ui::DisplayCss::new();
 
@@ -1830,6 +1959,12 @@ impl SimpleComponent for MessageList {
             shared,
             input: sender.input_sender().clone(),
             rebuild_queued: None,
+            view_key: None,
+            view_fp: 0,
+            views: std::collections::VecDeque::new(),
+            pending_restore: None,
+            prebuild: None,
+            prebuild_gen: 0,
             switched: false,
             look_stale: Default::default(),
             pending_select: None,
@@ -1843,6 +1978,9 @@ impl SimpleComponent for MessageList {
             search_open: false,
             search_closed_at: None,
             search_pinned: false,
+            search_bottom: false,
+            bulk_bottom: false,
+            bars: None,
             shown: Vec::new(),
             total_matches: 0,
             index_complete: true,
@@ -1988,8 +2126,15 @@ impl SimpleComponent for MessageList {
         }
         model.sync_look();
         model.search_entry = Some(widgets.search_entry.clone());
+        model.bars = Some(BarSlots {
+            top: widgets.bars_top.clone(),
+            bottom: widgets.bars_bottom.clone(),
+            search: widgets.search_revealer.clone(),
+            bulk: widgets.bulk_revealer.clone(),
+        });
 
         model.scope_picker = Some(ScopePicker::new(&widgets.scope_button, sender.input_sender()));
+        model.place_bars();
 
         schedule_midnight_refresh(&sender);
 
@@ -1998,7 +2143,54 @@ impl SimpleComponent for MessageList {
 
     fn update(&mut self, msg: Self::Input, sender: ComponentSender<Self>) {
         match msg {
+            MessageListInput::SetView { key, fp, restore } => {
+                let kept = if restore { self.take_view(key, fp) } else { None };
+                self.trim_views();
+                self.view_key = key;
+                self.view_fp = fp;
+                match kept {
+                    Some(snap) => {
+                        self.pending_restore = Some(snap);
+                        self.queue_rebuild(false);
+                    }
+                    None if restore => {
+                        let _ = sender.output(MessageListOutput::ViewMissed);
+                    }
+                    None => {}
+                }
+            }
+            MessageListInput::SetViewFp(fp) => self.view_fp = fp,
+            MessageListInput::Prebuild { key, fp, messages } => {
+                if self.view_key == Some(key) || self.has_view(key, fp) || messages.len() > KEEP_AT_MOST {
+                    return;
+                }
+                let all: Vec<Rc<Message>> = messages.into_iter().map(Rc::new).collect();
+                self.prebuild_gen += 1;
+                let gen = self.prebuild_gen;
+                if !self.threading {
+                    self.prebuild_view(key, fp, all, None);
+                    return;
+                }
+                let input = thread_inputs(&all);
+                let links = self.thread_links.clone();
+                let sender = self.input.clone();
+                self.prebuild = Some((gen, key, fp, all));
+                std::thread::spawn(move || {
+                    let threads = source_threads_of(&input, &links, false);
+                    let _ = sender.send(MessageListInput::PrebuildThreads { gen, threads: Box::new(threads) });
+                });
+            }
+            MessageListInput::PrebuildThreads { gen, threads } => {
+                if let Some((g, key, fp, all)) = self.prebuild.take() {
+                    if g == gen {
+                        self.prebuild_view(key, fp, all, Some(Rc::new(*threads)));
+                    } else {
+                        self.prebuild = Some((g, key, fp, all));
+                    }
+                }
+            }
             MessageListInput::SetMessages { messages } => {
+                self.pending_restore = None;
                 let t = std::time::Instant::now();
                 let n = messages.len();
                 self.all = messages.into_iter().map(Rc::new).collect();
@@ -2011,6 +2203,7 @@ impl SimpleComponent for MessageList {
                 tracing::debug!("list: set {n} messages in {:?}", t.elapsed());
             }
             MessageListInput::AppendMessages { messages } => {
+                self.pending_restore = None;
                 // Grow the searchable index in place. Dedup by (account, uid) since
                 // UIDs collide across accounts in the unified inbox.
                 let existing: std::collections::HashSet<(u32, u32)> =
@@ -2028,6 +2221,7 @@ impl SimpleComponent for MessageList {
                 }
             }
             MessageListInput::SetLoading => {
+                self.pending_restore = None;
                 self.all.clear();
                 self.drop_threads();
                 self.loaded = false;
@@ -2038,6 +2232,9 @@ impl SimpleComponent for MessageList {
                 self.queue_rebuild(false);
             }
             MessageListInput::ResetPaging => {
+                // The view being left is kept as built, to come back to.
+                self.keep_view();
+                self.view_key = None;
                 // Folder switch: drop any active search, scrolled to the top.
                 self.switched = true;
                 self.window = LIST_WINDOW;
@@ -2095,7 +2292,10 @@ impl SimpleComponent for MessageList {
             MessageListInput::RunQueuedRebuild => {
                 self.switched = false;
                 if let Some(preserve) = self.rebuild_queued.take() {
-                    self.rebuild();
+                    match self.pending_restore.take() {
+                        Some(snap) => self.restore_view(snap),
+                        None => self.rebuild(),
+                    }
                     if !preserve {
                         self.scroll_top();
                     }
@@ -2481,7 +2681,8 @@ impl SimpleComponent for MessageList {
                 sender.input(MessageListInput::SelectionChanged);
             }
             MessageListInput::SelectionChanged => {
-                let keys = self.keys_at(&self.selected_positions());
+                let positions = self.selected_positions();
+                let keys = self.keys_at(&positions);
                 self.selection_count = keys.len();
                 // Set from the reader, which is already showing these messages:
                 // mirror the selection but leave the reader alone. Reporting it
@@ -2501,7 +2702,7 @@ impl SimpleComponent for MessageList {
                 if !keys.is_empty() {
                     self.late_select = None;
                 }
-                let _ = sender.output(MessageListOutput::SelectionKeys(keys.clone()));
+                let _ = sender.output(MessageListOutput::SelectionKeys(self.slots_at(&positions)));
                 if self.checking {
                     // Checked rows are not opened, one or many (#392).
                     self.selected_id = None;
@@ -2954,6 +3155,13 @@ impl SimpleComponent for MessageList {
                 }
             }
             MessageListInput::RefreshHeadings => self.sync_headings(),
+            MessageListInput::SetBarsPlacement { search_bottom, bulk_bottom } => {
+                if (self.search_bottom, self.bulk_bottom) != (search_bottom, bulk_bottom) {
+                    self.search_bottom = search_bottom;
+                    self.bulk_bottom = bulk_bottom;
+                    self.place_bars();
+                }
+            }
             MessageListInput::SetSearchPinned(on) => {
                 self.search_pinned = on;
                 // Unpinned, it stays only while it holds a search.
@@ -3127,7 +3335,7 @@ impl SimpleComponent for MessageList {
                 }
                 if self.checking {
                     self.selection_count = self.selected_ids.len();
-                    let _ = sender.output(MessageListOutput::SelectionKeys(self.selected_ids.clone()));
+                    let _ = sender.output(MessageListOutput::SelectionKeys(self.slots_at(&self.selected_positions())));
                     let _ = sender.output(MessageListOutput::Checked(Some(self.selection_count)));
                 }
 
@@ -3244,7 +3452,7 @@ impl SimpleComponent for MessageList {
                 }
                 self.selection_count = self.selected_ids.len();
                 if self.checking {
-                    let _ = sender.output(MessageListOutput::SelectionKeys(self.selected_ids.clone()));
+                    let _ = sender.output(MessageListOutput::SelectionKeys(self.slots_at(&self.selected_positions())));
                     let _ = sender.output(MessageListOutput::Checked(Some(self.selection_count)));
                 }
                 // Keep the header count honest; no rebuild follows.
@@ -3454,8 +3662,8 @@ pub struct SelectionProbe {
 }
 
 impl SelectionProbe {
-    /// `(account_id, id)` of each selected row, in list order.
-    pub fn keys(&self) -> Vec<(u32, u32)> {
+    /// Where each selected row's message sits, in list order.
+    pub fn slots(&self) -> Vec<Slot> {
         let set = self.selection.selection();
         let Some((iter, first)) = gtk::BitsetIter::init_first(&set) else {
             return Vec::new();
@@ -3463,7 +3671,7 @@ impl SelectionProbe {
         std::iter::once(first)
             .chain(iter)
             .filter_map(|p| self.model.row(p as usize))
-            .map(|r| (r.msg.account_id, r.msg.id))
+            .map(|r| thread_slot(&r.msg))
             .collect()
     }
 }
@@ -3484,6 +3692,36 @@ impl MessageList {
             (self.shown.len(), self.shown.len() * std::mem::size_of::<RowData>()),
             messages_bytes(self.search_pool.iter().map(|m| &**m)),
         ]
+    }
+
+    /// The views kept as built: how many, their messages and bytes (records
+    /// not shared with the view on show), and what their conversation maps
+    /// add on top.
+    pub fn kept_view_stats(&self) -> (usize, (usize, usize), usize) {
+        use crate::memory_report::message_bytes;
+        let mut seen = std::collections::HashSet::new();
+        for m in &self.all {
+            seen.insert(Rc::as_ptr(m));
+        }
+        let (mut n, mut bytes, mut maps) = (0, 0, 0);
+        let key = |s: &String| 8 + std::mem::size_of::<String>() + s.len();
+        for v in &self.views {
+            for m in &v.all {
+                if seen.insert(Rc::as_ptr(m)) {
+                    n += 1;
+                    bytes += message_bytes(m);
+                }
+            }
+            if let Some(t) = &v.threads {
+                maps += t.keys.values().map(|(_, s)| 12 + key(s)).sum::<usize>();
+                maps += t.members.iter().map(|((_, s), m)| key(s) + 24 + m.len() * 8).sum::<usize>();
+            }
+            maps += v.groups.iter().map(|((_, s), m)| key(s) + 24 + m.len() * 8).sum::<usize>();
+            maps += v.msg_thread.values().map(|(_, s)| 8 + key(s)).sum::<usize>();
+            maps += v.thread_members.iter().map(|((_, s), m)| key(s) + 24 + m.len() * 8).sum::<usize>();
+            maps += (v.rows.len() + v.tail.len()) * std::mem::size_of::<RowData>();
+        }
+        (self.views.len(), (n, bytes), maps)
     }
 
     /// Build and pop up the right-click menu for `msg` at the click location.
@@ -3906,6 +4144,39 @@ impl MessageList {
         !self.index_complete && (self.at_bottom || self.shown.is_empty())
     }
 
+    /// Put the search field and the bulk bar above or under the rows, as
+    /// set (#496). Sharing a side, the search field is the outer one, so
+    /// a selection coming and going never moves it.
+    fn place_bars(&self) {
+        let Some(bars) = &self.bars else { return };
+        for revealer in [&bars.search, &bars.bulk] {
+            if let Some(parent) = revealer.parent().and_downcast::<gtk::Box>() {
+                parent.remove(revealer);
+            }
+        }
+        let slide = |bottom: bool| {
+            if bottom { gtk::RevealerTransitionType::SlideUp } else { gtk::RevealerTransitionType::SlideDown }
+        };
+        bars.search.set_transition_type(slide(self.search_bottom));
+        bars.bulk.set_transition_type(slide(self.bulk_bottom));
+        if !self.search_bottom {
+            bars.top.append(&bars.search);
+        }
+        if self.bulk_bottom {
+            bars.bottom.append(&bars.bulk);
+        } else {
+            bars.top.append(&bars.bulk);
+        }
+        if self.search_bottom {
+            bars.bottom.append(&bars.search);
+        }
+        if let Some(picker) = &self.scope_picker {
+            // The scope menu opens toward the rows.
+            picker.button.set_direction(if self.search_bottom { gtk::ArrowType::Up } else { gtk::ArrowType::Down });
+            picker.arrow.set_icon_name(Some(if self.search_bottom { "pan-up-symbolic" } else { "pan-down-symbolic" }));
+        }
+    }
+
     /// Whether to show the empty-folder placeholder: the folder has loaded,
     /// nothing is in it, no search is filtering it, and no more rows are on
     /// their way (the loading indicator covers that state instead).
@@ -4124,6 +4395,10 @@ impl MessageList {
         positions.iter().filter_map(|&p| self.shown.get(p).map(|m| (m.account_id, m.id))).collect()
     }
 
+    fn slots_at(&self, positions: &[usize]) -> Vec<Slot> {
+        positions.iter().filter_map(|&p| self.shown.get(p).map(|m| thread_slot(m))).collect()
+    }
+
     /// Select exactly these rows, telling GTK only if that changes anything.
     fn select_positions(&self, positions: &[usize]) {
         let mut wanted: Vec<usize> = positions.iter().copied().filter(|&p| p < self.shown.len()).collect();
@@ -4177,13 +4452,31 @@ impl MessageList {
         }
     }
 
+    /// Describe in full the head rows `rebuild_rows` left pending past the
+    /// window, now that they come on screen.
+    fn finish_rows(&mut self, rows: &mut [Rc<RowData>]) {
+        if !rows.iter().any(|r| r.meta.pending.is_some()) {
+            return;
+        }
+        let passes = self.filter();
+        for row in rows.iter_mut() {
+            let Some(key) = row.meta.pending.clone() else { continue };
+            let own = self.groups.get(&key).cloned().unwrap_or_else(|| vec![row.msg.clone()]);
+            let (meta, _) = self.describe_group(&key, &own, &passes, true);
+            let mut data = RowData::clone(row);
+            data.meta = RowMeta { appear: data.meta.appear, ..meta };
+            *row = Rc::new(data);
+        }
+    }
+
     /// Put up to `n` more rows on screen from the tail.
     fn grow_window(&mut self, n: usize) {
         if self.tail.is_empty() {
             return;
         }
         let n = n.min(self.tail.len());
-        let more: Vec<Rc<RowData>> = self.tail.drain(..n).collect();
+        let mut more: Vec<Rc<RowData>> = self.tail.drain(..n).collect();
+        self.finish_rows(&mut more);
         self.shown.extend(more.iter().map(|r| r.msg.clone()));
         let at = self.shared.model.len();
         self.shared.model.splice(at, 0, more);
@@ -4344,6 +4637,202 @@ impl MessageList {
 
     /// The source changed: its conversations are to be worked out again,
     /// and an answer still on its way from a background thread is stale.
+    /// What a rebuild reads besides the messages, as one number: a kept view
+    /// is shown again only under the settings it was built with.
+    fn rows_signature(&self) -> u64 {
+        use std::hash::{Hash, Hasher};
+        let mut h = std::collections::hash_map::DefaultHasher::new();
+        let mut expanded: Vec<&(u32, String)> = self.expanded_threads.iter().collect();
+        expanded.sort();
+        let mut own: Vec<&String> = self.own_addresses.iter().collect();
+        own.sort();
+        let mut graph: Vec<&u32> = self.graph_accounts.iter().collect();
+        graph.sort();
+        format!(
+            "{:?}{}{}{}{}{}{:?}{:?}{}{:?}{:?}{:?}{}",
+            self.sort,
+            self.sort_reversed,
+            self.threading,
+            self.thread_expansion,
+            self.default_expanded,
+            self.group_by_date,
+            self.columns,
+            self.quick,
+            self.thread_row_newest,
+            expanded,
+            own,
+            graph,
+            self.contact_addresses.as_ref().map_or(0, |c| c.len()),
+        )
+        .hash(&mut h);
+        self.thread_links.hash(&mut h);
+        crate::datefmt::day_key(crate::datefmt::now()).hash(&mut h);
+        h.finish()
+    }
+
+    /// Keep the view on show as built, when it is one the app named and
+    /// nothing but its own list is on screen: no search, no conversations
+    /// still being worked out.
+    fn keep_view(&mut self) {
+        let Some(key) = self.view_key else { return };
+        if !self.loaded || !self.query.is_empty() || self.all.is_empty() || self.all.len() > KEEP_AT_MOST {
+            return;
+        }
+        let threads = self.source_threads.borrow().clone();
+        if self.threading && self.all.len() >= THREADS_OFF_MAIN && threads.as_ref().is_none_or(|t| t.pool) {
+            return;
+        }
+        let snap = ViewSnapshot {
+            key,
+            fp: self.view_fp,
+            sig: self.rows_signature(),
+            // Copies, not taken: the rows stay on screen until the next view's
+            // replace them, a frame on, and an empty `shown` meanwhile drew
+            // "No Messages" over them.
+            all: self.all.clone(),
+            threads,
+            rows: self.shared.model.rows(),
+            shown: self.shown.clone(),
+            tail: std::mem::take(&mut self.tail),
+            groups: std::mem::take(&mut self.groups),
+            msg_thread: std::mem::take(&mut self.msg_thread),
+            thread_members: std::mem::take(&mut self.thread_members),
+            nested: std::mem::take(&mut self.nested),
+            listed_folders: std::mem::take(&mut self.listed_folders),
+            total_matches: self.total_matches,
+            thread_drag: std::mem::take(&mut *self.shared.thread_drag.borrow_mut()),
+            window: self.window,
+        };
+        self.views.retain(|v| v.key != key);
+        self.views.push_front(snap);
+    }
+
+    /// Keep no more than `KEPT_VIEWS`, the oldest going first. Not in
+    /// `keep_view`: the view being left is kept before the one being opened
+    /// is taken out, and must not push that one out.
+    fn trim_views(&mut self) {
+        while self.views.len() > KEPT_VIEWS {
+            later_drop(self.views.pop_back());
+        }
+    }
+
+    /// Whether the view `key` is kept with this content, under the
+    /// settings the list has now: the app shows it with `SetView { restore }`
+    /// rather than sending its messages.
+    pub fn has_view(&self, key: u64, fp: u64) -> bool {
+        let sig = self.rows_signature();
+        self.views.iter().any(|v| v.key == key && v.fp == fp && v.sig == sig)
+    }
+
+    /// Why `has_view` said no, for the log.
+    pub fn view_miss(&self, key: u64, fp: u64) -> &'static str {
+        match self.views.iter().find(|v| v.key == key) {
+            None => "never kept",
+            Some(v) if v.fp != fp => "its mail changed",
+            Some(v) if v.sig != self.rows_signature() => "the list's settings changed",
+            Some(_) => "kept",
+        }
+    }
+
+    /// The view the app named as on show, if any.
+    pub fn view_key(&self) -> Option<u64> {
+        self.view_key
+    }
+
+    fn take_view(&mut self, key: Option<u64>, fp: u64) -> Option<ViewSnapshot> {
+        let key = key?;
+        let sig = self.rows_signature();
+        let at = self.views.iter().position(|v| v.key == key && v.fp == fp && v.sig == sig)?;
+        self.views.remove(at)
+    }
+
+    /// Show a kept view as it was built: what `rebuild_rows` would make of
+    /// the same messages under the same settings, without the work.
+    fn restore_view(&mut self, snap: ViewSnapshot) {
+        let t = std::time::Instant::now();
+        later_drop((
+            std::mem::replace(&mut self.all, snap.all),
+            std::mem::replace(&mut self.groups, snap.groups),
+            std::mem::replace(&mut self.msg_thread, snap.msg_thread),
+            std::mem::replace(&mut self.thread_members, snap.thread_members),
+            std::mem::replace(&mut self.nested, snap.nested),
+            std::mem::replace(&mut self.tail, snap.tail),
+        ));
+        self.drop_threads();
+        *self.source_threads.borrow_mut() = snap.threads;
+        self.loaded = true;
+        self.listed_folders = snap.listed_folders;
+        let graph_in_view = self.listed_folders.iter().any(|(a, _)| self.graph_accounts.contains(a));
+        if graph_in_view != self.graph_in_view {
+            self.graph_in_view = graph_in_view;
+            self.sync_look();
+        }
+        self.total_matches = snap.total_matches;
+        *self.shared.thread_drag.borrow_mut() = snap.thread_drag;
+        self.shown = snap.shown;
+        self.window = snap.window;
+        let stale = self.look_stale.take();
+        if !self.shared.model.replace(snap.rows, stale) && stale {
+            self.shared.refresh_all();
+        }
+        let by_date = self.group_by_date && matches!(self.sort, SortOrder::DateNewest | SortOrder::DateOldest);
+        self.show_headings(by_date);
+        self.select_current();
+        let any_expanded = self.shared.model.rows().iter().chain(&self.tail).any(|r| r.meta.expanded);
+        self.fit_expanded(any_expanded);
+        tracing::debug!("list: kept view shown, {} rows of {}, in {:?}", self.shown.len(), self.total_matches, t.elapsed());
+    }
+
+    /// Build the view `key` from `all` and keep it, leaving the view on show
+    /// as it is: its state steps aside for the build and comes back.
+    fn prebuild_view(&mut self, key: u64, fp: u64, all: Vec<Rc<Message>>, threads: Option<Rc<SourceThreads>>) {
+        // A search on show would filter the build; the visit builds it then.
+        if !self.query.is_empty() {
+            return;
+        }
+        let t = std::time::Instant::now();
+        let all = std::mem::replace(&mut self.all, all);
+        let source_threads = std::mem::replace(&mut *self.source_threads.borrow_mut(), threads.clone());
+        let shown = std::mem::take(&mut self.shown);
+        let tail = std::mem::take(&mut self.tail);
+        let groups = std::mem::take(&mut self.groups);
+        let msg_thread = std::mem::take(&mut self.msg_thread);
+        let thread_members = std::mem::take(&mut self.thread_members);
+        let nested = std::mem::take(&mut self.nested);
+        let listed_folders = std::mem::take(&mut self.listed_folders);
+        let total_matches = self.total_matches;
+        let thread_drag = std::mem::take(&mut *self.shared.thread_drag.borrow_mut());
+        let window = std::mem::replace(&mut self.window, LIST_WINDOW);
+        let selected_ids = std::mem::take(&mut self.selected_ids);
+        let selected_id = self.selected_id.take();
+
+        let built = self.compute_rows(true);
+        let snap = ViewSnapshot {
+            key,
+            fp,
+            sig: self.rows_signature(),
+            all: std::mem::replace(&mut self.all, all),
+            threads,
+            rows: built.rows,
+            shown: std::mem::replace(&mut self.shown, shown),
+            tail: std::mem::replace(&mut self.tail, tail),
+            groups: std::mem::replace(&mut self.groups, groups),
+            msg_thread: std::mem::replace(&mut self.msg_thread, msg_thread),
+            thread_members: std::mem::replace(&mut self.thread_members, thread_members),
+            nested: std::mem::replace(&mut self.nested, nested),
+            listed_folders: std::mem::replace(&mut self.listed_folders, listed_folders),
+            total_matches: std::mem::replace(&mut self.total_matches, total_matches),
+            thread_drag: std::mem::replace(&mut *self.shared.thread_drag.borrow_mut(), thread_drag),
+            window: std::mem::replace(&mut self.window, window),
+        };
+        *self.source_threads.borrow_mut() = source_threads;
+        self.selected_ids = selected_ids;
+        self.selected_id = selected_id;
+        tracing::debug!("list: built ahead, {} rows of {}, in {:?}", snap.shown.len(), snap.total_matches, t.elapsed());
+        self.views.retain(|v| v.key != key);
+        self.views.push_back(snap);
+    }
+
     fn drop_threads(&self) {
         self.source_threads.take();
         self.threads_gen.set(self.threads_gen.get() + 1);
@@ -4367,17 +4856,7 @@ impl MessageList {
             return true;
         }
         self.threads_job.set(Some(gen));
-        let input: Vec<ThreadInput> = source
-            .iter()
-            .map(|m| ThreadInput {
-                account_id: m.account_id,
-                folder_id: m.folder_id,
-                id: m.id,
-                uid: m.uid,
-                message_id: m.message_id.clone(),
-                references: m.references.clone(),
-            })
-            .collect();
+        let input = thread_inputs(source);
         let links = self.thread_links.clone();
         let sender = self.input.clone();
         std::thread::spawn(move || {
@@ -4478,11 +4957,14 @@ impl MessageList {
     /// head first, the parts filed in other folders included (#309). `own`
     /// is the folder's own members, oldest first. Records the conversation's
     /// membership for the whole-conversation actions as it goes.
+    /// `full`: work out what the row shows too, not only the conversation
+    /// maps; a row described without it is filled in by `grow_window`.
     fn describe_group(
         &mut self,
         key: &(u32, String),
         own: &[Rc<Message>],
         passes: &impl Fn(&Message) -> bool,
+        full: bool,
     ) -> (RowMeta, Vec<Rc<Message>>) {
         let mut msgs = own.to_vec();
         let summary = self.threading.then(|| self.thread_summaries.get(key)).flatten();
@@ -4507,6 +4989,37 @@ impl MessageList {
         // Never less than what is on screen: a stale or partial answer from
         // the cache must not make the badge contradict the rows under it.
         let total = if self.threading { summary.map(|s| s.count).unwrap_or(0).max(count) } else { count };
+        let expanded =
+            count > 1 && self.thread_expansion && (self.expanded_threads.contains(key) != self.default_expanded);
+        if !full {
+            if !extras.is_empty() {
+                for m in &extras {
+                    self.nested.insert((m.account_id, m.id), m.clone());
+                }
+                let head = msgs.remove(0);
+                msgs.extend(extras);
+                msgs.sort_by(|a, b| a.timestamp.cmp(&b.timestamp).then(a.uid.cmp(&b.uid)));
+                msgs.insert(0, head);
+            }
+            if count > 1 {
+                let members: Vec<(u32, u32)> = msgs.iter().map(|m| (m.account_id, m.id)).collect();
+                for k in &members {
+                    self.msg_thread.insert(*k, key.clone());
+                }
+                self.thread_members.insert(key.clone(), members);
+            }
+            let meta = RowMeta {
+                count: total,
+                expandable: count > 1,
+                expanded,
+                key: (count > 1).then(|| key.clone()),
+                revealed: true,
+                group: self.threading.then(|| key.clone()),
+                pending: Some(key.clone()),
+                ..Default::default()
+            };
+            return (meta, msgs);
+        }
         // The newest member this folder holds, and the newer one the cache
         // found in another folder — the reply you sent, filed in Sent (#236).
         let newest_here = msgs.last().expect("a group holds at least one message").clone();
@@ -4515,8 +5028,6 @@ impl MessageList {
         // `expanded_threads` stores toggles away from the default state. With
         // expansion disabled no thread ever opens in the list; the stored
         // toggles survive for when it is re-enabled.
-        let expanded =
-            count > 1 && self.thread_expansion && (self.expanded_threads.contains(key) != self.default_expanded);
         // The head stays marked unread while ANY message in its conversation
         // is unread, hidden replies included, but only this folder's own: an
         // archived message still unread is not new mail here.
@@ -4625,7 +5136,7 @@ impl MessageList {
                 self.queue_rebuild(true);
                 return;
             }
-            let (meta, _) = self.describe_group(&key, &own, &passes);
+            let (meta, _) = self.describe_group(&key, &own, &passes, true);
             if meta.expanded {
                 self.queue_rebuild(true);
                 return;
@@ -4648,6 +5159,54 @@ impl MessageList {
 
     fn rebuild_rows(&mut self) {
         let t_rebuild = std::time::Instant::now();
+        let Built { rows, by_date, any_expanded } = self.compute_rows(false);
+        // Only what changed reaches the view: rows that show the same message
+        // stay where they are, with whatever they were doing (#323).
+        let t_rows = std::time::Instant::now();
+        let stale = self.look_stale.take();
+        if !self.shared.model.replace(rows, stale) && stale {
+            self.shared.refresh_all();
+        }
+        self.show_headings(by_date);
+        self.select_current();
+        self.fit_expanded(any_expanded);
+        tracing::debug!(
+            "list: rebuild {} rows (+{} to come) of {} — sort+group {:?}, model {:?}",
+            self.shown.len(),
+            self.tail.len(),
+            self.total_matches,
+            t_rows.duration_since(t_rebuild),
+            t_rows.elapsed()
+        );
+    }
+
+    /// The date headings, on or off with the rows already in their sections,
+    /// so the view never asks for a section of rows built without them.
+    fn show_headings(&mut self, by_date: bool) {
+        if by_date != self.day_headings {
+            self.day_headings = by_date;
+            let factory = by_date.then(|| crate::ui::message_row::header_factory(&self.shared));
+            self.list_view.set_header_factory(factory.as_ref());
+        } else if by_date {
+            self.shared.refresh_headers();
+        }
+    }
+
+    /// Expanded conversations indent their member cards; give the pane the
+    /// extra floor that needs while any thread is open, so nothing is
+    /// clipped at the right edge (see THREAD_EXPANDED_EXTRA).
+    fn fit_expanded(&self, any_expanded: bool) {
+        if let Some(s) = &self.scroller {
+            let floor = LIST_MIN_WIDTH + if any_expanded { THREAD_EXPANDED_EXTRA } else { 0 };
+            s.set_size_request(floor, -1);
+        }
+    }
+
+    /// Sort, group and describe `all` into the rows of the window, leaving
+    /// the rest in `tail` and the conversation maps filled. `offscreen`: for
+    /// a view not on show (`prebuild_view`), which must not touch the look of
+    /// the one that is.
+    fn compute_rows(&mut self, offscreen: bool) -> Built {
         let passes = self.filter();
         let source_len = self.active_source().len();
         let mut matches: Vec<Rc<Message>> = self.active_source().iter().filter(|m| passes(m)).cloned().collect();
@@ -4662,7 +5221,7 @@ impl MessageList {
         let preview = self.threading && !filtered && self.threads_pending();
         self.listed_folders = matches.iter().map(|m| (m.account_id, m.folder_id)).collect();
         let graph_in_view = self.listed_folders.iter().any(|(a, _)| self.graph_accounts.contains(a));
-        if graph_in_view != self.graph_in_view {
+        if !offscreen && graph_in_view != self.graph_in_view {
             self.graph_in_view = graph_in_view;
             self.sync_look();
         }
@@ -4749,11 +5308,18 @@ impl MessageList {
         let mut shown: Vec<Rc<Message>> = Vec::new();
         let mut rows: Vec<Rc<RowData>> = Vec::new();
         let mut thread_drag = crate::ui::message_row::ThreadDragKeys::new();
-        self.msg_thread.clear();
-        self.thread_members.clear();
-        self.nested.clear();
-        self.groups.clear();
+        // The last rebuild's maps go after the frame: for a large folder,
+        // freeing them is tens of milliseconds of the switch.
+        later_drop((
+            std::mem::take(&mut self.msg_thread),
+            std::mem::take(&mut self.thread_members),
+            std::mem::take(&mut self.nested),
+            std::mem::take(&mut self.groups),
+        ));
         let mut any_expanded = false;
+        let full_rows = self.window.max(LIST_WINDOW);
+        let mut unseen: std::collections::HashSet<(u32, u32)> =
+            self.selected_ids.iter().copied().chain(self.selected_id).collect();
         for key in &order {
             let mut msgs = groups.remove(key).unwrap();
             let section = day_starts.as_ref().map_or(DaySection::None, |d| DaySection::of(msgs[0].timestamp, d));
@@ -4772,7 +5338,15 @@ impl MessageList {
                     msgs.iter().map(|m| (m.account_id, m.folder_id, m.uid, m.id)).collect(),
                 );
             }
-            let (meta, members) = self.describe_group(key, &msgs, &passes);
+            // Past the window, and the selection, a row is described in
+            // full only when it comes on screen.
+            let full = rows.len() < full_rows || !unseen.is_empty();
+            let (meta, members) = self.describe_group(key, &msgs, &passes, full);
+            if !unseen.is_empty() {
+                for m in &members {
+                    unseen.remove(&(m.account_id, m.id));
+                }
+            }
             if self.threading {
                 self.groups.insert(key.clone(), msgs);
             }
@@ -4846,43 +5420,11 @@ impl MessageList {
             .rposition(|m| self.selected_ids.contains(&(m.account_id, m.id)) || self.selected_id == Some((m.account_id, m.id)))
             .map_or(0, |i| i + 1);
         let limit = self.window.max(LIST_WINDOW).max(selected_at).min(rows.len());
-        self.tail = rows.split_off(limit);
+        later_drop(std::mem::replace(&mut self.tail, rows.split_off(limit)));
         shown.truncate(limit);
         self.window = limit.max(LIST_WINDOW);
         self.shown = shown;
-        // Only what changed reaches the view: rows that show the same message
-        // stay where they are, with whatever they were doing (#323).
-        let t_rows = std::time::Instant::now();
-        let stale = self.look_stale.take();
-        if !self.shared.model.replace(rows, stale) && stale {
-            self.shared.refresh_all();
-        }
-        // The headings come and go with the rows already in their sections,
-        // so the view never asks for a section of rows built without them.
-        if by_date != self.day_headings {
-            self.day_headings = by_date;
-            let factory = by_date.then(|| crate::ui::message_row::header_factory(&self.shared));
-            self.list_view.set_header_factory(factory.as_ref());
-        } else if by_date {
-            self.shared.refresh_headers();
-        }
-        self.select_current();
-
-        // Expanded conversations indent their member cards; give the pane the
-        // extra floor that needs while any thread is open, so nothing is
-        // clipped at the right edge (see THREAD_EXPANDED_EXTRA).
-        if let Some(s) = &self.scroller {
-            let floor = LIST_MIN_WIDTH + if any_expanded { THREAD_EXPANDED_EXTRA } else { 0 };
-            s.set_size_request(floor, -1);
-        }
-        tracing::debug!(
-            "list: rebuild {} rows (+{} to come) of {} — sort+group {:?}, model {:?}",
-            self.shown.len(),
-            self.tail.len(),
-            self.total_matches,
-            t_rows.duration_since(t_rebuild),
-            t_rows.elapsed()
-        );
+        Built { rows, by_date, any_expanded }
     }
 
     /// Everything the view needs wired: selection, activation and keys.
@@ -4911,7 +5453,7 @@ impl MessageList {
             if shift && matches!(keyval, gtk::gdk::Key::Delete | gtk::gdk::Key::KP_Delete) {
                 let _ = s.send(MessageListInput::Bulk(BulkAction::DeleteForever));
                 gtk::glib::Propagation::Stop
-            } else if matches!(keyval, gtk::gdk::Key::Delete | gtk::gdk::Key::BackSpace) {
+            } else if matches!(keyval, gtk::gdk::Key::Delete | gtk::gdk::Key::KP_Delete | gtk::gdk::Key::BackSpace) {
                 // ResolveDelete, not a straight Bulk: a lone thread-head row
                 // stands for its whole conversation (confirmed by the app).
                 let _ = s.send(MessageListInput::ResolveDelete);

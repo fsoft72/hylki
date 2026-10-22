@@ -28,6 +28,43 @@ struct SwitchFile {
     /// The sources and books switched off for Hylki, by ID.
     #[serde(default)]
     off: Vec<String>,
+    /// The names given to address books in Hylki, by book UID, in place of
+    /// the book's own.
+    #[serde(default)]
+    names: std::collections::BTreeMap<String, String>,
+}
+
+fn read_file() -> SwitchFile {
+    switch_path()
+        .and_then(|p| std::fs::read_to_string(p).ok())
+        .and_then(|text| toml::from_str::<SwitchFile>(&text).ok())
+        .unwrap_or_default()
+}
+
+fn write_file(file: &SwitchFile) -> Result<(), String> {
+    let path = switch_path().ok_or("no configuration folder")?;
+    if let Some(dir) = path.parent() {
+        std::fs::create_dir_all(dir).map_err(|e| e.to_string())?;
+    }
+    let text = toml::to_string_pretty(file).map_err(|e| e.to_string())?;
+    crate::config::write_private_file(&path, &text).map_err(|e| e.to_string())
+}
+
+/// The names given to address books in Hylki, by book UID.
+pub fn names() -> HashMap<String, String> {
+    read_file().names.into_iter().collect()
+}
+
+/// Give an address book a name of its own in Hylki, or (`None`, or a
+/// blank one) go back to the book's own name. GNOME and Evolution keep
+/// theirs.
+pub fn set_name(uid: &str, name: Option<&str>) -> Result<(), String> {
+    let mut file = read_file();
+    match name.map(str::trim).filter(|n| !n.is_empty()) {
+        Some(name) => file.names.insert(uid.to_string(), name.to_string()),
+        None => file.names.remove(uid),
+    };
+    write_file(&file)
 }
 
 fn switch_path() -> Option<PathBuf> {
@@ -37,11 +74,7 @@ fn switch_path() -> Option<PathBuf> {
 /// The IDs switched off for Hylki: sources (an account, a directory, the
 /// Hylki book, [`THIS_COMPUTER`]) and single books.
 pub fn off() -> HashSet<String> {
-    switch_path()
-        .and_then(|p| std::fs::read_to_string(p).ok())
-        .and_then(|text| toml::from_str::<SwitchFile>(&text).ok())
-        .map(|f| f.off.into_iter().collect())
-        .unwrap_or_default()
+    read_file().off.into_iter().collect()
 }
 
 /// Switch a source or a book on or off for Hylki.
@@ -54,12 +87,9 @@ pub fn set_off(id: &str, is_off: bool) -> Result<(), String> {
     }
     let mut list: Vec<String> = ids.into_iter().collect();
     list.sort();
-    let path = switch_path().ok_or("no configuration folder")?;
-    if let Some(dir) = path.parent() {
-        std::fs::create_dir_all(dir).map_err(|e| e.to_string())?;
-    }
-    let text = toml::to_string_pretty(&SwitchFile { off: list }).map_err(|e| e.to_string())?;
-    crate::config::write_private_file(&path, &text).map_err(|e| e.to_string())
+    let mut file = read_file();
+    file.off = list;
+    write_file(&file)
 }
 
 /// Whether the Hylki book is used.
@@ -115,7 +145,10 @@ pub enum Kind {
 #[derive(Debug, Clone)]
 pub struct Book {
     pub uid: String,
+    /// The book's own name; [`Book::shown`] is the one Hylki uses.
     pub name: String,
+    /// The name given to it in Hylki, if any.
+    pub given: Option<String>,
     /// Switched on for Hylki (its own switch; the source's is apart).
     pub on: bool,
 }
@@ -126,7 +159,12 @@ pub struct Source {
     /// The ID its switch is kept under.
     pub id: String,
     pub kind: Kind,
+    /// The name it is listed by: the one given to it in Hylki, else its own.
     pub title: String,
+    /// Its own name, which the given one stands in for.
+    pub own_title: String,
+    /// The name given to it in Hylki, if any.
+    pub given: Option<String>,
     /// The second line: what it is and holds.
     pub detail: String,
     /// The brand mark, or an icon name when there is none.
@@ -195,11 +233,38 @@ pub fn list_with_eds() -> (Vec<Source>, bool) {
     (sources, eds)
 }
 
-/// [`list_with_eds`] without the answer.
+impl Book {
+    /// The name Hylki uses: the one given to it, else its own.
+    pub fn shown(&self) -> &str {
+        self.given.as_deref().unwrap_or(if self.name.is_empty() { &self.uid } else { &self.name })
+    }
+}
+
+/// [`list_with_eds`] with the names given in Hylki to the accounts and
+/// books in place of their own.
 pub fn list() -> Vec<Source> {
+    let names = names();
+    let mut sources = list_own();
+    for s in &mut sources {
+        s.own_title = s.title.clone();
+        s.given = names.get(&s.id).cloned();
+        if let Some(given) = &s.given {
+            s.title = given.clone();
+        }
+        for b in &mut s.books {
+            b.given = names.get(&b.uid).cloned();
+        }
+    }
+    sources
+}
+
+/// The sources as EDS and GNOME Online Accounts name them.
+fn list_own() -> Vec<Source> {
     let off = off();
     let count = crate::local_contacts::count();
     let mut out = vec![Source {
+                own_title: String::new(),
+                given: None,
         id: HYLKI.to_string(),
         kind: Kind::Hylki,
         title: i18n("Hylki Address Book"),
@@ -227,7 +292,7 @@ pub fn list() -> Vec<Source> {
         }
         let name = kf.string("Data Source", "DisplayName").map(|s| s.to_string()).unwrap_or_default();
         let eds_on = kf.boolean("Data Source", "Enabled").unwrap_or(true);
-        let book = Book { uid: uid.clone(), name, on: !off.contains(uid) };
+        let book = Book { uid: uid.clone(), name, given: None, on: !off.contains(uid) };
         groups.entry(group_of(uid, &sources)).or_default().push((book, eds_on));
     }
     // A CardDAV account still looking for its books is listed all the same.
@@ -243,6 +308,8 @@ pub fn list() -> Vec<Source> {
         let on = !off.contains(&id);
         if id == THIS_COMPUTER {
             out.push(Source {
+                own_title: String::new(),
+                given: None,
                 id,
                 kind: Kind::ThisComputer,
                 title: i18n("On This Computer"),
@@ -286,6 +353,8 @@ pub fn list() -> Vec<Source> {
             let paused = (goa.is_some_and(|g| g.contacts_disabled) || all_eds_off)
                 .then(|| i18n("Contacts is switched off for this account in GNOME Online Accounts."));
             accounts.push(Source {
+                own_title: String::new(),
+                given: None,
                 detail: format!("{provider} · {}", books_line(&books)),
                 mark,
                 id,
@@ -308,6 +377,8 @@ pub fn list() -> Vec<Source> {
             };
             let origin = if is_hylki_made(&data) { Origin::Hylki } else { Origin::Evolution };
             accounts.push(Source {
+                own_title: String::new(),
+                given: None,
                 title: account.title(),
                 detail,
                 mark: carddav_mark(&account.url),
@@ -323,6 +394,8 @@ pub fn list() -> Vec<Source> {
         }
         let title = if display.is_empty() { books.first().map(|b| b.name.clone()).unwrap_or_default() } else { display };
         accounts.push(Source {
+                own_title: String::new(),
+                given: None,
             title,
             detail: books_line(&books),
             mark: "x-office-address-book-symbolic",
@@ -342,6 +415,8 @@ pub fn list() -> Vec<Source> {
             detail.push_str(&format!(" · {}", dir.base_dn));
         }
         accounts.push(Source {
+                own_title: String::new(),
+                given: None,
             id: dir.uid.clone(),
             title: dir.title(),
             detail: failed.unwrap_or(detail),
@@ -354,7 +429,10 @@ pub fn list() -> Vec<Source> {
             status: None,
         });
     }
-    accounts.sort_by_key(|s| s.title.to_lowercase());
+    // By name, and two of one name (an address used for iCloud and for
+    // Microsoft 365) always in the same order: the books are read from a
+    // map, whose order changes from one read to the next.
+    accounts.sort_by(|a, b| a.title.to_lowercase().cmp(&b.title.to_lowercase()).then_with(|| a.id.cmp(&b.id)));
     out.extend(accounts);
     out
 }

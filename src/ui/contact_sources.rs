@@ -18,9 +18,11 @@ use crate::directory::{self, Directory, Security};
 use crate::i18n::{i18n, i18n_f, i18n_noop, ni18n_f};
 
 /// What the editor page shows.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 enum Editing {
-    Source(usize),
+    /// A source's page, by its ID: its place in the list can change as
+    /// the list is read again.
+    Source(String),
     Add,
 }
 
@@ -48,7 +50,7 @@ const ADD_KINDS: &[AddKind] = &[
         mark: "folder-remote-symbolic",
         what: AddWhat::CardDav {
             server: None,
-            hint: i18n_noop("The server's address is enough for most services; Hylki finds the address books on it. Services that sign in with two steps want an app password."),
+            hint: i18n_noop("The server's address is usually enough. Two-step sign-in needs an app password."),
         },
     },
     AddKind { label: "iCloud", mark: "icloud", what: AddWhat::CardDav { server: Some("https://contacts.icloud.com"), hint: APP_PW } },
@@ -57,7 +59,7 @@ const ADD_KINDS: &[AddKind] = &[
         mark: "nextcloud",
         what: AddWhat::CardDav {
             server: None,
-            hint: i18n_noop("Your Nextcloud's address, such as cloud.example.org. With two-factor sign-in, make an app password in Nextcloud under Settings → Security."),
+            hint: i18n_noop("Such as cloud.example.org. With two-factor sign-in, make an app password in Nextcloud under Settings → Security."),
         },
     },
     AddKind {
@@ -119,6 +121,9 @@ pub enum ContactSourcesInput {
     AddKind(u32),
     Toggle { index: usize, on: bool },
     ToggleBook { book: String, on: bool },
+    /// A name given in Hylki to an account or an address book, by its ID
+    /// (`None`: its own name again).
+    Rename { id: String, name: Option<String> },
     SaveClicked,
     CloseEditor,
     RemoveCurrent,
@@ -178,7 +183,7 @@ impl SimpleComponent for ContactSources {
                             set_child = &adw::PreferencesPage {
                                 add = &adw::PreferencesGroup {
                                     set_title: &i18n("Address Books"),
-                                    set_description: Some(&i18n("Where Hylki finds contacts: for Contacts, the composer's suggestions, sender pictures and the filters. Switch one off to leave it out of Hylki; GNOME and Evolution keep using it.")),
+                                    set_description: Some(&i18n("Where contacts come from for Contacts, suggestions, sender pictures and filters. Switching one off leaves it out of Hylki.")),
                                     #[wrap(Some)]
                                     set_header_suffix = &gtk::Box {
                                         set_orientation: gtk::Orientation::Horizontal,
@@ -209,7 +214,7 @@ impl SimpleComponent for ContactSources {
                                     },
                                     #[name = "no_eds"]
                                     gtk::Label {
-                                        set_label: &i18n("The address books of GNOME Contacts, CardDAV accounts and LDAP directories are kept by Evolution Data Server, which is not installed. Install the evolution-data-server package, which runs without GNOME, and open this page again."),
+                                        set_label: &i18n("Address books need Evolution Data Server, which is not installed. Install the evolution-data-server package (it runs without GNOME) and reopen this page."),
                                         add_css_class: "dim-label",
                                         set_wrap: true,
                                         set_xalign: 0.0,
@@ -222,7 +227,7 @@ impl SimpleComponent for ContactSources {
                                     #[name = "book_row"]
                                     adw::ComboRow {
                                         set_title: &i18n("Save new contacts in"),
-                                        set_subtitle: &i18n("The address book a contact made in Hylki goes to, unless another is picked when it is made."),
+                                        set_subtitle: &i18n("Unless another is picked when the contact is made."),
                                         connect_selected_notify[sender] => move |row| {
                                             sender.input(ContactSourcesInput::ChangeBook(row.selected()));
                                         },
@@ -358,12 +363,15 @@ impl SimpleComponent for ContactSources {
                 self.add_btn.set_sensitive(eds);
                 self.no_eds.set_visible(!eds);
                 self.rebuild(&sender);
-                // An open page about a source follows it, unless it holds a
-                // form being typed in.
-                if let Some(Editing::Source(i)) = self.editing {
-                    if self.save_action.borrow().is_none() && i < self.sources.len() {
-                        self.open_source(i, &sender);
-                    }
+                // An open page about a source follows it, wherever it is
+                // listed now, unless it holds a form being typed in.
+                let at = match &self.editing {
+                    Some(Editing::Source(id)) => self.sources.iter().position(|s| s.id == *id),
+                    _ => None,
+                };
+                let typing = self.save_action.borrow().is_some();
+                if let (Some(i), false) = (at, typing) {
+                    self.open_source(i, &sender);
                 }
             }
             ContactSourcesInput::SetBooks(books) => {
@@ -411,6 +419,10 @@ impl SimpleComponent for ContactSources {
                     let _ = s.send(ContactSourcesInput::Done { error, found: None, checked: None });
                 });
             }
+            ContactSourcesInput::Rename { id, name } => {
+                let error = sources::set_name(&id, name.as_deref()).err();
+                sender.input(ContactSourcesInput::Done { error, found: None, checked: None });
+            }
             ContactSourcesInput::SaveClicked => {
                 let action = self.save_action.borrow().clone();
                 if let Some(f) = action {
@@ -425,15 +437,17 @@ impl SimpleComponent for ContactSources {
                 self.close_editor();
             }
             ContactSourcesInput::RemoveCurrent => {
-                if let Some(Editing::Source(i)) = self.editing {
-                    sender.input(ContactSourcesInput::ConfirmRemove(i));
+                if let Some(Editing::Source(id)) = &self.editing {
+                    if let Some(i) = self.sources.iter().position(|s| s.id == *id) {
+                        sender.input(ContactSourcesInput::ConfirmRemove(i));
+                    }
                 }
             }
             ContactSourcesInput::ConfirmRemove(i) => {
                 let Some(source) = self.sources.get(i) else { return };
                 let body = match source.kind {
-                    Kind::Ldap(_) => i18n("The directory is removed from Evolution Data Server, so Evolution and other apps that use it stop seeing it too. Nothing on the server changes."),
-                    _ => i18n("The account and its address books are removed from this computer, so Evolution and other apps that use them stop seeing them too. Nothing on the server changes."),
+                    Kind::Ldap(_) => i18n("Evolution and other apps stop seeing it too. Nothing on the server changes."),
+                    _ => i18n("Evolution and other apps stop seeing them too. Nothing on the server changes."),
                 };
                 let parent = relm4::main_application().active_window();
                 let dialog = adw::MessageDialog::new(
@@ -611,13 +625,14 @@ impl ContactSources {
     /// The page about one source.
     fn open_source(&mut self, index: usize, sender: &ComponentSender<Self>) {
         let Some(source) = self.sources.get(index).cloned() else { return };
-        self.editing = Some(Editing::Source(index));
+        self.editing = Some(Editing::Source(source.id.clone()));
         *self.save_action.borrow_mut() = None;
         self.editor_page.set_title(&source.title);
         let removable = matches!(source.kind, Kind::CardDav(_) | Kind::Ldap(_));
         self.remove_btn.set_visible(removable);
         let page = gtk::Box::new(gtk::Orientation::Vertical, 24);
         page.append(&source_header(&source));
+        page.append(&name_group(&source, sender.input_sender().clone()));
         if let Some(why) = &source.paused {
             let note = adw::PreferencesGroup::new();
             note.set_description(Some(why));
@@ -633,7 +648,7 @@ impl ContactSources {
             Kind::ThisComputer => {
                 page.append(&info_group(
                     &i18n("Kept by Evolution Data Server"),
-                    &i18n("The address books GNOME Contacts and Evolution keep on this computer. They are changed there, and in Hylki's Contacts."),
+                    &i18n("The address books GNOME Contacts and Evolution keep on this computer."),
                     &i18n("Open GNOME Contacts"),
                     crate::ui::contacts_browser::launch_gnome_contacts,
                 ));
@@ -642,7 +657,7 @@ impl ContactSources {
             Kind::Online => {
                 page.append(&info_group(
                     &i18n("Set up in GNOME Online Accounts"),
-                    &i18n("The account's sign-in, and whether it keeps contacts at all, are changed in GNOME Settings."),
+                    &i18n("Its sign-in and its Contacts switch are in GNOME Settings."),
                     &i18n("Open Online Accounts"),
                     crate::ui::accounts::open_online_accounts,
                 ));
@@ -689,7 +704,7 @@ impl ContactSources {
                 page.append(&kind_picker(kind, sender.input_sender().clone()));
                 page.append(&info_group(
                     &i18n("Added in GNOME Online Accounts"),
-                    &i18n("Google and Microsoft 365 sign in through the browser, which Evolution Data Server leaves to GNOME Online Accounts. Add the account there with Contacts switched on, and it is listed here."),
+                    &i18n("Google and Microsoft 365 sign in through GNOME Online Accounts. Add the account there with Contacts on, and it will be listed here."),
                     &i18n("Open Online Accounts"),
                     crate::ui::accounts::open_online_accounts,
                 ));
@@ -717,7 +732,7 @@ impl ContactSources {
     fn hylki_group(&self, sender: &ComponentSender<Self>) -> adw::PreferencesGroup {
         let group = adw::PreferencesGroup::new();
         group.set_title(&i18n("Hylki Address Book"));
-        group.set_description(Some(&i18n("Contacts Hylki keeps itself, in its own data folder. They work without GNOME.")));
+        group.set_description(Some(&i18n("Kept in Hylki's own data folder. Works without GNOME.")));
         let count = adw::ActionRow::new();
         count.set_title(&i18n("Contacts in the Hylki book"));
         let n = gtk::Label::new(Some(&self.local_count.to_string()));
@@ -739,19 +754,19 @@ impl ContactSources {
         };
         group.add(&action(
             i18n("Import vCard files"),
-            i18n("Adds the contacts in .vcf files to the Hylki book. Importing a file again updates its contacts."),
+            i18n("Adds contacts from .vcf files. Importing a file again updates existing entries."),
             || ContactSourcesInput::ImportLocal,
             true,
         ));
         group.add(&action(
             i18n("Export as a vCard file"),
-            i18n("Saves every contact in the Hylki book in one .vcf file, which other apps can import."),
+            i18n("Saves every contact in the Hylki book in one .vcf file."),
             || ContactSourcesInput::ExportLocal,
             self.local_count > 0,
         ));
         let delete = action(
             i18n("Delete all contacts"),
-            i18n("Empties the Hylki book. The other address books are not touched."),
+            i18n("Other address books are not touched."),
             || ContactSourcesInput::DeleteAllLocal,
             self.local_count > 0,
         );
@@ -862,21 +877,65 @@ fn info_group(title: &str, text: &str, button: &str, open: fn()) -> adw::Prefere
     group
 }
 
-/// A source's address books, each with its own switch.
+/// A name typed for something whose own name is `own`, as kept: `None`
+/// when it is left blank or is the own name again.
+fn given_name(typed: &str, own: &str) -> Option<String> {
+    let typed = typed.trim();
+    (!typed.is_empty() && typed != own).then(|| typed.to_string())
+}
+
+/// The name the account goes by in Hylki: here, and under its address
+/// books in Contacts. GNOME and Evolution keep theirs.
+fn name_group(source: &Source, sender: relm4::Sender<ContactSourcesInput>) -> adw::PreferencesGroup {
+    let group = adw::PreferencesGroup::new();
+    let own = [("own", source.own_title.as_str())];
+    group.set_description(Some(&match source.kind {
+        Kind::Hylki => i18n_f("The name used here and in Contacts. Left blank, it is {own}.", &own),
+        _ => i18n_f(
+            "The name used here and in Contacts; GNOME Contacts keeps its own. Left blank, it is {own}.",
+            &own,
+        ),
+    }));
+    let row = adw::EntryRow::new();
+    row.set_title(&i18n("Name"));
+    row.set_text(&source.title);
+    row.set_show_apply_button(true);
+    let (s, id, own) = (sender, source.id.clone(), source.own_title.clone());
+    row.connect_apply(move |r| {
+        let _ = s.send(ContactSourcesInput::Rename { id: id.clone(), name: given_name(&r.text(), &own) });
+    });
+    group.add(&row);
+    group
+}
+
+/// A source's address books, each with its name in Hylki and its own
+/// switch.
 fn books_group(source: &Source, sender: relm4::Sender<ContactSourcesInput>) -> adw::PreferencesGroup {
     let group = adw::PreferencesGroup::new();
     group.set_title(&i18n("Address books"));
-    group.set_description(Some(&i18n("Switch off an address book to leave it out of Hylki.")));
+    group.set_description(Some(&i18n(
+        "Rename a book for Hylki, or switch it off to leave it out.",
+    )));
     for book in &source.books {
-        let row = adw::SwitchRow::new();
-        row.set_title(&gtk::glib::markup_escape_text(if book.name.is_empty() { &book.uid } else { &book.name }));
-        row.set_active(book.on);
-        // The account's own switch decides first.
-        row.set_sensitive(source.on);
-        let (s, uid) = (sender.clone(), book.uid.clone());
-        row.connect_active_notify(move |r| {
-            let _ = s.send(ContactSourcesInput::ToggleBook { book: uid.clone(), on: r.is_active() });
+        let row = adw::EntryRow::new();
+        row.set_title(&gtk::glib::markup_escape_text(&book.name));
+        row.set_text(book.shown());
+        row.set_show_apply_button(true);
+        let (s, uid, own) = (sender.clone(), book.uid.clone(), book.name.clone());
+        row.connect_apply(move |r| {
+            let _ = s.send(ContactSourcesInput::Rename { id: uid.clone(), name: given_name(&r.text(), &own) });
         });
+        let switch = gtk::Switch::new();
+        switch.set_valign(gtk::Align::Center);
+        switch.set_active(book.on);
+        switch.set_tooltip_text(Some(&i18n("Use in Hylki")));
+        // The account's own switch decides first.
+        switch.set_sensitive(source.on);
+        let (s, uid) = (sender.clone(), book.uid.clone());
+        switch.connect_active_notify(move |w| {
+            let _ = s.send(ContactSourcesInput::ToggleBook { book: uid.clone(), on: w.is_active() });
+        });
+        row.add_suffix(&switch);
         group.add(&row);
     }
     group
@@ -1020,7 +1079,7 @@ const SECURITY: [Security; 3] = [Security::StartTls, Security::Ldaps, Security::
 fn ldap_form(dir: Directory, sender: relm4::Sender<ContactSourcesInput>) -> (gtk::Widget, Rc<dyn Fn() -> bool>) {
     let server = adw::PreferencesGroup::new();
     server.set_title(&i18n("Server"));
-    server.set_description(Some(&i18n("The composer looks up recipients in the directory as you type an address, and a search in Contacts looks in it too.")));
+    server.set_description(Some(&i18n("Recipients are looked up here as you type, and Contacts searches it too.")));
     let name = adw::EntryRow::new();
     name.set_title(&i18n("Name (optional)"));
     name.set_text(&dir.name);
@@ -1059,7 +1118,7 @@ fn ldap_form(dir: Directory, sender: relm4::Sender<ContactSourcesInput>) -> (gtk
 
     let signin = adw::PreferencesGroup::new();
     signin.set_title(&i18n("Sign-in"));
-    signin.set_description(Some(&i18n("Leave these empty for a directory that can be searched without signing in.")));
+    signin.set_description(Some(&i18n("Leave empty for a directory that needs no sign-in.")));
     let bind = adw::EntryRow::new();
     bind.set_title(&i18n("Sign in as, such as cn=jane,ou=people,dc=example,dc=com"));
     bind.set_text(&dir.bind_dn);

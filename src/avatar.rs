@@ -589,6 +589,102 @@ fn supported_raster(bytes: &[u8]) -> bool {
         || (bytes.starts_with(b"RIFF") && bytes.get(8..12) == Some(b"WEBP"))
 }
 
+/// The Contacts list's photo avatars, decoded once each for the life of the
+/// app and keyed by [`crate::contacts::photo_key`]: iCloud keeps photos of a
+/// megapixel or more, and decoding a few hundred of them on the main thread
+/// held the page for seconds at every visit (#477). `None` is a photo that
+/// would not decode.
+static PHOTO_THUMBS: OnceLock<Mutex<HashMap<u64, Option<gtk::gdk::Texture>>>> = OnceLock::new();
+
+/// Longest side of a list photo: a 34 px avatar at twice the scale, with room.
+const PHOTO_THUMB_EDGE: i32 = 96;
+
+/// The list photos decoded, and their pixel bytes, for the memory report.
+pub fn photo_thumb_stats() -> (usize, u64) {
+    let Some(Ok(map)) = PHOTO_THUMBS.get().map(Mutex::lock) else { return (0, 0) };
+    (map.len(), map.values().flatten().map(crate::memory_report::texture_bytes).sum())
+}
+
+/// A photo's list avatar, if [`decode_photo_thumbnails`] has been at it.
+pub fn photo_thumbnail(key: u64) -> Option<Option<gtk::gdk::Texture>> {
+    PHOTO_THUMBS.get()?.lock().ok()?.get(&key).cloned()
+}
+
+/// Decode the photos not cached yet, on every core, calling `progress` after
+/// each few. Blocking: for a worker thread.
+pub fn decode_photo_thumbnails(photos: Vec<(u64, Vec<u8>)>, progress: impl Fn() + Sync) {
+    let cache = PHOTO_THUMBS.get_or_init(Default::default);
+    let next = std::sync::atomic::AtomicUsize::new(0);
+    let workers = std::thread::available_parallelism().map_or(2, |n| n.get().clamp(1, 4));
+    std::thread::scope(|scope| {
+        for _ in 0..workers {
+            scope.spawn(|| {
+                let mut done = 0;
+                loop {
+                    let i = next.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                    let Some((key, bytes)) = photos.get(i) else { break };
+                    if photo_thumbnail(*key).is_none() {
+                        let texture = shrink_photo(bytes);
+                        if let Ok(mut map) = cache.lock() {
+                            map.insert(*key, texture);
+                        }
+                    }
+                    done += 1;
+                    if done % 16 == 0 {
+                        progress();
+                    }
+                }
+            });
+        }
+    });
+    progress();
+}
+
+/// Forget the photos no longer in any address book.
+pub fn retain_photo_thumbnails(keep: &std::collections::HashSet<u64>) {
+    if let Some(Ok(mut map)) = PHOTO_THUMBS.get().map(Mutex::lock) {
+        map.retain(|key, _| keep.contains(key));
+    }
+}
+
+/// A photo at list-avatar size, cut square. GTK's own decoder takes a third
+/// of the time GdkPixbuf's does on these photos; the nearest-pixel pass
+/// first keeps the smoothing pass small.
+fn shrink_photo(bytes: &[u8]) -> Option<gtk::gdk::Texture> {
+    use gtk::gdk_pixbuf::{Colorspace, InterpType, Pixbuf};
+
+    if !supported_raster(bytes) {
+        return None;
+    }
+    let full = gtk::gdk::Texture::from_bytes(&gtk::glib::Bytes::from(bytes)).ok()?;
+    let (width, height) = (full.width(), full.height());
+    if width == height && width <= PHOTO_THUMB_EDGE {
+        return Some(full);
+    }
+    let mut downloader = gtk::gdk::TextureDownloader::new(&full);
+    downloader.set_format(gtk::gdk::MemoryFormat::R8g8b8a8);
+    let (pixels, stride) = downloader.download_bytes();
+    // The middle square: the list shows faces in a circle.
+    let side = width.min(height);
+    let mut pixbuf = Pixbuf::from_bytes(&pixels, Colorspace::Rgb, true, 8, width, height, stride as i32)
+        .new_subpixbuf((width - side) / 2, (height - side) / 2, side, side);
+    if side > PHOTO_THUMB_EDGE * 4 {
+        pixbuf = pixbuf.scale_simple(PHOTO_THUMB_EDGE * 4, PHOTO_THUMB_EDGE * 4, InterpType::Nearest)?;
+    }
+    let edge = side.min(PHOTO_THUMB_EDGE);
+    let small = pixbuf.scale_simple(edge, edge, InterpType::Tiles)?;
+    Some(
+        gtk::gdk::MemoryTexture::new(
+            edge,
+            edge,
+            gtk::gdk::MemoryFormat::R8g8b8a8,
+            &small.read_pixel_bytes(),
+            small.rowstride() as usize,
+        )
+        .upcast(),
+    )
+}
+
 /// Decode through a size-prepared PixbufLoader so large source images are
 /// downscaled during decoding. A pixel limit also rejects decompression bombs.
 fn decode_image(bytes: &[u8]) -> Option<DecodedImage> {
@@ -650,9 +746,34 @@ fn decode_image(bytes: &[u8]) -> Option<DecodedImage> {
 #[cfg(test)]
 mod tests {
     use super::{
-        account_face, own_face, own_faces_generation, set_faces_on_own_mail, set_own_faces,
-        supported_raster, OwnFace,
+        account_face, decode_photo_thumbnails, own_face, own_faces_generation, photo_thumbnail,
+        set_faces_on_own_mail, set_own_faces, supported_raster, OwnFace, PHOTO_THUMB_EDGE,
     };
+    use gtk::prelude::TextureExt;
+
+    /// A big photo comes back list-sized and square, for the list's round
+    /// faces; one that will not decode is remembered as such, so it is not
+    /// tried again (#477).
+    #[test]
+    fn contact_photos_are_shrunk_once_and_kept() {
+        let (width, height) = (500, 300);
+        let pixels = gtk::glib::Bytes::from_owned(vec![200u8; (width * height * 4) as usize]);
+        let png = gtk::gdk::MemoryTexture::new(width, height, gtk::gdk::MemoryFormat::R8g8b8a8, &pixels, width as usize * 4)
+            .save_to_png_bytes()
+            .to_vec();
+        let svg = b"<svg xmlns='http://www.w3.org/2000/svg'/>".to_vec();
+        let (photo, broken) = (crate::contacts::photo_key(&png), crate::contacts::photo_key(&svg));
+        assert!(photo_thumbnail(photo).is_none(), "nothing is cached before it is decoded");
+
+        let reports = std::sync::atomic::AtomicUsize::new(0);
+        decode_photo_thumbnails(vec![(photo, png), (broken, svg)], || {
+            reports.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        });
+        assert!(reports.into_inner() >= 1, "the last photo is always reported");
+        let small = photo_thumbnail(photo).flatten().expect("decoded");
+        assert_eq!((small.width(), small.height()), (PHOTO_THUMB_EDGE, PHOTO_THUMB_EDGE), "cut square");
+        assert!(matches!(photo_thumbnail(broken), Some(None)));
+    }
 
     #[test]
     fn accepts_common_rasters_but_not_svg() {

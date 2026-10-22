@@ -59,6 +59,9 @@ thread_local! {
     static MISSES: RefCell<HashSet<String>> = RefCell::new(HashSet::new());
     /// Domains whose weekly refresh has already been kicked off this session.
     static REFRESHED: RefCell<HashSet<String>> = RefCell::new(HashSet::new());
+    /// Domains whose stored files were looked at for that this session: a
+    /// list row asks each time it is filled, and the answer stands.
+    static CHECKED: RefCell<HashSet<String>> = RefCell::new(HashSet::new());
 }
 
 /// The session's logo cache: domains with a texture, their pixel bytes, and
@@ -75,9 +78,14 @@ pub fn cache_stats() -> (usize, u64, usize) {
 const REFRESH_AFTER: std::time::Duration = std::time::Duration::from_secs(7 * 24 * 60 * 60);
 
 fn store_dir() -> Option<PathBuf> {
-    let dir = crate::config::data_base()?.join("hylki").join("logos");
-    let _ = std::fs::create_dir_all(&dir);
-    Some(dir)
+    // Made once: this is asked for every list row filled.
+    static DIR: std::sync::OnceLock<Option<PathBuf>> = std::sync::OnceLock::new();
+    DIR.get_or_init(|| {
+        let dir = crate::config::data_base()?.join("hylki").join("logos");
+        let _ = std::fs::create_dir_all(&dir);
+        Some(dir)
+    })
+    .clone()
 }
 
 fn img_path(domain: &str) -> Option<PathBuf> {
@@ -217,6 +225,9 @@ pub fn cached(email: &str) -> Option<gtk::gdk::Texture> {
     if let Some(tex) = CACHE.with(|c| c.borrow().get(&domain).cloned()) {
         return Some(tex);
     }
+    if MISSES.with(|m| m.borrow().contains(&domain)) {
+        return None;
+    }
     // The stored BIMI logo, else a bundled mark, else the stored site icon.
     let bytes = stored_bimi(&domain)
         .or_else(|| bundled_entry(email).and_then(bundled_bytes))
@@ -240,6 +251,9 @@ pub fn wants_refresh(email: &str) -> bool {
     let Some(domain) = domain_of(email) else {
         return false;
     };
+    if !CHECKED.with(|c| c.borrow_mut().insert(domain.clone())) {
+        return false;
+    }
     // Due when nothing on disk is within the week: a stale site icon, a
     // stale BIMI answer, or a bundled mark whose sender has never been
     // asked for a BIMI logo at all.
@@ -262,8 +276,15 @@ pub fn known_missing(email: &str) -> bool {
     }
     match domain_of(email) {
         Some(domain) => {
-            MISSES.with(|m| m.borrow().contains(&domain))
-                || miss_path(&domain).is_some_and(|p| fresh(&p))
+            if MISSES.with(|m| m.borrow().contains(&domain)) {
+                return true;
+            }
+            // Remembered for the session once read, as a miss found now is.
+            let missing = miss_path(&domain).is_some_and(|p| fresh(&p));
+            if missing {
+                MISSES.with(|m| m.borrow_mut().insert(domain));
+            }
+            missing
         }
         // Nothing to look up counts as answered.
         None => true,

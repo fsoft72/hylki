@@ -2,6 +2,83 @@
 
 ## Unreleased
 
+- **Added: recipient pills move between To, Cc and Bcc** (#492, requested by
+  warpedwood). Pills are selected as files are, with a click, Ctrl+click and
+  Shift+click, across To, Cc and Bcc, or by dragging the pointer over them
+  from beside them, as over text. The selection drags to another place
+  in its field or into another field, with a line marking where it will go;
+  Cc and Bcc show during the drag if they were hidden. The right-click menu
+  moves the selection to another field, edits a single pill or removes the
+  selection. From the keyboard, **Left** at the start of a field or
+  **Ctrl+A** on an empty one selects pills, the arrow keys select the next
+  one (**Shift** extends the selection), **Delete** removes the selection,
+  **Return** edits a pill, and **Menu** or **Shift+F10** opens the menu.
+
+- **Added: Thunderbird's composer keys** (#490, #491, requested by
+  warpedwood). In a composer, **Ctrl+Shift+A** attaches files, and
+  **Ctrl+Shift+T**, **Ctrl+Shift+C** and **Ctrl+Shift+B** put the cursor in
+  To, Cc and Bcc, showing the row, and a compact reply's folded fields, if
+  they are hidden. Elsewhere Ctrl+Shift+A still shows or hides the accounts
+  and Ctrl+Shift+C still opens the console.
+
+- **Fixed: the beta used about 300 MB more memory than 1.44.0 at idle**
+  (#504). The unified rows built ahead at a start held a second copy of
+  every message in them, the Archive's included, and the Contacts list held
+  every contact's full-size photo. A unified row of more than 20,000
+  messages is no longer read or built ahead: it shows its newest messages at
+  once and the rest a moment later, as any large folder does. The Contacts
+  list keeps only its small photos and reads a full one when a contact is
+  opened. On a mailbox of 92,000 messages and 1,150 contacts the app went
+  from 936 MB to 655 MB. The exported log's memory section now counts the
+  views kept as built and the Contacts list.
+  A visit to such a row also kept its messages for the rest of the session,
+  and so did a move into its folders: they are now let go when the row is
+  left, and the freed memory is handed back a few seconds later. While it is
+  open the row reads the folders where they are rather than from a copy,
+  and the other rows kept as built are no longer built again on each visit.
+  Four visits to an 81,000-message Archive used to leave the app at about
+  1 GB; it now comes back to about 730 MB.
+
+- **Fixed: the first-run wizard said Microsoft accounts need GNOME Online
+  Accounts** (#506). They have had their own sign-in since 1.43.2; the
+  Online Accounts page now says only Google accounts need GNOME Online
+  Accounts.
+
+- **Changed: shorter text in Settings.** Subtitles that repeated their
+  title are gone, and the descriptions, setup steps and dialogs left say
+  only what the row doesn't. The Blacklist group under Senders is now
+  Blocked Senders, and the note shown when no spelling dictionary is found
+  can be translated.
+
+- **Added: the search field and the selection bar can open at the bottom of
+  the list** (#496, requested by 3v1n0). **Settings → Message List → Search
+  field position** and **Selection bar position** put each one at the top of the list, as
+  before, or at the bottom, where opening it shortens the list from its foot
+  instead of pushing the messages down.
+
+- **Fixed: an encrypted message's subject stayed "..." after decrypting**
+  (#493, reported by valqk). Thunderbird and other clients that protect
+  headers send the real subject inside the encrypted part and "..." outside.
+  The reader, a message window's title and a printout now show the subject
+  inside once the message is decrypted, and Reply and Forward start from it.
+  The part that repeats it as "Subject: …" for older clients is no longer
+  shown in the body or listed as a file. The decrypted subject is kept in
+  memory only, like the body, so the message list still shows "...".
+
+- **Changed: encrypted mail hides its subject.** A message sent with Encrypt
+  on carries its subject, From, To, Cc and Reply-To inside the encrypted part
+  and "..." as its outer subject, the protected headers Thunderbird sends
+  (RFC 9788). Bcc stays out of the encrypted part, which every recipient can
+  read. **Hide the subject of encrypted mail**, under an account's OpenPGP
+  settings, turns it off for that account.
+
+- **Fixed: Reply and New Message froze when the contact service stopped
+  answering** (PR #484 by Artur Heinze). The composer opens before loading
+  recipient suggestions. Contact lookups run in the background and give up
+  after three seconds without an answer, using cached contacts and mail
+  history instead. Opening a composer no longer waits on the scan of the
+  mail history either, which took about 0.4 s with 15,000 addresses.
+
 - **Changed: one Contacts page in Settings.** Settings → Contacts lists
   every address book Hylki reads, as Mail Accounts lists mail accounts: the
   Hylki book, the books on this computer, each GNOME Online Accounts account
@@ -29,21 +106,180 @@
 - **Added: contact groups.** A group is a name for several people that the
   composer suggests like a contact; picking it adds a pill for each of them,
   less those the field already has. **New Group**, under the **+** button in
-  the Contacts view, makes one in the Hylki book; people are added from
-  the composer's suggestions (Contacts and the addresses of mail sent and
-  received) or by address, and a contact's menu has **Add to Group**. A
-  group's card lists its people and has **New Message**. **Send as Bcc**
-  puts the people in Bcc whichever field the group is picked in. Groups are
+  the Contacts view, makes one in the address book picked in its form;
+  people are added from the composer's suggestions (Contacts and the
+  addresses of mail sent and received) or by address, and a contact's menu
+  has **Add to Group**. A group's card lists its people and has **New
+  Message**. **Send as Bcc** puts the people in Bcc whichever field the
+  group is picked in. Groups in the Hylki book and on this computer are
   saved as Evolution lists. Evolution's lists in the Evolution Data Server
   books are shown, offered and editable too, their "Hide addresses" option
-  being Send as Bcc; vCard 4 and Apple (iCloud) groups are shown and
-  offered but not edited. A `.vcf` import keeps its lists as groups instead
-  of skipping them.
+  being Send as Bcc. In a CardDAV book, iCloud's among them, a group is made
+  and changed in Apple's format, which names contacts of the same book; a
+  contact of another book added to it is copied to the book first, whole,
+  unless the book has them already, and its people with no email address are
+  listed too, mail going to the others. New Group asks which book, and
+  editing a group can move it to another, its people with it; Google and
+  Microsoft 365 books keep no groups and are not offered. vCard 4 groups are
+  shown and offered but not edited. A `.vcf` import keeps its lists as
+  groups instead of skipping them. The sidebar's Contacts row lists each
+  book's groups under it.
+
+- **Changed: the Contacts search works as the message list's.** The search
+  button in the list's header, Ctrl+F or / show the search field, and Esc
+  hides it and clears it. The sort button became a sort and filter button,
+  whose **Show only** column keeps the people with a photo, an email
+  address, a phone number, a street address, a birthday or a company, or
+  those in no group.
+
+- **Changed: Contacts and Attachments open and close without a fade.**
+  The mail, Contacts and the attachments gallery swap at once.
+
+- **Changed: two Settings → Sidebar rows start folded.** Unread counts
+  and Fold up expanded items are closed each time Hylki starts, and stay
+  as they are left until it quits.
+
+- **Changed: Favorites lists every favorite folder's mail.** A click on
+  the Favorites row shows the mail of all of them together, as Filters
+  does for its folders; the chevron or a double click opens and closes
+  the list, where a click used to.
+
+- **Changed: Filters, Tags, Favorites and Contacts left the unified
+  section.** Settings → Sidebar → Sections places each above the accounts,
+  below them, or Off, out of the sidebar; wherever they are, they are rows
+  like the unified section's, with a chevron on the right, and their items
+  sit in from the row as the address books under Contacts do. Section
+  style, Tree style, draws all four as a tree instead, the caret in the
+  icon's place and the name still opening the combined view. A setting that
+  had one in the unified section now has it above the accounts, or Off
+  where its switch was off. Their switches among the unified rows, the
+  Contacts in the sidebar switch and the Filters unread-count switch are
+  gone, and the unified rows' settings lost their descriptions.
+
+- **Changed: an account opens and closes with its chevron.** A click on an
+  account's header in the sidebar folded or opened it wherever it landed;
+  now its chevron does, or a double click on the header, as with the
+  unified rows. **Settings → Sidebar → Fold accounts with one click**
+  brings the old way back. The icon rail's avatars still open and close
+  with one click.
+
+- **Added: a double click opens or closes a unified row.** Inboxes,
+  Starred, Sent, Drafts, Archive, Junk, Trash, Favorites, Filters, Tags and
+  Contacts in the sidebar open or close their list on a double click, as with their chevron; the first click still opens the combined
+  view.
+
+- **Changed: Contacts is a row of the sidebar.** It opens
+  every contact, and its chevron lists every address book, its account under
+  its name, an account of several books as one row with its books under it,
+  and each book's groups under the book, each folding with a caret as a
+  folder does, remembered; picking one lists its groups and then its
+  contacts, or a group's people. Contacts dragged onto a book are copied
+  there, or moved with Ctrl held after a question, and dragged onto a group
+  join it. A book's menu makes a contact or a group in it and renames it, in
+  Hylki only, wherever Hylki names it (Settings → Contacts renames books and
+  accounts too), and a group's writes to it, edits or deletes it. The
+  Contacts row left the sidebar's foot, and this replaces the address book
+  menu beside the search and the Contacts | Groups switch.
+
+- **Changed: Contacts manages every contact, not only those with an email
+  address.** The contact form edits postal addresses, the birthday and the
+  photo, and labels email addresses and phone numbers (Home, Work, Mobile,
+  Fax). A card with only a phone number or a company is a contact: it is
+  listed, saved and named by what it has, and the list shows its phone
+  number or company where others show an address. Every card of every book
+  is listed: one with the same address or name as a card in another book
+  was left out before. A group in a CardDAV book takes contacts with no
+  email address from its form too.
+
+- **Added: several contacts at once.** Ctrl or Shift and a click, or Ctrl+A,
+  select several contacts in the Contacts view, and the right-hand pane then
+  has **Add to Group**, **Move to…** another address book and **Delete…**
+  for them all, as has a right-click on one of them; Delete asks to delete
+  them too. A move adds each contact to the new book, photo included, and
+  removes it from the old one. One contact moves from its edit form, whose
+  address book can be changed, or from **Move to Address Book** in its
+  right-click menu; every move asks first, naming the book it leaves and the
+  one it goes to.
+
+- **Changed: the composer's contacts button leads to Hylki's Contacts.** The
+  button in the header of the composer's contacts window opens the Contacts
+  view, bringing the main window forward, instead of GNOME Contacts. The
+  Contacts view's own header no longer has a GNOME Contacts button; a
+  contact's menu still has **Open in GNOME Contacts**.
 
 - **Fixed: an Evolution contact list offered as a broken recipient.** The
   composer suggested each member of a list under the list's name with the
   member's whole line as the address ("Book Club", `alice able
   <alice@example.org>`), which made an invalid recipient.
+
+- **Fixed: closing a message window just after it opened could crash
+  Hylki** (#488, reported and traced by XRayAdams). A message for the
+  window's reader that arrived after the window had closed (its page saying
+  it was ready, the timer behind it, a change between light and dark) went
+  to a part of the app that was gone, which stopped the program. Such
+  messages are now dropped, in message windows, composers, the Accounts
+  window and the welcome assistant alike.
+
+- **Fixed: a no-break space before an address crashed the Markdown
+  composer** (#479, reported and traced by benoitfontaine). Looking for
+  the start of an address, the link finder stepped one byte past the
+  space before it, which is two bytes when it is a no-break space, as
+  French punctuation and Outlook quotes often have. It now steps over the
+  whole character.
+
+- **Fixed: a message body stayed blank until the window was resized** (#487,
+  reported and fixed by XRayAdams). With remote images allowed, a body was
+  shown only once all of them had loaded, so an image server that was slow
+  or did not answer left the card empty for up to a minute. A body is now
+  shown as soon as its text is in, and the images fill in as they arrive.
+
+- **Fixed: the unified Starred view was empty** (#482, reported by
+  repsorp). It listed the Starred folder of each account, which only Gmail
+  and Proton Mail Bridge have; an iCloud, Outlook, Fastmail or other IMAP
+  account keeps a star as a flag on the message, wherever it is filed, and
+  contributed nothing. For an account without a Starred folder, the view now
+  lists its starred mail from every folder but Trash and Junk, and the
+  account has a row of its own under Starred that lists only its starred
+  mail.
+
+- **Fixed: a star or tag key reached only some of the selected messages in
+  Filters** (#481, reported by amadeusp). With several messages selected,
+  `s` and the tag number keys looked each one up by its UID, which only one
+  folder keeps unique. The Filters view lists several folders of an account
+  at once, so a message with the same UID in another folder could be found
+  instead, and the selected one was left as it was. Each selected message is
+  now looked up in its own folder.
+
+- **Fixed: single-key shortcuts did nothing in a message window** (#392,
+  reported by 3v1n0). A message opened in a window of its own answered only
+  Ctrl+P and Ctrl+F. It now takes the same keys as the main window, Gmail's
+  or Hylki's: `n` and `p` step through the conversation, `;` and `:` expand
+  and collapse it, and the reply, star, read, tag, move, archive, delete and
+  spam keys act on its message, or with Gmail's keys on the whole
+  conversation as in the main window. Esc and `u` close the window, as
+  archiving it does, and with Gmail's keys marking it unread.
+
+- **Fixed: Delete did nothing in the reader** (#486, requested by
+  XRayAdams). The key deleted mail only with the message list focused, so
+  after a click in a message, or in a message opened in a window of its
+  own, it was ignored. It now deletes the message being read there too, as
+  the toolbar's Delete does, with or without single-key shortcuts.
+
+- **Fixed: the unified views were slow to open.** Every visit to Inboxes,
+  Starred, Sent, Drafts, Archive, Junk or Trash copied and merged every
+  account's folder, grouped all of it into conversations and described each
+  one, then made the list's rows again; an Archive of 80,000 messages took
+  more than half a second each time. The list now keeps the last three
+  views it showed as they were built and shows one again at once when its
+  mail has not changed, describes only the rows on screen until it is
+  scrolled to the rest, reuses its rows rather than making new ones, and no
+  longer reads the disk for sender logos each time a row is filled. A
+  folder not yet read this session is read in the background, and a
+  refresh that brings nothing new leaves the list as it is. After a start,
+  the folders the unified rows list are read in the background and the
+  rows built ahead, so the first visit is as quick as the next; a row or
+  folder opened before that shows its newest mail at once and the rest
+  when it is read.
 
 - **Added: replied and forwarded arrows in the message list** (#454,
   requested by rhuhxx). A message that was replied to shows a reply arrow
@@ -165,6 +401,15 @@
 - **Fixed: a deleted reply filed in another folder stayed counted.** A
   reply in Sent deleted from the conversation left the row's message count
   and newest message as they were.
+
+- **Fixed: Contacts was slow to open, every time** (#477). Each visit read
+  the address books again, decoded every photo at full size and built a row
+  for every contact, which took seconds with a thousand contacts; each key
+  typed in the search built the rows again. The list is now read in the
+  background after start and kept between visits, a photo is decoded once,
+  at list size and away from the window, and the list makes rows only for
+  the contacts on screen. Contacts opens at once, and a visit still reads
+  the books again and changes only what changed.
 
 - **Fixed: a keyring that asks first was taken for no keyring** (PR #466 by
   Comodino). Every keyring read gave up after two seconds, so a Secret

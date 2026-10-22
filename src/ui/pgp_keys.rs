@@ -84,9 +84,7 @@ impl Component for PgpKeys {
                     #[name = "status_row"]
                     adw::ActionRow {
                         set_title: &i18n("GnuPG"),
-                        set_subtitle: &i18n("Hylki reads and writes the keyring of the GnuPG on this \
-                                       computer, the same one the gpg command and other mail \
-                                       programs use."),
+                        set_subtitle: &i18n("The same keyring the gpg command and other mail apps use."),
                     },
                 },
 
@@ -94,9 +92,7 @@ impl Component for PgpKeys {
                 add = &adw::PreferencesGroup {
                     set_title: &i18n("Your keys"),
                     set_description: Some(
-                        i18n("A key of your own signs what you send and opens what is encrypted \
-                              to you. Send its public half to the people who should write to \
-                              you encrypted.").as_str()
+                        i18n("Your key signs what you send and opens what is encrypted to you. Share its public half with people who write to you.").as_str()
                     ),
                     #[wrap(Some)]
                     set_header_suffix = &gtk::Box {
@@ -127,9 +123,7 @@ impl Component for PgpKeys {
                 add = &adw::PreferencesGroup {
                     set_title: &i18n("Other people's keys"),
                     set_description: Some(
-                        i18n("The keys you encrypt to and check signatures with. A key is \
-                              trusted once you have vouched for it; check its fingerprint \
-                              with its owner first.").as_str()
+                        i18n("Keys you encrypt to and check signatures with. Check a fingerprint with its owner before trusting it.").as_str()
                     ),
                     #[wrap(Some)]
                     set_header_suffix = &gtk::Box {
@@ -187,14 +181,12 @@ impl Component for PgpKeys {
                 if available {
                     let version = gpg_version().unwrap_or_default();
                     status_row.set_subtitle(&i18n_f(
-                        "GnuPG {version} found. Hylki reads and writes its keyring, the same one the gpg \
-                         command and other mail programs use.",
+                        "GnuPG {version} found.",
                         &[("version", &version)],
                     ));
                 } else {
                     status_row.set_subtitle(&i18n(
-                        "GnuPG was not found. Install the gnupg package to read encrypted mail and \
-                         check signatures; the Flatpak build carries it.",
+                        "GnuPG was not found. Install the gnupg package to read encrypted mail and check signatures.",
                     ));
                     status_row.add_css_class("error");
                 }
@@ -410,8 +402,7 @@ impl Component for PgpKeys {
                     parent.as_ref(),
                     Some(&i18n("Trust this key?")),
                     Some(&i18n_f(
-                        "Compare the fingerprint with the one {uid} gives you in person or over another channel. \
-                         Trusting a key you have not checked lets an impostor's signature pass as theirs.",
+                        "Compare the fingerprint with the one {uid} gives you in person or another way. Trusting an unchecked key lets an impostor's signature pass.",
                         &[("uid", key.primary_uid())],
                     )),
                 );
@@ -526,8 +517,7 @@ impl PgpKeys {
         let dialog = adw::MessageDialog::new(
             parent.as_ref(),
             Some(&i18n("Generate a Key")),
-            Some(&i18n("A signing key with an encryption subkey, made by GnuPG and kept in its keyring. \
-                        The passphrase is asked for when the key is used; the agent remembers it for a while.")),
+            Some(&i18n("This will be kept in the GnuPG keyring. The passphrase is asked for when the key is used.")),
         );
         dialog.add_response("cancel", &i18n("Cancel"));
         dialog.add_response("generate", &i18n("Generate"));

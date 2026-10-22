@@ -164,14 +164,19 @@ apps and Gmail on the web each keep their own. **Reset Folder Order**, in
 the right-click menu of the account's header or its Folders heading, forgets
 what was dragged. The item is there only once something has been.
 
-Only the chevrons open and close the items in the sidebar. Clicking a
-folder opens it and leaves its sub-folders as they were. Clicking the name
-of the Folders, Filters or Tags heading does nothing; the chevron beside it
+The chevrons open and close the items in the sidebar. Clicking a folder
+opens it and leaves its sub-folders as they were. Clicking the name of the
+Folders or Tags heading of an account does nothing; the chevron beside it
 opens or closes the section. Clicking Inboxes, Starred, Sent, Drafts,
-Archive, Junk, Trash, Filters or Tags in the unified section opens the
-combined list without showing each account's folder under it. In the icon
-rail, which has no chevrons, a click on a section's icon opens or closes it,
-and a long press opens or closes the unified rows.
+Archive, Junk or Trash in the unified section, or Favorites, Filters, Tags
+or Contacts, opens the combined list without showing each account's folder under it, and
+double-clicking it opens or closes that list as its chevron does. An
+account's header works the same way: its chevron, or a double click on the
+header, opens or closes its folders, and a single click elsewhere on it
+does nothing. **Settings → Sidebar → Fold accounts with one click** brings
+back the single click anywhere on the header. In the icon rail, which has
+no chevrons, a click on a section's icon opens or closes it, and a long
+press or a double click opens or closes the unified rows.
 
 **Settings → Sidebar → Unified** chooses the unified section's rows.
 Inboxes, Starred, Sent, Drafts and Archive are on until switched off; Junk
@@ -182,13 +187,22 @@ or **Empty Trash…**. The same item on the unified Junk or Trash row itself
 empties that folder in every account in the unified section at once, after
 a confirmation that lists them.
 
+**Settings → Sidebar → Sections** places Filters, Tags, Favorites and
+Contacts **Above the accounts**, **Below the accounts** or **Off**, which
+leaves it out of the sidebar. Wherever they are, they are rows like the
+unified section's, with a chevron that opens their list. **Section style**
+set to **Tree style** draws all four as a tree instead: the caret that
+opens and closes the list stands where the icon was, and the row has no
+chevron at its end. Clicking the name opens the combined view either way.
+
 ### Favorites
 
 Right-click any folder in the sidebar and choose **Add to Favorites** to list
-it in a Favorites row at the top of the sidebar, under Inboxes. Favorites can
-come from any account, keep the order they were added in, and show their
-unread counts; the folder's glyph takes its account's color. Clicking
-Favorites opens or closes the list. **Remove from Favorites**, in the same
+it in a Favorites row above the accounts (**Settings → Sidebar → Sections**
+can move it). Favorites can come from any account, keep the order they were
+added in, and show their unread counts; the folder's glyph takes its
+account's color. Clicking Favorites lists the mail of every favorite folder
+together; its chevron, or a double click, opens or closes the list. **Remove from Favorites**, in the same
 menu or on the favorite itself, takes it out, and the row goes when the last
 one does. Favorites show with a single account too, and for an account left
 out of All Inboxes.
@@ -484,9 +498,14 @@ Hylki's own; GNOME Contacts and Evolution go on using the book. An account
 whose Contacts are switched off in GNOME Online Accounts has its switch
 greyed out, and says so.
 
-The arrow at the end of a row opens the address book's page. An account's
-page lists its address books, each with a switch of its own, under the
-account's switch. The Hylki book's page holds its import and export. A
+The arrow at the end of a row opens the address book's page. Its **Name**
+field gives the account a name of its own in Hylki: in this list, and
+under its address books in the sidebar's Contacts list, while GNOME
+Contacts and Evolution keep the account's. An account's page lists its
+address books, each with a name that can be changed the same way, as
+**Rename…** in the sidebar does, and a switch of its own, under the
+account's switch. A name left blank, applied, is the account's or the
+book's own again. The Hylki book's page holds its import and export. A
 GNOME Online Accounts account's page has **Open Online Accounts**, where its
 sign-in is changed; a CardDAV account's and a directory's page is their form,
 with **Remove**.
@@ -507,12 +526,80 @@ holds. It is there whether EDS is installed or not. Its contacts are
 created, edited and deleted like any other, and their addresses and photos
 are used for suggestions and avatars.
 
-In the Contacts view, the menu above the list shows **All Address Books** or
-one of them, the Hylki book included. The menu is hidden while there is only
-one book. A new contact, made with the **+** button, has an **Address
+The Contacts view searches as the message list does. The search button in
+the list's header, <kbd>Ctrl+F</kbd> or <kbd>/</kbd> shows the search field,
+and <kbd>Esc</kbd>, or leaving the field empty, hides it and clears the
+search. The button at the right of the header sorts the people by first
+name, last name or email. Its **Show only** column keeps those with a photo,
+an email address, a phone number, a street address, a birthday or a
+company, or those in no group. The button turns the accent color while a
+filter is on, and **Clear Filters** shows everything again.
+
+**Contacts** is a row of the sidebar, above the accounts unless **Settings
+→ Sidebar → Sections** places it elsewhere, and opens every contact. Its chevron opens the list beneath:
+the Hylki book first, then each account. An account with one address
+book is that book's row, with the account or server it is kept by in
+small type under its name; an account with several is a row of its own,
+with how many contacts they hold together, and its books under it.
+Every book shows how many contacts it holds, and its groups are under
+it. An account or a book with groups folds and opens with the caret
+beside it, as a folder with sub-folders does; the list, the accounts and
+the books stay open or folded as they were left. Picking a book lists its
+groups, by name, and then its contacts; picking an account lists the
+groups and contacts of all its books. Picking a book opens Contacts on its contacts alone; picking a
+group lists the group and then its people, with **Remove from Group** in
+their right-click menu. An LDAP directory, under **Directories**, is
+searched by typing. A book's right-click menu has **New Contact** and
+**New Group**, made in that book, and **Rename…**, which gives the book
+a name of its own in Hylki: in the sidebar, on its contacts' cards and
+wherever Hylki names it, while GNOME Contacts and Evolution keep the
+book's own. **Use Its Own Name**, in the same window, goes back to it. A
+group's menu has **New Message**, **Edit Group** and **Delete Group…**.
+
+Contacts dragged from the list onto a book in the sidebar are copied
+there, and stay where they were. With <kbd>Ctrl</kbd> held as they are
+dropped they move instead, after a question that names both books.
+Dropped onto a group, they join it, copied first into the group's book
+when it needs them (see [Contact groups](#contact-groups)). A drag takes
+every contact selected with the one dragged. A book Hylki cannot write
+to, and a group it cannot change, take no drop.
+
+Several contacts are selected together with <kbd>Ctrl</kbd> or
+<kbd>Shift</kbd> and a click, or <kbd>Ctrl+A</kbd> for the whole list. The
+right-hand pane then lists them, with **Add to Group**, which puts them in
+a group (those it can take: see [Contact groups](#contact-groups)), **Move
+to…**, which moves them to another address book, and **Delete…**; a
+right-click on one of them offers the same. A move adds each contact to the
+book picked and removes it from the one it was in, locally and on the
+server, with its photo; a group that names it by its card in the old book
+loses it. Contacts in a book Hylki cannot write to are not moved. With a
+group picked in the sidebar, the pane has **Remove from Group** for them
+too. **Settings → Message List → Keep the search field open** keeps the
+Contacts search open too.
+
+A new contact, made with the **+** button, has an **Address
 book** row at the top of its form that picks where it is saved; it starts on
-the book the list shows, or on the default book when the list shows them
-all. A contact being edited stays in its book, which the form names.
+the book picked in the sidebar, or on the default book when every book is
+shown. A contact being edited can move to another book
+from the same row, which then names the one it is in: saving asks first,
+and moves it with its changes. A contact's right-click menu has **Move to
+Address Book** too, and several selected together move with **Move to…**
+(see below). A move takes the contact out of its book and puts it in the
+other, locally and on the server, after a question that names both; a group
+in the old book that held the contact no longer has it. A contact in a book
+Hylki cannot write to stays where it is.
+
+The contact form holds the photo, which **Change Photo…** replaces with an
+image file (made at most 512 pixels a side and kept in the card) and
+**Remove Photo** takes away; the name, nickname, organization, title and
+birthday (a day and a month, the year if known); email addresses and phone
+numbers, each with a label (Home, Work, Mobile, Fax); postal addresses, in
+their parts; websites; and a note. No field is required: a card with only a
+phone number, or only a company, is a contact, and one with no name is
+listed by its email address, nickname, company or phone number, which the
+list also shows under the name when there is no email address. Every card
+in every book is listed, so someone kept in two books shows twice, each
+with its book named.
 
 The Hylki book's page in **Settings → Contacts** shows how many contacts it
 holds, and has **Import vCard files**, **Export as a vCard file** (one `.vcf`
@@ -551,8 +638,13 @@ A group can be set to **Send as Bcc**. Picking it in any field then puts its
 people in Bcc, and opens the Bcc row, so they do not see each other's
 addresses. To still needs at least one address, your own for example.
 
+A group is listed in the sidebar under its address book, and picking it
+lists its people (see [The Hylki address book](#the-hylki-address-book)).
+
 **New Group**, under the **+** button in the Contacts view, makes a group in
-the Hylki book. Add people by typing part of a name or address and picking
+the address book picked at the top of the form: the Hylki book, a book on
+this computer, or a CardDAV book such as iCloud's. Google and Microsoft 365
+keep no groups, so their books are not offered. Add people by typing part of a name or address and picking
 from the matches under the field, or by typing or pasting addresses and
 pressing <kbd>Return</kbd>. The matches are the composer's suggestions: your
 contacts, and the addresses in the mail you have sent and received, marked
@@ -561,18 +653,36 @@ with a clock. <kbd>↓</kbd> and <kbd>↑</kbd> move through them and
 a group, not only people in your contacts. A contact's right-click menu has **Add to Group**,
 and a group's card has **New Message**, which writes to everyone in it. The
 group's pencil, at the top of its card, changes its name, its people and the
-Bcc switch.
+Bcc switch, and its **Address book** moves it to another book: saving makes
+the group there, with its people, and then removes it from the book it was
+in. Moved into a CardDAV book, its people are copied there as contacts when
+the book does not have them yet; moved into the Hylki book or one on this
+computer, whose groups hold addresses, its people with no email address are
+left out. The form says so when another book is picked.
 
 The lists made in Evolution, kept in the books of Evolution Data Server, are
 shown and offered too, and Evolution's **Hide addresses when sending mail to
 this list** is the same as **Send as Bcc**. They can be changed in Hylki as
-well. The groups of a CardDAV book written by other apps (vCard 4 `KIND:group`,
-and the groups of Apple Contacts and iCloud) are shown and offered with the
-people they name in the same book, but are changed in the app they came
-from.
+well.
 
-A group is saved as an Evolution list, so **Export as a vCard file** carries
-it to Evolution, and back. Groups are not counted as contacts in **Settings →
+A group in the Hylki book or on this computer is saved as an Evolution list,
+so **Export as a vCard file** carries it to Evolution, and back. A group in
+a CardDAV book is saved as Apple Contacts and iCloud save theirs, which
+the Apple apps, Fastmail and DAVx⁵ read as groups too. Such a group holds
+contacts of its own book. A contact of another book put in it with **Add
+to Group** is copied to the group's book first, whole: phone numbers,
+photo and all, and the original stays where it was. Someone the book
+already has, by address (or, with no address, by name), is not copied
+again. Someone added in the group's form by typing an address is added to
+the book as a contact with their name and address. The groups made by Apple
+Contacts and iCloud can be changed in Hylki the same way. Such a group can
+hold people with no email address, known by a phone number for example:
+they are listed in it as having none, and mail to the group goes to the
+others. An Evolution list holds addresses, so a contact with none cannot
+join one.
+Send as Bcc is kept in the group, where other apps pass it over. A vCard 4
+group (`KIND:group`) is shown and offered with the people it names in the
+same book, but is changed in the app it came from. Groups are not counted as contacts in **Settings →
 Contacts**, and the people in a group do not count as contacts for the
 filters below.
 
@@ -929,6 +1039,28 @@ edit, until the next space, <kbd>Return</kbd> or comma. A double click does the
 same for any pill, and its × removes it. A pill that is not an email address
 is red.
 
+Pills are selected as files are: a click selects one, <kbd>Ctrl</kbd>+click
+adds one to the selection or takes it out, and <kbd>Shift</kbd>+click selects
+the pills between. Dragging the pointer over pills from beside them, or from
+the empty text after them, selects them as dragging over text does, and
+<kbd>Ctrl</kbd> adds them to the selection. A selection can take pills from
+To, Cc and Bcc at once.
+
+The selection can be dragged to another place in its field, or into another
+field. While it is dragged, Cc and Bcc show if they were hidden, and a line
+marks where it will go; a field it was not dropped in hides again. The
+right-click menu moves the selection to the end of another field, edits a
+single pill, or removes the selection.
+
+From the keyboard, <kbd>Left</kbd> at the start of a field selects the last
+pill, and <kbd>Ctrl+A</kbd> on an empty field selects them all. On a selected
+pill, <kbd>Left</kbd> and <kbd>Right</kbd> select the next one, with
+<kbd>Shift</kbd> to extend the selection, and <kbd>Right</kbd> past the last
+goes back to the text. <kbd>Delete</kbd> or <kbd>Backspace</kbd> removes the
+selection, <kbd>Return</kbd> edits the pill, and <kbd>Menu</kbd> or
+<kbd>Shift+F10</kbd> opens the menu. <kbd>Tab</kbd> passes over the pills to
+the next field.
+
 ### The From address
 
 The From row lists each account's address and the aliases set up for it.
@@ -1150,6 +1282,17 @@ message to every recipient's key and your own, and turns Sign on too. If a
 recipient has no key in your keyring, or your address has no key of its own,
 Hylki says so before anything is sent. Replying to an encrypted message starts
 with Encrypt on.
+
+An encrypted message carries its subject inside, where only the recipients
+can read it, and "..." as the subject anyone else sees, as Thunderbird does.
+Hylki and other mail programs that read subjects from there show the real one
+once the message is decrypted. For recipients whose mail program shows only
+"...", turn off **Hide the subject of encrypted mail** under the account's
+*OpenPGP* group; that account's encrypted mail then goes with its subject
+readable outside. Stored on the account as `plain_subject = true` in
+`accounts.toml`. The message list shows "..." for encrypted
+mail, because nothing decrypted is kept between visits; the reader, a message
+window and a printout show the subject inside.
 
 Each account uses the key whose address matches. To use another key for an
 account, open the account in *Settings → Mail Accounts* and choose it under
@@ -1452,10 +1595,17 @@ message's text, so the subject keeps the row's full width. It is off unless
 switched on; a single-line list keeps them in its Tags column.
 
 **Settings → Message List → Keep the search field open** shows the search
-field above the list all the time, instead of only after the search button,
+field with the list all the time, instead of only after the search button,
 <kbd>Ctrl+F</kbd> or <kbd>/</kbd>. One click in it starts a search.
 <kbd>Esc</kbd> clears it and returns to the list, and it stays where it is.
 It is off unless switched on.
+
+**Settings → Message List → Search field position** and **Selection bar
+position** set where the search field and the bar for several selected
+messages open: at the top of the list, the default, or at the bottom. At the top, each one pushes the
+messages down when it opens; at the bottom, the list gets shorter from its
+foot and the messages stay where they are. When both are on the same side,
+the search field is the outer one, so selecting messages never moves it.
 
 The button beside the search field sets where a search looks, and the info
 button beside each choice in its popover says what that choice searches.

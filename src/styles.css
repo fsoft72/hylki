@@ -242,6 +242,28 @@ headerbar.rail-header {
   margin-right: -4px;
 }
 
+/* An account's chevron at the row's end: the unified rows' 32px target,
+   its end margin sliding into the header's padding, so the two columns of
+   chevrons line up. */
+.account-header .chevron-btn.account-chevron-end {
+  min-width: 32px;
+  min-height: 32px;
+  margin-right: -8px;
+}
+.account-header .chevron-btn.account-chevron-end:dir(rtl) {
+  margin-right: 0;
+  margin-left: -8px;
+}
+
+/* The tree style's caret (Settings → Sidebar → Sections) stands in the
+   icon column: its 24px button overhangs the 16px glyph 4px a side, so the
+   glyph and the label land where an icon and its label would. */
+.tree-caret {
+  margin-left: -4px;
+  margin-right: -4px;
+  opacity: 0.6;
+}
+
 /* Left placement: match the account headers' height below it (avatar + two-
    line name/email push those taller than this row's single line of text
    would be on its own) — content stays vertically centred. */
@@ -572,6 +594,11 @@ flowbox.attach-flow > flowboxchild {
   background-color: @accent_bg_color;
 }
 
+/* A contact's face in the list: the disc clips a photo round. */
+.contact-face {
+  border-radius: 9999px;
+}
+
 /* Scoped to the row's own header box: a context-menu popover anchored to the
    row is also its descendant, and a bare `label` selector painted the menu's
    text white-on-white. */
@@ -582,10 +609,21 @@ flowbox.attach-flow > flowboxchild {
 
 /* Faint rule above the pinned Contacts/Attachments footer, just enough to
    set the utility rows apart from the account list scrolling above. */
+/* The rule over the sidebar's foot. Nothing below it: the list's own 6px
+   is the gap to the Attachments pill, as it is at the pill's sides and
+   under it. */
 .footer-separator {
   min-height: 1px;
-  margin: 4px 12px;
+  margin: 4px 12px 0 12px;
   opacity: 0.5;
+}
+/* The Attachments pill as tall as the unified rows' above (46px, their
+   chevron's 32 and the row's padding); in the icon rail, as the rail's. */
+.sidebar-footer > row {
+  min-height: 46px;
+}
+.rail-collapsed .sidebar-footer > row {
+  min-height: 0;
 }
 
 /* Collapsible "Folders" (custom folders) section header. */
@@ -614,63 +652,6 @@ flowbox.attach-flow > flowboxchild {
 .folders-toggle label.unread-badge {
   opacity: 1;
   font-weight: 700;
-}
-
-/* The "Filtered Folders" header inside All Inboxes reads like the All
-   Inboxes row above it — full-strength label, icon at the folder rows'
-   weight — rather than like the accounts' dimmed "Folders" heading. */
-.unified-folders-toggle label {
-  opacity: 1;
-}
-.unified-folders-toggle image {
-  opacity: 0.75;
-}
-/* Tighter onto its first folder row (Jason, 2026-09-04: 7px less). The
-   row's 7px top padding became a margin on the button (2026-09-07): the
-   hover pill covers padding but not margin, so with 7px above the text
-   and 0 below it sat visibly high. Now the pill is centred on the text
-   and the text sits exactly where it did. */
-.unified-folders-toggle {
-  /* 2 + the row's 5 keeps the text where the old 7 put it. */
-  margin-top: 2px;
-  /* The button's 24px content floor would centre the now-shorter row
-     inside it and push the text down: the row's own height rules. */
-  min-height: 0;
-}
-.folders-toggle.heading-box.unified-folders-toggle {
-  min-height: 0;
-}
-.unified-folders-toggle .folder-row {
-  /* 5px of pill above and below the text (Jason, 2026-09-07). */
-  padding-top: 5px;
-  padding-bottom: 5px;
-}
-/* Its folded-up chip onto the folder rows' chip column: the heading's
-   button padding otherwise leaves it 2px short. */
-.unified-folders-toggle .folder-row:dir(ltr) {
-  padding-right: 6px;
-}
-.unified-folders-toggle .folder-row:dir(rtl) {
-  padding-left: 6px;
-}
-
-
-/* The Tags heading sits 16px closer to the Filtered Folders rows above it
-   than the stock 2px margin puts it (Jason, 2026-09-07). The two pills
-   overlap by 8px, which shows only when that last row is selected and the
-   heading hovered at the same time. */
-.unified-folders-toggle.tags-toggle {
-  margin-top: -14px;
-}
-
-/* Icon rail: the two headings' rows would keep the full sidebar's extra
-   right padding above, which sat their glyphs 2px left of every other rail
-   item. Same 2px each side as the rail's folder rows. */
-.rail-collapsed .unified-folders-toggle .folder-row:dir(ltr) {
-  padding-right: 2px;
-}
-.rail-collapsed .unified-folders-toggle .folder-row:dir(rtl) {
-  padding-left: 2px;
 }
 
 /* Icon rail, "Unread dots instead of counts": every mini chip becomes a dot
@@ -743,13 +724,23 @@ flowbox.attach-flow > flowboxchild {
 
 /* ---- Message list ---- */
 
+/* The boxes above and below the rows that hold search and the bulk bar,
+   wherever each is set to open (#496). No padding of their own: both bars
+   hide by default (#102), and dead padding here floated the first row
+   ~32px low. Each revealed bar carries its own inset instead; the negative
+   margin buys the rows two more pixels. */
 .list-toolbar {
-  /* No padding of its own: search hides by default (#102), and dead
-     padding here floated the first row ~32px low. The revealed search row
-     carries its own inset instead; the negative margin buys the rows two
-     more pixels. */
   padding: 0;
   margin-bottom: 2px;
+}
+
+.list-footer {
+  padding: 0;
+}
+
+.list-footer .list-search-row {
+  padding: 8px 12px 8px 12px;
+  border-top: 1px solid alpha(currentColor, 0.08);
 }
 
 .list-search-row {
@@ -773,6 +764,12 @@ flowbox.attach-flow > flowboxchild {
 }
 .bulk-bar:dir(rtl) {
   padding: 4px 12px 6px 8px;
+}
+.list-footer .bulk-bar {
+  padding-top: 5px;
+  padding-bottom: 5px;
+  border-bottom: none;
+  border-top: 1px solid alpha(currentColor, 0.08);
 }
 
 .bulk-count {
@@ -1657,6 +1654,34 @@ headerbar.compose-toolbar button.image-button {
 .recipient-pill.invalid {
   background-color: alpha(@error_color, 0.14);
   color: @error_color;
+}
+
+/* Selected pills (#492), and the one with the keyboard focus. */
+.recipient-pill.selected {
+  background-color: @accent_bg_color;
+  color: @accent_fg_color;
+}
+
+.recipient-pill.invalid.selected {
+  background-color: @error_bg_color;
+  color: @error_fg_color;
+}
+
+.recipient-pill:focus-visible {
+  outline: 2px solid alpha(@accent_color, 0.5);
+  outline-offset: 1px;
+}
+
+/* Pills being dragged stay in place, faded, until they are let go. */
+.recipient-pill.dragged {
+  opacity: 0.35;
+}
+
+/* Where a dragged pill would go. */
+.pill-drop-marker {
+  min-width: 2px;
+  border-radius: 1px;
+  background-color: @accent_color;
 }
 
 .compose-body {

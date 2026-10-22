@@ -127,11 +127,14 @@ pub fn show_context_menu_popover(
     popover.add_css_class("menu");
 
     // Pages: the menu itself, and one per submenu, slid between. Each page
-    // keeps its own size, so the popover fits whichever is showing.
+    // keeps its own height, so the popover fits whichever is showing, but
+    // all take the widest one's width, as GTK's own menus do: a popover
+    // that grew wider as a submenu slid in was closed by the compositor,
+    // so a submenu of long names (address books) never opened.
     let stack = gtk::Stack::new();
     stack.set_transition_type(gtk::StackTransitionType::SlideLeftRight);
     stack.set_transition_duration(150);
-    stack.set_hhomogeneous(false);
+    stack.set_hhomogeneous(true);
     stack.set_vhomogeneous(false);
     stack.set_interpolate_size(true);
 
@@ -153,7 +156,36 @@ pub fn show_context_menu_popover(
     }
     popover.set_child(Some(&scroller));
     popover.set_parent(parent);
-    let y = fitted_anchor(parent.as_ref(), &popover, x, y);
+    // Placed so the tallest page fits, not only the first: a page that
+    // grows past the window's edge closes the menu.
+    let tallest = {
+        let mut page = stack.first_child();
+        let mut most = 0;
+        while let Some(p) = page {
+            most = most.max(p.measure(gtk::Orientation::Vertical, -1).1);
+            page = p.next_sibling();
+        }
+        most
+    };
+    let y = fitted_anchor(parent.as_ref(), tallest, x, y);
+    // A popover keeps the size it opened at until it is presented again,
+    // and a list view, its usual parent, never does that: a submenu taller
+    // than the menu was squeezed into the menu's height. Present it as a
+    // page slides in, and once more when the slide is done.
+    {
+        let weak = popover.downgrade();
+        stack.connect_visible_child_name_notify(move |_| {
+            if let Some(p) = weak.upgrade() {
+                p.present();
+            }
+        });
+        let weak = popover.downgrade();
+        stack.connect_transition_running_notify(move |s| {
+            if let Some(p) = weak.upgrade().filter(|_| !s.is_transition_running()) {
+                p.present();
+            }
+        });
+    }
     popover.set_pointing_to(Some(&gtk::gdk::Rectangle::new(x as i32, y as i32, 1, 1)));
     popover.connect_closed(|p| p.unparent());
     popup_after_release(&popover, parent.as_ref());
@@ -223,6 +255,9 @@ fn popup_after_release(popover: &gtk::Popover, parent: &gtk::Widget) {
     root.upcast_ref::<gtk::Widget>().add_controller(watch);
 }
 
+/// The most of an entry's label a menu shows before cutting it short.
+const MAX_LABEL_CHARS: i32 = 40;
+
 /// Room left between a menu and the window's edges.
 const MENU_MARGIN: i32 = 12;
 
@@ -234,16 +269,15 @@ const MENU_MARGIN: i32 = 12;
 /// halfway down a message opened nothing. Here the anchor moves up just far
 /// enough for the menu to fit below it, which is how a menu near the
 /// bottom of a screen behaves in any GTK app.
-fn fitted_anchor(parent: &gtk::Widget, popover: &gtk::Popover, x: f64, y: f64) -> f64 {
+fn fitted_anchor(parent: &gtk::Widget, natural: i32, x: f64, y: f64) -> f64 {
     let Some(root) = parent.root() else { return y };
     let root: &gtk::Widget = root.upcast_ref();
     let Some(at) = parent.compute_point(root, &gtk::graphene::Point::new(x as f32, y as f32)) else {
         return y;
     };
     // The popover itself measures nothing before it is mapped; its content
-    // does, and the menu's padding and shadow add a little to that.
-    let Some(content) = popover.child() else { return y };
-    let (_, natural, _, _) = content.measure(gtk::Orientation::Vertical, -1);
+    // does (`natural`), and the menu's padding and shadow add a little.
+    let natural = root.height().saturating_sub(MENU_MARGIN).min(natural);
     let height = natural + 2 * MENU_MARGIN;
     let (top, bottom) = (at.y() as f64, root.height() as f64);
     let fits_below = top + height as f64 <= bottom;
@@ -337,13 +371,21 @@ fn build_page(
                 img.set_pixel_size(16);
                 row.append(&img);
             }
+            // A long name (an address book's account) is cut short, so
+            // one entry does not make every page of the menu wide; the
+            // whole of it shows on hover.
             let lbl = gtk::Label::new(Some(&label));
             lbl.set_xalign(0.0);
             lbl.set_hexpand(true);
+            lbl.set_ellipsize(gtk::pango::EllipsizeMode::End);
+            lbl.set_max_width_chars(MAX_LABEL_CHARS);
             row.append(&lbl);
 
             let btn = gtk::Button::new();
             btn.set_child(Some(&row));
+            if label.chars().count() > MAX_LABEL_CHARS as usize {
+                btn.set_tooltip_text(Some(&label));
+            }
             btn.add_css_class("flat");
             btn.add_css_class("context-menu-item");
             btn.set_halign(gtk::Align::Fill);
@@ -363,7 +405,7 @@ fn build_page(
                 scroller.set_policy(gtk::PolicyType::Never, gtk::PolicyType::Automatic);
                 scroller.set_propagate_natural_height(true);
                 scroller.set_propagate_natural_width(true);
-                scroller.set_max_content_height(420);
+                scroller.set_max_content_height(640);
                 scroller.set_child(Some(&page));
                 stack.add_named(&scroller, Some(&name));
                 let stack = stack.clone();
