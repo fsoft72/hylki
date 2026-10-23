@@ -1,5 +1,6 @@
 //! Filter rules (#47): the list on the Filters page and the rule editor.
 
+use super::action_editor::{action_summary, ActionList};
 use super::condition_editor::{form_scaffold, CondAdder, CondControls, CondRows};
 use super::*;
 
@@ -98,6 +99,9 @@ impl AccountsWindow {
                     .map(|(_, name)| name.clone())
                     .unwrap_or_else(|| r.dest_path.clone());
                 subtitle.push_str(&format!(" \u{2192} {dest}"));
+            }
+            for part in action_summary(r) {
+                subtitle.push_str(&format!(", {part}"));
             }
             if !r.tag.is_empty() {
                 let name = self
@@ -286,35 +290,23 @@ impl AccountsWindow {
             add_row.connect_activated(move |_| add_cond(None));
         }
 
-        // Then: what a match does.
-        let action_group = adw::PreferencesGroup::new();
-        action_group.set_title(&i18n("Then"));
-        let dest_row = adw::ComboRow::new();
-        dest_row.set_title(&i18n("Move to"));
-        dest_row.set_subtitle(&i18n("Leave in Inbox to only tag matching mail"));
-        // The destination list follows the chosen account.
+        // Then: what a match does (the action rows), and below them the
+        // tag and the unread count.
+        let actions = ActionList::new(std::rc::Rc::new(changed.clone()));
+        // The Move rows offer the chosen account's folders.
         let folders = std::rc::Rc::new(self.folders_by_email.clone());
         let emails_rc = std::rc::Rc::new(emails.clone());
-        let dest_paths = std::rc::Rc::new(std::cell::RefCell::new(Vec::<String>::new()));
         let fill_dest = {
-            let dest_row = dest_row.clone();
+            let actions = actions.clone();
             let folders = folders.clone();
             let emails_rc = emails_rc.clone();
-            let dest_paths = dest_paths.clone();
             move |idx: usize| {
                 let empty = Vec::new();
                 let list = emails_rc
                     .get(idx)
                     .and_then(|e| folders.get(e))
                     .unwrap_or(&empty);
-                // Entry 0 files nowhere (a tag-only rule, #71): its path is "".
-                let stay = i18n("Leave in Inbox");
-                let mut names: Vec<&str> = vec![stay.as_str()];
-                names.extend(list.iter().map(|(_, n)| n.as_str()));
-                dest_row.set_model(Some(&gtk::StringList::new(&names)));
-                let mut paths = vec![String::new()];
-                paths.extend(list.iter().map(|(p, _)| p.clone()));
-                *dest_paths.borrow_mut() = paths;
+                actions.set_destinations(list);
             }
         };
         fill_dest(0);
@@ -322,10 +314,8 @@ impl AccountsWindow {
             let fill_dest = fill_dest.clone();
             account_row.connect_selected_notify(move |row| fill_dest(row.selected() as usize));
         }
-        {
-            let changed = changed.clone();
-            dest_row.connect_selected_notify(move |_| changed());
-        }
+
+        let action_group = adw::PreferencesGroup::new();
 
         // Tag with (#71): none, or one of the tags.
         let tag_row = adw::ComboRow::new();
@@ -351,7 +341,6 @@ impl AccountsWindow {
             "Include the folder's unread mail in the tray icon's unread count",
         ));
         count_row.set_active(true);
-        action_group.add(&dest_row);
         action_group.add(&tag_row);
         action_group.add(&count_row);
 
@@ -370,13 +359,7 @@ impl AccountsWindow {
                 fill_dest(idx);
             }
             combine_row.set_selected(if rule.any { 1 } else { 0 });
-            if let Some(idx) = dest_paths
-                .borrow()
-                .iter()
-                .position(|p| *p == rule.dest_path)
-            {
-                dest_row.set_selected(idx as u32);
-            }
+            actions.load(rule);
             if let Some(idx) = tags
                 .iter()
                 .position(|t| t.keyword.eq_ignore_ascii_case(&rule.tag))
@@ -389,6 +372,8 @@ impl AccountsWindow {
         page_box.append(&account_group);
         page_box.append(&add_group);
         page_box.append(&combine_group);
+        page_box.append(&actions.group);
+        page_box.append(&actions.add_group);
         page_box.append(&action_group);
         // The condition groups slot in above Add Condition: the rule's own
         // when editing, one blank one otherwise.
@@ -401,7 +386,7 @@ impl AccountsWindow {
             None => add_cond(None),
         }
 
-        showcase_open_row(&dest_row, &tag_row, &conds, &account_row);
+        showcase_open_row(&tag_row, &conds, &account_row);
         // HYLKI_SHOWCASE_ADD_CONDITION=<n> adds that many blank conditions
         // once the page is up, for a capture of the stacked groups.
         if let Some(Ok(n)) = std::env::var("HYLKI_SHOWCASE_ADD_CONDITION")
@@ -418,6 +403,11 @@ impl AccountsWindow {
 
         // The rule as the form stands, or None while it cannot be saved.
         let entries = vec![name_row.clone()];
+        // When the rule being edited started forwarding, if it did.
+        let forward_before: Option<i64> = edit
+            .as_ref()
+            .filter(|(_, r)| !r.forward_to.is_empty())
+            .map(|(_, r)| r.forward_since);
         let build = move || -> Option<FilterRule> {
             // Every condition with text; a blank extra one is dropped. The
             // matcher of a body condition is whatever the pinned row says.
@@ -439,9 +429,8 @@ impl AccountsWindow {
                     })
                 })
                 .collect();
-            let paths = dest_paths.borrow();
             let email = emails.get(account_row.selected() as usize)?;
-            let dest = paths.get(dest_row.selected() as usize)?;
+            let acts = actions.read()?;
             let tag = match tag_row.selected() {
                 0 => String::new(),
                 i => tags
@@ -449,10 +438,6 @@ impl AccountsWindow {
                     .map(|t| t.keyword.clone())
                     .unwrap_or_default(),
             };
-            // A rule needs something to match and something to do.
-            if conditions.is_empty() || (dest.is_empty() && tag.is_empty()) {
-                return None;
-            }
             let mut rule = FilterRule {
                 name: name_row.text().trim().to_string(),
                 account_email: email.clone(),
@@ -461,14 +446,24 @@ impl AccountsWindow {
                 value: String::new(),
                 more: Vec::new(),
                 any: combine_row.selected() == 1,
-                dest_path: dest.clone(),
+                dest_path: acts.dest_path,
                 tag,
                 count_unread: count_row.is_active(),
-                forward_to: Vec::new(),
-                forward_since: 0,
-                mark_read: false,
-                delete: false,
+                // Forwarding starts from the moment the Forward was added,
+                // so the mail already in the folder is never sent on.
+                forward_since: match (&acts.forward_to, &forward_before) {
+                    (to, _) if to.is_empty() => 0,
+                    (_, Some(since)) if *since > 0 => *since,
+                    _ => crate::datefmt::now(),
+                },
+                forward_to: acts.forward_to,
+                mark_read: acts.mark_read,
+                delete: acts.delete,
             };
+            // A rule needs something to match and something to do.
+            if conditions.is_empty() || !rule.has_action() {
+                return None;
+            }
             rule.set_conditions(conditions);
             Some(rule)
         };
@@ -585,19 +580,17 @@ impl AccountsWindow {
     }
 }
 
-/// Showcase hook: HYLKI_SHOWCASE_OPEN_ROW=dest|tag|where|match|account
+/// Showcase hook: HYLKI_SHOWCASE_OPEN_ROW=tag|where|match|account
 /// activates that combo row once the page is up and logs whether its
 /// popover opened and how many choices it holds, the way a click would
 /// (the "Move to" list was found empty this way, 2026-09-14).
 fn showcase_open_row(
-    dest_row: &adw::ComboRow,
     tag_row: &adw::ComboRow,
     conds: &std::rc::Rc<std::cell::RefCell<Vec<CondRows>>>,
     account_row: &adw::ComboRow,
 ) {
     if let Ok(which) = std::env::var("HYLKI_SHOWCASE_OPEN_ROW") {
         let row: adw::ComboRow = match which.as_str() {
-            "dest" => dest_row.clone(),
             "tag" => tag_row.clone(),
             "where" => conds.borrow()[0].field.clone(),
             "match" => conds.borrow()[0].matcher.clone(),
