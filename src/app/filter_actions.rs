@@ -27,6 +27,9 @@ pub(super) struct ActionPlan {
     pub(super) delete: bool,
     /// Move the message here.
     pub(super) move_to: Option<String>,
+    /// A forward that cannot be made (the message is encrypted) holds the
+    /// message: nothing else a rule does to it may run.
+    pub(super) held: bool,
 }
 
 /// The reference a forward of `m` is recorded under: its Message-ID, or the
@@ -39,14 +42,19 @@ fn message_ref(m: &Message, src_path: Option<&str>) -> String {
     }
 }
 
-/// Whether `rule` may forward `m`: the message arrived after the Forward was
-/// added, and it is neither the account's own mail nor from a destination,
-/// which is how a forward coming back into a filtered mailbox is told apart.
+/// Whether `rule` applies to `m` at all. A rule that forwards starts from
+/// the moment its Forward was added: mail that was already in the folder, or
+/// whose date is unknown, is left alone by every action of the rule, so a
+/// new Forward with Delete never erases old mail it did not forward.
+fn rule_applies(rule: &FilterRule, m: &Message) -> bool {
+    rule.forward_to.is_empty() || rule.forward_since == 0 || m.timestamp >= rule.forward_since
+}
+
+/// Whether `rule` may forward `m`: it is neither the account's own mail nor
+/// from a destination, which is how a forward coming back into a filtered
+/// mailbox is told apart.
 fn may_forward(rule: &FilterRule, m: &Message, own: &[String]) -> bool {
     let from = m.from_addr.trim();
-    if rule.forward_since > 0 && m.timestamp < rule.forward_since {
-        return false;
-    }
     let same = |a: &String| a.trim().eq_ignore_ascii_case(from);
     !(own.iter().any(same) || rule.forward_to.iter().any(same))
 }
@@ -59,7 +67,7 @@ fn may_forward(rule: &FilterRule, m: &Message, own: &[String]) -> bool {
 /// a usable destination (other than where the message already is) decides
 /// the delete or the move; later ones are ignored.
 pub(super) fn plan_actions(
-    matching: &[&FilterRule],
+    matched: &[&FilterRule],
     m: &Message,
     src_path: Option<&str>,
     own: &[String],
@@ -67,9 +75,20 @@ pub(super) fn plan_actions(
     dest_ok: &dyn Fn(&str) -> bool,
 ) -> ActionPlan {
     let mut plan = ActionPlan::default();
+    let matching: Vec<&FilterRule> = matched
+        .iter()
+        .copied()
+        .filter(|r| rule_applies(r, m))
+        .collect();
     let reference = message_ref(m, src_path);
-    for rule in matching {
+    for rule in &matching {
         if rule.forward_to.is_empty() || !may_forward(rule, m, own) {
+            continue;
+        }
+        // Fetching an OpenPGP message for a forward would decrypt it in the
+        // background and send it on as plain text. It is left for the user.
+        if crate::models::preview_is_encrypted(&m.preview) {
+            plan.held = true;
             continue;
         }
         let key = forward_key(&rule.account_email, &reference, &rule.forward_to);
@@ -83,15 +102,23 @@ pub(super) fn plan_actions(
         });
     }
     plan.mark_read = m.unread && matching.iter().any(|r| r.mark_read);
-    let decider = matching.iter().find(|r| {
-        r.delete
-            || (!r.dest_path.is_empty() && dest_ok(&r.dest_path) && src_path != Some(&r.dest_path))
-    });
-    if let Some(rule) = decider {
+    // The first rule that moves or deletes decides. A move that does not
+    // apply (the message is already there, or the folder is gone) blocks the
+    // deletes of later rules, which would otherwise erase mail an earlier
+    // rule meant to keep; a later move may still apply.
+    let mut blocked = false;
+    for rule in &matching {
         if rule.delete {
-            plan.delete = true;
-        } else {
-            plan.move_to = Some(rule.dest_path.clone());
+            if !blocked {
+                plan.delete = true;
+                break;
+            }
+        } else if !rule.dest_path.is_empty() {
+            if dest_ok(&rule.dest_path) && src_path != Some(&rule.dest_path) {
+                plan.move_to = Some(rule.dest_path.clone());
+                break;
+            }
+            blocked = true;
         }
     }
     plan
@@ -169,18 +196,34 @@ mod tests {
     }
 
     #[test]
-    fn old_mail_is_not_forwarded_but_keeps_the_other_actions() {
+    fn a_forwarding_rule_leaves_old_mail_alone_entirely() {
+        // A new rule with Forward and Delete must not touch what was in the
+        // folder before it existed: not forwarded, not read, not deleted.
         let mut r = forwarding(&["admin@corp.example"]);
         r.forward_since = 3_000;
         r.mark_read = true;
-        let m = arrived(msg(1, 1, 1));
-        let p = plan(&[r], &m, &ForwardedLog::default());
-        assert!(p.forwards.is_empty());
-        assert!(p.mark_read);
+        r.delete = true;
+        let old = arrived(msg(1, 1, 1));
+        let p = plan(&[r.clone()], &old, &ForwardedLog::default());
+        assert_eq!(p, ActionPlan::default());
+        let mut fresh = arrived(msg(1, 1, 2));
+        fresh.timestamp = 4_000;
+        let p = plan(&[r], &fresh, &ForwardedLog::default());
+        assert_eq!(p.forwards.len(), 1);
+        assert!(p.mark_read && p.delete);
     }
 
     #[test]
-    fn mail_with_an_unknown_date_is_not_forwarded_once_a_start_is_set() {
+    fn rules_without_a_forward_are_not_limited_by_date() {
+        let mut r = rule();
+        r.forward_since = 3_000;
+        r.delete = true;
+        let old = arrived(msg(1, 1, 1));
+        assert!(plan(&[r], &old, &ForwardedLog::default()).delete);
+    }
+
+    #[test]
+    fn mail_with_an_unknown_date_is_left_alone_once_a_start_is_set() {
         let mut r = forwarding(&["admin@corp.example"]);
         r.forward_since = 3_000;
         let mut m = arrived(msg(1, 1, 1));
@@ -206,6 +249,66 @@ mod tests {
         assert_eq!(p.forwards.len(), 1);
         let p = plan(&[del, mv], &m, &ForwardedLog::default());
         assert!(p.delete && p.move_to.is_none());
+    }
+
+    #[test]
+    fn a_move_that_does_not_apply_does_not_hand_the_message_to_a_later_delete() {
+        // Rule 1 files into the folder the message is already in; rule 2
+        // deletes. The message must stay.
+        let mut mv = rule();
+        mv.dest_path = "Boss".into();
+        let mut del = rule();
+        del.delete = true;
+        let m = arrived(msg(1, 1, 1));
+        let refs = [&mv, &del];
+        let p = plan_actions(
+            &refs,
+            &m,
+            Some("Boss"),
+            &[],
+            &ForwardedLog::default(),
+            &|_| true,
+        );
+        assert!(!p.delete && p.move_to.is_none());
+        // Same when the first rule's folder is gone from the server.
+        let p = plan_actions(
+            &refs,
+            &m,
+            Some("INBOX"),
+            &[],
+            &ForwardedLog::default(),
+            &|_| false,
+        );
+        assert!(!p.delete && p.move_to.is_none());
+    }
+
+    #[test]
+    fn a_blocked_move_still_lets_a_later_move_apply() {
+        let mut first = rule();
+        first.dest_path = "Gone".into();
+        let mut second = rule();
+        second.dest_path = "Admin".into();
+        let m = arrived(msg(1, 1, 1));
+        let refs = [&first, &second];
+        let p = plan_actions(
+            &refs,
+            &m,
+            Some("INBOX"),
+            &[],
+            &ForwardedLog::default(),
+            &|d| d == "Admin",
+        );
+        assert_eq!(p.move_to.as_deref(), Some("Admin"));
+    }
+
+    #[test]
+    fn encrypted_mail_is_held_not_forwarded() {
+        let rules = [forwarding(&["admin@corp.example"])];
+        let mut m = arrived(msg(1, 1, 1));
+        m.preview = crate::models::ENCRYPTED_PREVIEW.into();
+        let p = plan(&rules, &m, &ForwardedLog::default());
+        assert!(p.forwards.is_empty());
+        assert!(p.held);
     }
 
     #[test]

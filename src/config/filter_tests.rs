@@ -854,3 +854,19 @@ fn has_action_counts_every_kind() {
     d.delete = true;
     assert!(d.has_action());
 }
+
+#[test]
+fn forward_start_resets_when_the_destinations_change() {
+    let old = vec!["a@x.org".to_string()];
+    // No forward before: starts now.
+    assert_eq!(forward_start(None, &old, 500), 500);
+    // Same destinations in another order or case keep the old start.
+    let same = vec!["A@x.org".to_string()];
+    assert_eq!(forward_start(Some((100, &old)), &same, 500), 100);
+    // A new address starts again from now, so old mail is not sent on.
+    let more = vec!["a@x.org".to_string(), "b@x.org".to_string()];
+    assert_eq!(forward_start(Some((100, &old)), &more, 500), 500);
+    // An unset start counts as none; no destinations means no start.
+    assert_eq!(forward_start(Some((0, &old)), &old, 500), 500);
+    assert_eq!(forward_start(Some((100, &old)), &[], 500), 0);
+}

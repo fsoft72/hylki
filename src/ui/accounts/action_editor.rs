@@ -87,12 +87,15 @@ pub(super) struct ActionList {
     rows: Rc<RefCell<Vec<ActionRow>>>,
     dests: Rc<RefCell<Destinations>>,
     changed: Rc<dyn Fn()>,
+    own: Vec<(String, String)>,
 }
 
 impl ActionList {
     /// An empty list; `changed` is called whenever a row is added, removed
     /// or edited.
-    pub(super) fn new(changed: Rc<dyn Fn()>) -> Self {
+    /// `own` are the accounts' (name, address) pairs, for the address
+    /// suggestions of the Forward rows.
+    pub(super) fn new(changed: Rc<dyn Fn()>, own: Vec<(String, String)>) -> Self {
         let group = adw::PreferencesGroup::new();
         group.set_title(&i18n("Then"));
         let add_group = adw::PreferencesGroup::new();
@@ -107,6 +110,7 @@ impl ActionList {
             rows: Default::default(),
             dests: Default::default(),
             changed,
+            own,
         };
         let adder = list.clone();
         add_row.connect_activated(move |_| adder.add(None));
@@ -166,6 +170,7 @@ impl ActionList {
         kind.add_suffix(&trash);
         let forward = adw::EntryRow::new();
         forward.set_title(&i18n("Addresses, separated by commas"));
+        super::address_suggest::attach(&forward, self.own.clone());
         let dest = adw::ComboRow::new();
         dest.set_title(&i18n("Folder"));
         let (init_kind, value) = init.unwrap_or((ActionKind::Forward, String::new()));

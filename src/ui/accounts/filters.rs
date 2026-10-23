@@ -292,7 +292,12 @@ impl AccountsWindow {
 
         // Then: what a match does (the action rows), and below them the
         // tag and the unread count.
-        let actions = ActionList::new(std::rc::Rc::new(changed.clone()));
+        let own: Vec<(String, String)> = self
+            .accounts
+            .iter()
+            .map(|a| (a.name.clone(), a.email.clone()))
+            .collect();
+        let actions = ActionList::new(std::rc::Rc::new(changed.clone()), own);
         // The Move rows offer the chosen account's folders.
         let folders = std::rc::Rc::new(self.folders_by_email.clone());
         let emails_rc = std::rc::Rc::new(emails.clone());
@@ -404,10 +409,10 @@ impl AccountsWindow {
         // The rule as the form stands, or None while it cannot be saved.
         let entries = vec![name_row.clone()];
         // When the rule being edited started forwarding, if it did.
-        let forward_before: Option<i64> = edit
+        let forward_before: Option<(i64, Vec<String>)> = edit
             .as_ref()
             .filter(|(_, r)| !r.forward_to.is_empty())
-            .map(|(_, r)| r.forward_since);
+            .map(|(_, r)| (r.forward_since, r.forward_to.clone()));
         let build = move || -> Option<FilterRule> {
             // Every condition with text; a blank extra one is dropped. The
             // matcher of a body condition is whatever the pinned row says.
@@ -451,11 +456,13 @@ impl AccountsWindow {
                 count_unread: count_row.is_active(),
                 // Forwarding starts from the moment the Forward was added,
                 // so the mail already in the folder is never sent on.
-                forward_since: match (&acts.forward_to, &forward_before) {
-                    (to, _) if to.is_empty() => 0,
-                    (_, Some(since)) if *since > 0 => *since,
-                    _ => crate::datefmt::now(),
-                },
+                forward_since: crate::config::forward_start(
+                    forward_before
+                        .as_ref()
+                        .map(|(since, to)| (*since, to.as_slice())),
+                    &acts.forward_to,
+                    crate::datefmt::now(),
+                ),
                 forward_to: acts.forward_to,
                 mark_read: acts.mark_read,
                 delete: acts.delete,

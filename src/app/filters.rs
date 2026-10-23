@@ -289,6 +289,11 @@ impl AppModel {
             // A forward not yet on its way holds the message where it is:
             // nothing else a rule does to it may run before the forward is
             // recorded, or a failed forward would lose the mail.
+            if plan.held {
+                tracing::warn!("filter: an encrypted message is left alone by a forwarding rule");
+                kept.push(m);
+                continue;
+            }
             if !plan.forwards.is_empty() {
                 for job in plan.forwards {
                     if !self.auto_forward_inflight.contains(&job.key) {

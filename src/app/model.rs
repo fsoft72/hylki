@@ -638,8 +638,9 @@ pub(crate) struct AppModel {
     pub(super) auto_forwards: Vec<super::filter_forward::AutoForward>,
     /// Keys of the forwards under way (waiting or sent, not yet answered).
     pub(super) auto_forward_inflight: std::collections::HashSet<String>,
-    /// Send ticket to the (key, rule label) of a forward sent by a filter.
-    pub(super) auto_forward_tickets: std::collections::HashMap<u64, (String, String)>,
+    /// Send ticket to the forward a filter sent under it.
+    pub(super) auto_forward_tickets:
+        std::collections::HashMap<u64, super::filter_forward::SentForward>,
     /// Per (account, folder): the body-search hits of the last sync (#191),
     /// uid → lowercased alternatives the server found in the message. What
     /// [`apply_filters`] consults for "Message body" conditions.

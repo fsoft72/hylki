@@ -9,7 +9,7 @@ use crate::mail::quote::quoted_original;
 use crate::models::Message;
 use crate::worker::{MailRequest, OutgoingMessage};
 
-use super::conversation::body_key;
+use super::conversation::{body_key, is_event_target, BodyKey};
 use super::filter_actions::ForwardJob;
 use super::model::AppModel;
 use super::prefill::{forward_subject, stage_attachments};
@@ -17,6 +17,20 @@ use super::prefill::{forward_subject, stage_attachments};
 /// How long a forward may wait for its message's body and files before the
 /// filters give up on that attempt and let the next pass start it again.
 const AUTO_FORWARD_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(600);
+
+/// A forward handed to a worker, until the worker says how it went.
+pub(super) struct SentForward {
+    key: String,
+    rule: String,
+    /// What the worker hands back if the server refuses it (`Unsent`): the
+    /// original's Message-ID and the destinations, to tell it from a
+    /// message of the user's.
+    forwards: String,
+    to: String,
+    /// The server refused it: it is not queued anywhere, so it was not
+    /// forwarded and must be tried again.
+    refused: bool,
+}
 
 /// A forward waiting for the body or the attachments of its message.
 pub(super) struct AutoForward {
@@ -117,17 +131,34 @@ impl AppModel {
 
     /// A body or the files of message `id` arrived (or turned out not to
     /// exist, `no_attachments`): carry its waiting forwards on.
-    pub(super) fn resume_auto_forwards(&mut self, account_id: u32, id: u32, no_attachments: bool) {
+    pub(super) fn resume_auto_forwards(
+        &mut self,
+        account_id: u32,
+        id: u32,
+        key: Option<BodyKey>,
+        no_attachments: bool,
+    ) {
+        // A UID names a message only within its folder: an event about the
+        // same number in another folder is not about this message.
+        let is_target = |m: &Message| is_event_target(m, key, account_id, id);
         if no_attachments {
             for f in self
                 .auto_forwards
                 .iter_mut()
-                .filter(|f| f.message.account_id == account_id && f.message.id == id)
+                .filter(|f| is_target(&f.message))
             {
                 f.message.has_attachment = false;
             }
         }
-        self.advance_auto_forwards(account_id, id);
+        let Some(target) = self
+            .auto_forwards
+            .iter()
+            .find(|f| is_target(&f.message))
+            .map(|f| (f.message.account_id, f.message.id))
+        else {
+            return;
+        };
+        self.advance_auto_forwards(target.0, target.1);
     }
 
     /// Send the forwards of message `id` if its body and files are in hand;
@@ -144,6 +175,15 @@ impl AppModel {
         };
         let m = self.with_cached_body(self.auto_forwards[first].message.clone());
         if self.fetch_for_copy(&m) {
+            return;
+        }
+        // Nothing to fetch it from and nothing in hand: sending would forward
+        // an empty message. The forwards are dropped and their keys stay in
+        // flight, so the message stays where it is for this session.
+        if m.body.is_empty() {
+            tracing::warn!("filter: {}:{} has no body to forward", account_id, id);
+            self.auto_forwards
+                .retain(|f| !(f.message.account_id == account_id && f.message.id == id));
             return;
         }
         let files: Vec<String> = self
@@ -170,9 +210,17 @@ impl AppModel {
         for f in sending {
             self.send_ticket += 1;
             let ticket = self.send_ticket;
-            self.auto_forward_tickets
-                .insert(ticket, (f.job.key.clone(), f.job.rule.clone()));
             let out = forward_outgoing(&m, &f.job.to, files.clone());
+            self.auto_forward_tickets.insert(
+                ticket,
+                SentForward {
+                    key: f.job.key.clone(),
+                    rule: f.job.rule.clone(),
+                    forwards: out.forwards.clone(),
+                    to: out.to.clone(),
+                    refused: false,
+                },
+            );
             self.send_to(
                 account_id,
                 MailRequest::Send {
@@ -184,15 +232,43 @@ impl AppModel {
         }
     }
 
+    /// The worker handed back a message nothing could keep (`Unsent`). When
+    /// it is a filter's forward the server refused, it is not forwarded: say
+    /// so, and keep it out of the composer. True when it was one.
+    pub(super) fn take_refused_auto_forward(&mut self, message: &OutgoingMessage) -> bool {
+        let Some(f) = self.auto_forward_tickets.values_mut().find(|f| {
+            !f.refused
+                && !f.forwards.is_empty()
+                && f.forwards == message.forwards
+                && f.to == message.to
+        }) else {
+            return false;
+        };
+        f.refused = true;
+        let rule = f.rule.clone();
+        self.notice_error(i18n_f(
+            "The forward of filter {rule} was refused. The message was left where it is and will be tried again",
+            &[("rule", &rule)],
+        ));
+        true
+    }
+
     /// A filter's forward was handed to the worker (`sent`, or queued in the
     /// Outbox, which retries it on its own). Either way it is recorded, so
     /// it is never sent a second time, and the filters run again so the
-    /// rest of the rule's actions can follow.
+    /// rest of the rule's actions can follow. One the server refused is not
+    /// recorded: the message stays held and the next pass tries again.
     pub(super) fn finish_auto_forward(&mut self, ticket: u64, sent: bool) {
-        let Some((key, rule)) = self.auto_forward_tickets.remove(&ticket) else {
+        let Some(SentForward {
+            key, rule, refused, ..
+        }) = self.auto_forward_tickets.remove(&ticket)
+        else {
             return;
         };
         self.auto_forward_inflight.remove(&key);
+        if refused {
+            return;
+        }
         self.forwarded_log.record(key);
         if !sent {
             self.notice_error(i18n_f(

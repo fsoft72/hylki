@@ -8,7 +8,10 @@
   in the same format as the Forward button, only for mail that arrived after
   the action was added, and never twice for the same message. Nothing else a
   rule does to a message happens until its forward is on its way, so a failed
-  forward never loses mail. Delete erases the message from the server for
+  forward never loses mail. A rule with a Forward only applies to mail that
+  arrived after the Forward was added, so a new Forward with Delete never
+  erases mail that was already there. The Forward field suggests addresses as
+  the composer does. Delete erases the message from the server for
   good, without going through Trash, and cannot be combined with Move. Filters
   still run only while Hylki is open and syncing. Existing filters are
   unchanged and `filters.toml` stays readable by older versions.

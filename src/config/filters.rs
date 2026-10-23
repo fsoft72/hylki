@@ -74,6 +74,25 @@ fn is_zero_i64(v: &i64) -> bool {
     *v == 0
 }
 
+/// The `forward_since` for a rule being saved: the start it had when the
+/// destinations are the same, otherwise `now`. Mail already in the folder
+/// must not go to an address added later, and an address that already got
+/// it must not get it twice. `prior` is the rule's old start and addresses.
+pub(crate) fn forward_start(prior: Option<(i64, &[String])>, to: &[String], now: i64) -> i64 {
+    if to.is_empty() {
+        return 0;
+    }
+    let sorted = |list: &[String]| {
+        let mut v: Vec<String> = list.iter().map(|a| a.to_lowercase()).collect();
+        v.sort();
+        v
+    };
+    match prior {
+        Some((since, old)) if since > 0 && sorted(old) == sorted(to) => since,
+        _ => now,
+    }
+}
+
 /// The addresses a Forward action names, from the comma-separated text of
 /// the editor: trimmed, lowercased and de-duplicated in order, empties
 /// dropped. `Err` carries the first entry that is not a plain address.

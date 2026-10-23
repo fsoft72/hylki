@@ -381,6 +381,9 @@ impl AppModel {
                 account_id,
                 message,
             } => {
+                if self.take_refused_auto_forward(&message) {
+                    return;
+                }
                 self.drop_provisional(&message.in_reply_to);
                 self.compose_unsent(account_id, *message, &sender);
             }
