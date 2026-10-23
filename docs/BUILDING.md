@@ -34,7 +34,8 @@ cargo build --release
 ## Translations
 
 `tools/build-locale.sh` compiles `po/*.po` so a source-tree run picks them up;
-the Flatpak, the RPM and `install.sh` all do it as part of their own build.
+the Flatpak, the RPM, the Debian package and `install.sh` all do it as part of
+their own build.
 See [po/README.md](../po/README.md).
 
 ## Flatpak
@@ -47,10 +48,25 @@ which has to be regenerated whenever `Cargo.lock` changes:
 python3 flatpak-cargo-generator.py Cargo.lock -o cargo-sources.json
 ```
 
+## RPM and Debian packages
+
+`tools/build-packages.sh rpm` and `tools/build-packages.sh deb` produce
+`packaging/out/hylki-<version>-1.fc44.x86_64.rpm` and
+`packaging/out/hylki_<version>-1_amd64.deb`; with no argument it builds both.
+A beta's version is written `1.45.0~beta.1` in both, which sorts before
+`1.45.0`.
+
+The RPM wraps a release build from the host, so it is built on Fedora. The
+Debian package is built inside a Debian 13 container (the script starts one
+with podman), because a binary built on Fedora needs a newer C library than
+Debian has, and Debian 13 is the oldest release with libadwaita 1.7. On a
+Debian host with the dependencies above and `dpkg-dev`, it builds in place.
+`dpkg-shlibdeps` works out the package's dependencies from the binary.
+
 ## AppImage
 
-Hylki does not ship an AppImage: the packages it distributes are the Flatpak
-and the RPM. The build exists all the same, so the option stays open and
+Hylki does not ship an AppImage: the packages it distributes are the Flatpak,
+the RPM and the Debian package. The build exists all the same, so the option stays open and
 does not rot (#235).
 
 `tools/build-appimage.sh` produces `packaging/out/Hylki-<arch>.AppImage` and

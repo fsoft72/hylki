@@ -189,7 +189,9 @@ a confirmation that lists them.
 
 **Settings → Sidebar → Sections** places Filters, Tags, Favorites and
 Contacts **Above the accounts**, **Below the accounts** or **Off**, which
-leaves it out of the sidebar. Wherever they are, they are rows like the
+leaves it out of the sidebar. Contacts can also be **In the footer**, where
+it is by default: a row above Attachments, without its address books under
+it. The same Contacts placement is in **Settings → Contacts**. Wherever they are, they are rows like the
 unified section's, with a chevron that opens their list. **Section style**
 set to **Tree style** draws all four as a tree instead: the caret that
 opens and closes the list stands where the icon was, and the row has no
@@ -529,14 +531,18 @@ are used for suggestions and avatars.
 The Contacts view searches as the message list does. The search button in
 the list's header, <kbd>Ctrl+F</kbd> or <kbd>/</kbd> shows the search field,
 and <kbd>Esc</kbd>, or leaving the field empty, hides it and clears the
-search. The button at the right of the header sorts the people by first
+search. **Settings → Contacts → Keep the search field open** shows it at
+all times. The button at the right of the header sorts the people by first
 name, last name or email. Its **Show only** column keeps those with a photo,
 an email address, a phone number, a street address, a birthday or a
 company, or those in no group. The button turns the accent color while a
 filter is on, and **Clear Filters** shows everything again.
 
-**Contacts** is a row of the sidebar, above the accounts unless **Settings
-→ Sidebar → Sections** places it elsewhere, and opens every contact. Its chevron opens the list beneath:
+**Contacts** is a row of the sidebar's footer, above Attachments, unless
+**Settings → Sidebar → Sections** places it elsewhere. In the footer, or
+with Contacts off, a dropdown over the list picks **All Address Books** or
+one of them, and a book lists its groups and then its contacts. Above or
+below the accounts, the row opens every contact, and its chevron opens the list beneath:
 the Hylki book first, then each account. An account with one address
 book is that book's row, with the account or server it is kept by in
 small type under its name; an account with several is a row of its own,
@@ -574,8 +580,7 @@ book picked and removes it from the one it was in, locally and on the
 server, with its photo; a group that names it by its card in the old book
 loses it. Contacts in a book Hylki cannot write to are not moved. With a
 group picked in the sidebar, the pane has **Remove from Group** for them
-too. **Settings → Message List → Keep the search field open** keeps the
-Contacts search open too.
+too.
 
 A new contact, made with the **+** button, has an **Address
 book** row at the top of its form that picks where it is saved; it starts on

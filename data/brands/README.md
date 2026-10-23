@@ -34,8 +34,8 @@ as if it were part of the AGPL-licensed work.
 | `mailcom` | 1&1 Mail & Media Inc. | mail.com's own touch icon, https://www.mail.com/apple-touch-icon.png |
 
 `src/` keeps the files as fetched; the 128 px PNGs beside this file are
-what the binary embeds (`src/brand.rs`). To refresh one, replace the source
-and re-run:
+what the binary embeds (`src/desktop/brand.rs`). To refresh one, replace the
+source and re-run:
 
 ```sh
 magick -background none -density 400 data/brands/src/NAME.svg -resize 128x128 \

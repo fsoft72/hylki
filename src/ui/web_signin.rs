@@ -12,14 +12,14 @@ use webkit6::prelude::*;
 
 use crate::config::OAuthSettings;
 use crate::i18n::i18n;
-use crate::oauth::Authorization;
+use crate::services::oauth::Authorization;
 
 /// Open the sign-in for `settings` and hand `done` the request and the
 /// authorization code once the provider redirects, or why there is none
 /// (the window was closed, or the provider refused). `user` is the address
 /// being signed in, when known: it picks the identity broker's account, and
 /// with `hint` Microsoft's sign-in goes straight to it.
-pub fn run(
+pub(crate) fn run(
     parent: Option<&gtk::Window>,
     settings: &OAuthSettings,
     user: Option<String>,
@@ -27,7 +27,7 @@ pub fn run(
     done: impl FnOnce(Result<(Authorization, String), String>) + 'static,
 ) {
     let extra = if settings.token_url.contains("microsoftonline") {
-        crate::oauth::microsoft_prompt(user.as_deref().filter(|_| hint))
+        crate::services::oauth::microsoft_prompt(user.as_deref().filter(|_| hint))
     } else {
         String::new()
     };
@@ -47,14 +47,15 @@ pub fn run(
     toolbar.add_top_bar(&header);
 
     let session = webkit6::NetworkSession::new_ephemeral();
-    let view = webkit6::WebView::builder().network_session(&session).build();
+    let view = webkit6::WebView::builder()
+        .network_session(&session)
+        .build();
     view.set_vexpand(true);
     toolbar.set_content(Some(&view));
     window.set_content(Some(&toolbar));
 
     // `done` runs once: on the redirect, or when the window closes first.
-    let done: std::rc::Rc<std::cell::RefCell<Option<Box<dyn FnOnce(Result<(Authorization, String), String>)>>>> =
-        std::rc::Rc::new(std::cell::RefCell::new(Some(Box::new(done))));
+    let done: DoneSlot = std::rc::Rc::new(std::cell::RefCell::new(Some(Box::new(done))));
     let request = std::rc::Rc::new(std::cell::RefCell::new(Some(request)));
     {
         let done = done.clone();
@@ -65,14 +66,19 @@ pub fn run(
             if kind != webkit6::PolicyDecisionType::NavigationAction {
                 return false;
             }
-            let Some(nav) = decision.downcast_ref::<webkit6::NavigationPolicyDecision>() else { return false };
+            let Some(nav) = decision.downcast_ref::<webkit6::NavigationPolicyDecision>() else {
+                return false;
+            };
             let uri = nav
                 .navigation_action()
                 .and_then(|mut a| a.request())
                 .and_then(|r| r.uri())
                 .map(|u| u.to_string())
                 .unwrap_or_default();
-            let answer = request.borrow().as_ref().and_then(|r| r.answer(&uri, &settings));
+            let answer = request
+                .borrow()
+                .as_ref()
+                .and_then(|r| r.answer(&uri, &settings));
             let Some(answer) = answer else { return false };
             decision.ignore();
             if let (Some(cb), Some(req)) = (done.borrow_mut().take(), request.borrow_mut().take()) {
@@ -94,7 +100,9 @@ pub fn run(
         });
     }
     window.present();
-    let Some(url) = request.borrow().as_ref().map(|r| r.url.clone()) else { return };
+    let Some(url) = request.borrow().as_ref().map(|r| r.url.clone()) else {
+        return;
+    };
     // Behind Conditional Access that wants a managed device, the identity
     // broker's device cookie goes in first (#329, see `ms_broker`), as
     // Evolution's sign-in window does it. Asking the broker can take a
@@ -102,12 +110,15 @@ pub fn run(
     // loads as it is.
     let settings = settings.clone();
     gtk::glib::spawn_future_local(async move {
-        let cookie = gtk::gio::spawn_blocking(move || crate::ms_broker::sso_cookie(&settings, user.as_deref()))
-            .await
-            .ok()
-            .flatten();
+        let cookie = gtk::gio::spawn_blocking(move || {
+            crate::services::ms_broker::sso_cookie(&settings, user.as_deref())
+        })
+        .await
+        .ok()
+        .flatten();
         if let (Some(c), Some(jar)) = (cookie, session.cookie_manager()) {
-            let mut cookie = webkit6::soup::Cookie::new(&c.name, &c.value, "login.microsoftonline.com", "/", -1);
+            let mut cookie =
+                webkit6::soup::Cookie::new(&c.name, &c.value, "login.microsoftonline.com", "/", -1);
             cookie.set_secure(true);
             cookie.set_http_only(true);
             if let Err(e) = jar.add_cookie_future(&cookie).await {
@@ -117,3 +128,9 @@ pub fn run(
         view.load_uri(&url);
     });
 }
+
+/// The sign-in's answer, taken once: by the redirect, or by the window
+/// closing first.
+type DoneSlot = std::rc::Rc<
+    std::cell::RefCell<Option<Box<dyn FnOnce(Result<(Authorization, String), String>)>>>,
+>;

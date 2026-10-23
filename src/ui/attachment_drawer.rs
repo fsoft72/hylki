@@ -33,41 +33,19 @@ use gtk::glib;
 use relm4::prelude::*;
 
 use crate::config::{self, DrawerState};
-use crate::models::{is_image_name, Attachment};
-use crate::ui::context_menu::{show_context_menu, MenuEntry};
-use crate::ui::attachments_gallery::{
-    deleting_label, deleting_over, deleting_veil, fade_out, icon_color_class, icon_for, is_pdf_name, open_bytes,
-    spawn_thumbnail_render, texture_from, thumbnail_texture, Thumbnail,
-};
 use crate::i18n::{i18n, ni18n_f};
+use crate::models::Attachment;
+use crate::ui::attachment_io::open_bytes;
 
-/// Whether an attachment can be shown in the drawer's lightbox: a decodable
-/// image, or a PDF (whose first page renders on demand).
-pub(crate) fn previewable(att: &Attachment) -> bool {
-    (is_image_name(&att.name) && texture_from(&att.data).is_some()) || is_pdf_name(&att.name)
-}
+mod actions;
+mod cells;
+mod motion;
+mod setup;
 
-/// The drawer's cover-cropped picture for a ready thumbnail texture.
-fn drawer_picture(tex: &gtk::gdk::Texture) -> gtk::Widget {
-    let pic = gtk::Picture::for_paintable(tex);
-    pic.set_content_fit(gtk::ContentFit::Cover);
-    pic.set_hexpand(true);
-    pic.set_vexpand(true);
-    pic.upcast()
-}
-
-/// The drawer's centred type icon, sized to the current thumbnail scale.
-fn drawer_icon(name: &str, thumb: i32) -> gtk::Widget {
-    let img = gtk::Image::from_icon_name(icon_for(name));
-    img.set_pixel_size((thumb / 2).max(24));
-    img.set_halign(gtk::Align::Center);
-    img.set_valign(gtk::Align::Center);
-    img.set_hexpand(true);
-    img.set_vexpand(true);
-    img.add_css_class("gallery-file-icon");
-    img.add_css_class(icon_color_class(name));
-    img.upcast()
-}
+pub(crate) use cells::previewable;
+use setup::{
+    activate_on_keys, grab_pill, remove_paned_gestures, showcase_clicks, wire_drawer_edge,
+};
 
 const MIN_THUMB: f64 = 56.0;
 const MAX_THUMB: f64 = 220.0;
@@ -76,12 +54,12 @@ const MIN_HEIGHT: i32 = 96;
 
 /// What the drawer needs at launch: its remembered state plus the reader widget
 /// it docks beneath (which becomes the top pane of its internal `GtkPaned`).
-pub struct DrawerInit {
-    pub state: DrawerState,
-    pub reader: gtk::Widget,
+pub(crate) struct DrawerInit {
+    pub(crate) state: DrawerState,
+    pub(crate) reader: gtk::Widget,
 }
 
-pub struct AttachmentDrawer {
+pub(crate) struct AttachmentDrawer {
     items: Vec<Attachment>,
     /// Display position → index into `items`. Identity for the grid; the list
     /// view is sorted alphabetically (flipped by `sort_desc`).
@@ -155,10 +133,13 @@ pub struct AttachmentDrawer {
 
 /// What the drawer asks the app to do.
 #[derive(Debug)]
-pub enum DrawerOutput {
+pub(crate) enum DrawerOutput {
     /// Show the app's full-window lightbox over these previewable
     /// attachments, starting at `start`.
-    ShowLightbox { items: Vec<Attachment>, start: usize },
+    ShowLightbox {
+        items: Vec<Attachment>,
+        start: usize,
+    },
     /// Scroll the reader to the message this attachment came with (#213).
     ShowInMessage(Attachment),
     /// Take this attachment out of its message on the server (#289); the
@@ -167,7 +148,7 @@ pub enum DrawerOutput {
 }
 
 #[derive(Debug)]
-pub enum AttachmentDrawerInput {
+pub(crate) enum AttachmentDrawerInput {
     /// Replace the shown attachments (empty hides the drawer).
     SetItems(Vec<Attachment>),
     /// New thumbnail edge from the size slider (thumbnails only, not height).
@@ -227,7 +208,7 @@ pub enum AttachmentDrawerInput {
     SettleEmpty(u64),
 }
 
-#[relm4::component(pub)]
+#[relm4::component(pub(crate))]
 impl SimpleComponent for AttachmentDrawer {
     type Init = DrawerInit;
     type Input = AttachmentDrawerInput;
@@ -461,53 +442,9 @@ impl SimpleComponent for AttachmentDrawer {
         let flow = gtk::FlowBox::default();
         let scroller = gtk::ScrolledWindow::default();
 
-        // Space (or Enter) previews the highlighted attachment — the keyboard
-        // side of the single-click-then-preview flow (issue #37).
-        {
-            let key = gtk::EventControllerKey::new();
-            let s = sender.clone();
-            let flow_ref = flow.clone();
-            key.connect_key_pressed(move |_, keyval, _, _| {
-                use gtk::gdk::Key;
-                if matches!(keyval, Key::space | Key::KP_Space | Key::Return | Key::KP_Enter) {
-                    if let Some(child) = flow_ref.selected_children().first() {
-                        s.input_sender().emit(AttachmentDrawerInput::Activate(child.index() as usize));
-                        return gtk::glib::Propagation::Stop;
-                    }
-                }
-                gtk::glib::Propagation::Proceed
-            });
-            flow.add_controller(key);
-        }
+        activate_on_keys(&flow, &sender);
 
-        // The grab pill floats just above the seam, over the reader's bottom
-        // edge — the same affordance, in the same place, as the split reply's.
-        // Its gestures route through update(), which knows the collapsed
-        // state: a plain click toggles the drawer, a drag resizes it live —
-        // collapsed included, where the release point becomes the drawer's
-        // new height.
-        // The full-width edge variant: the whole seam clicks and drags, not
-        // just the centred bar — hunting a 120px target over a busy reader
-        // made the handle feel unreliable.
-        let pill = crate::ui::grab_pill::edge_pill_widget();
-        pill.set_valign(gtk::Align::End);
-        pill.set_visible(false); // no seam until attachments arrive
-        {
-            let s = sender.clone();
-            let s2 = sender.clone();
-            crate::ui::grab_pill::attach_drag(
-                &pill,
-                &root,
-                move |_| s.input_sender().emit(AttachmentDrawerInput::PillDragBegin),
-                move |want| s2.input_sender().emit(AttachmentDrawerInput::PillDrag { want }),
-            );
-            let click = gtk::GestureClick::new();
-            let s = sender.clone();
-            click.connect_released(move |_, _, _, _| {
-                s.input_sender().emit(AttachmentDrawerInput::PillReleased);
-            });
-            pill.add_controller(click);
-        }
+        let pill = grab_pill(&root, &sender);
 
         let leaving = gtk::Picture::new();
         leaving.set_content_fit(gtk::ContentFit::Fill);
@@ -564,7 +501,9 @@ impl SimpleComponent for AttachmentDrawer {
             root.set_end_child(None::<&gtk::Widget>);
             frame.set_child(Some(&body));
             frame.add_overlay(&swapping);
-            body.bind_property("visible", &frame, "visible").sync_create().build();
+            body.bind_property("visible", &frame, "visible")
+                .sync_create()
+                .build();
             root.set_end_child(Some(&frame));
             root.set_resize_end_child(false);
             root.set_shrink_end_child(false);
@@ -583,76 +522,10 @@ impl SimpleComponent for AttachmentDrawer {
         // cursor and steals presses landing near the seam — the pill zone
         // and the drawer's edge strip carry every click and drag instead.
         model.set_divider_draggable(false);
-        // Untargeting the separator is not enough: GtkPaned's pan gesture is
-        // attached to the PANED itself, in capture phase, hit-testing raw
-        // coordinates against an enlarged handle area. It claims presses
-        // near the seam before the zone or edge strip ever see them (hover
-        // and cursor stay ours, the click dies, and a drag "works" because
-        // the paned handles it natively). Remove the gesture outright.
-        {
-            // Both of them: the GestureDrag is what actually moves the
-            // divider (and eats the clicks); the GesturePan is its touch
-            // sibling. Only the keyboard ShortcutController stays.
-            let controllers = root.observe_controllers();
-            let mut doomed: Vec<gtk::EventController> = Vec::new();
-            for i in 0..controllers.n_items() {
-                let Some(c) =
-                    controllers.item(i).and_then(|o| o.downcast::<gtk::EventController>().ok())
-                else {
-                    continue;
-                };
-                if c.is::<gtk::GestureDrag>() || c.is::<gtk::GesturePan>() {
-                    doomed.push(c);
-                }
-            }
-            tracing::debug!("removing {} paned gesture(s)", doomed.len());
-            for c in doomed {
-                root.remove_controller(&c);
-            }
-        }
+        remove_paned_gestures(&root);
 
-        {
-            // The drawer's top-edge strip: a click toggles, a drag resizes —
-            // through the same inputs as the pill, so a drag out of the
-            // collapse and the click/drag distinction behave identically.
-            let click = gtk::GestureClick::new();
-            let s = sender.clone();
-            click.connect_released(move |_, _, _, _| {
-                s.input_sender().emit(AttachmentDrawerInput::EdgeClicked);
-            });
-            widgets.drawer_edge.add_controller(click);
-            // The bar lives in the zone above; hovering the strip is hovering
-            // the same logical handle, so it lights the bar too (CSS :hover
-            // cannot cross widgets — a class stands in for it).
-            let motion = gtk::EventControllerMotion::new();
-            {
-                let zone = pill.clone();
-                motion.connect_enter(move |_, _, _| zone.add_css_class("hot"));
-            }
-            {
-                let zone = pill.clone();
-                motion.connect_leave(move |_| zone.remove_css_class("hot"));
-            }
-            widgets.drawer_edge.add_controller(motion);
-            let s = sender.clone();
-            let s2 = sender.clone();
-            crate::ui::grab_pill::attach_drag(
-                &widgets.drawer_edge,
-                &root,
-                move |_| s.input_sender().emit(AttachmentDrawerInput::PillDragBegin),
-                move |want| s2.input_sender().emit(AttachmentDrawerInput::PillDrag { want }),
-            );
-        }
-        // HYLKI_SHOWCASE_DRAWER=N clicks the header's count button N times,
-        // one a second from 6s — the real button press, so the capture proves
-        // the click path and not just the input it sends.
-        if let Some(Ok(n)) = std::env::var("HYLKI_SHOWCASE_DRAWER").ok().map(|v| v.parse::<u32>()) {
-            let btn = widgets.count_btn.clone();
-            for i in 0..n {
-                let btn = btn.clone();
-                glib::timeout_add_seconds_local_once(6 + i, move || btn.emit_clicked());
-            }
-        }
+        wire_drawer_edge(&widgets.drawer_edge, &pill, &root, &sender);
+        showcase_clicks(&widgets.count_btn);
         ComponentParts { model, widgets }
     }
 
@@ -661,31 +534,7 @@ impl SimpleComponent for AttachmentDrawer {
             AttachmentDrawerInput::SetItems(items) if self.fading > 0 => {
                 self.pending_items = Some(items);
             }
-            AttachmentDrawerInput::SetItems(items) => {
-                self.empty_gen += 1;
-                // Opening a message clears the list and then gives the new
-                // one, as two messages. Taken as they come, the drawer would
-                // fade out and back in between two messages that both have
-                // files. The empty list waits until the messages already
-                // queued are handled (still before the next frame is drawn,
-                // so a drawer that really goes still goes with its message).
-                if items.is_empty() && self.drawer_body.as_ref().is_some_and(|b| b.is_visible()) {
-                    let gen = self.empty_gen;
-                    let s = sender.clone();
-                    glib::idle_add_local_full(glib::Priority::HIGH_IDLE, move || {
-                        s.input_sender().emit(AttachmentDrawerInput::SettleEmpty(gen));
-                        glib::ControlFlow::Break
-                    });
-                    return;
-                }
-                let became_visible = self.items.is_empty() && !items.is_empty();
-                self.apply_items(items, &sender);
-                // Apply the remembered split the first time the drawer appears
-                // (the Paned is allocated only once both children are visible).
-                if became_visible && !self.positioned.get() {
-                    self.schedule_initial_position();
-                }
-            }
+            AttachmentDrawerInput::SetItems(items) => self.set_items(items, &sender),
             AttachmentDrawerInput::SettleEmpty(gen) => {
                 if gen == self.empty_gen {
                     self.apply_items(Vec::new(), &sender);
@@ -699,23 +548,7 @@ impl SimpleComponent for AttachmentDrawer {
                     self.rebuild(&sender);
                 }
             }
-            AttachmentDrawerInput::PositionChanged => {
-                if self.adjusting.get() || !self.positioned.get() {
-                    return;
-                }
-                // Collapsed = not resizable: a drag on the (invisible) divider
-                // snaps straight back to the header-only split. Expanding via
-                // the chevron is what re-enables resizing.
-                if self.collapsed {
-                    self.apply_position();
-                    return;
-                }
-                let drawer_h = self.paned.height() - self.paned.position();
-                if drawer_h >= MIN_HEIGHT {
-                    self.height = drawer_h;
-                    self.schedule_height_save();
-                }
-            }
+            AttachmentDrawerInput::PositionChanged => self.position_changed(),
             AttachmentDrawerInput::ToggleListView => {
                 self.list_view = !self.list_view;
                 self.rebuild(&sender);
@@ -731,30 +564,7 @@ impl SimpleComponent for AttachmentDrawer {
                     open_bytes(&att.name, &att.data, self.window().as_ref());
                 }
             }
-            AttachmentDrawerInput::ImportKey(i) => {
-                if let Some(att) = self.item_at(i) {
-                    // gpg on a worker thread: a stale keyring lock makes it
-                    // wait about ten seconds (#316).
-                    let data = att.data.clone();
-                    let window = self.window();
-                    gtk::glib::spawn_future_local(async move {
-                        let r = gtk::gio::spawn_blocking(move || crate::pgp::import_keys(&crate::pgp::Gpg::system(), &data))
-                            .await
-                            .unwrap_or_else(|_| Err("task failed".into()));
-                        let (title, body) = match r {
-                            Ok(s) if s.imported > 0 => (
-                                i18n("Key imported"),
-                                i18n("The key is in your keyring now. Trust it under Settings, OpenPGP, once you have checked its fingerprint with its owner."),
-                            ),
-                            Ok(_) => (i18n("Already in your keyring"), i18n("That key was imported before.")),
-                            Err(e) => (i18n("Could not import the key"), e),
-                        };
-                        let dialog = adw::MessageDialog::new(window.as_ref(), Some(&title), Some(&body));
-                        dialog.add_response("ok", &i18n("OK"));
-                        dialog.present();
-                    });
-                }
-            }
+            AttachmentDrawerInput::ImportKey(i) => self.import_key(i),
             AttachmentDrawerInput::Download(i) => {
                 if let Some(att) = self.item_at(i).cloned() {
                     self.save_attachment(&att);
@@ -775,51 +585,14 @@ impl SimpleComponent for AttachmentDrawer {
                     self.rebuild_unless_fading(&sender);
                 }
             }
-            AttachmentDrawerInput::Deleted(name, len) => {
-                if !self.deleting.contains(&(name.clone(), len)) {
-                    return;
-                }
-                let shown = (0..self.display_order.len())
-                    .find(|&i| self.item_at(i).is_some_and(|a| a.name == name && a.data.len() == len))
-                    .and_then(|i| self.flow.child_at_index(i as i32));
-                self.fading += 1;
-                let s = sender.clone();
-                let done = move || s.input_sender().emit(AttachmentDrawerInput::FadeDone(name.clone(), len));
-                match shown {
-                    Some(child) => fade_out(&child, done),
-                    None => done(),
-                }
-            }
-            AttachmentDrawerInput::FadeDone(name, len) => {
-                self.fading = self.fading.saturating_sub(1);
-                self.deleting.retain(|d| *d != (name.clone(), len));
-                if let Some(at) = self.items.iter().position(|a| a.name == name && a.data.len() == len) {
-                    self.items.remove(at);
-                }
-                if self.fading == 0 {
-                    let items = self.pending_items.take().unwrap_or_else(|| self.items.clone());
-                    self.apply_items(items, &sender);
-                }
-            }
+            AttachmentDrawerInput::Deleted(name, len) => self.deleted(name, len, &sender),
+            AttachmentDrawerInput::FadeDone(name, len) => self.fade_done(name, len, &sender),
             AttachmentDrawerInput::DeleteFromServer(i) => {
                 if let Some(att) = self.item_at(i).cloned() {
                     let _ = sender.output(DrawerOutput::DeleteFromServer(att));
                 }
             }
-            AttachmentDrawerInput::Activate(i) => {
-                // Single clicks do nothing at all (a first click must never
-                // steal the second — a modal lightbox on click one made the
-                // double-click unreachable). Double-click previews images and
-                // PDFs in the lightbox, whose Open button launches the default
-                // app; anything else opens externally at once.
-                let Some(orig) = self.display_order.get(i).copied() else { return };
-                let Some(att) = self.items.get(orig) else { return };
-                if previewable(att) {
-                    self.show_lightbox(orig, &sender);
-                } else {
-                    open_bytes(&att.name, &att.data, self.window().as_ref());
-                }
-            }
+            AttachmentDrawerInput::Activate(i) => self.activate(i, &sender),
             AttachmentDrawerInput::SaveAll => {
                 self.save_all();
             }
@@ -833,27 +606,7 @@ impl SimpleComponent for AttachmentDrawer {
                 // don't fight over the divider.
                 self.finish_running_toggle();
             }
-            AttachmentDrawerInput::PillDrag { want } => {
-                self.pill_dragged = true;
-                if self.collapsed {
-                    // A real drag pulls the drawer straight out of the
-                    // collapse and follows the pointer from the seam; where
-                    // it is released is the drawer's new height (recorded by
-                    // position-notify like any other resize).
-                    self.collapsed = false;
-                    config::save_drawer_collapsed(self.collapsed);
-                }
-                // The pill moves the divider live, exactly like a drag on the
-                // (invisible) separator. The height is recorded here directly
-                // (as well as by position-notify) so a drag is remembered
-                // whatever else is in flight when the divider settles.
-                self.paned.set_position(want.max(0));
-                let drawer_h = self.paned.height() - want.max(0);
-                if drawer_h >= MIN_HEIGHT {
-                    self.height = drawer_h;
-                    self.schedule_height_save();
-                }
-            }
+            AttachmentDrawerInput::PillDrag { want } => self.pill_drag(want),
             AttachmentDrawerInput::PillReleased => {
                 // A plain click — the press never travelled past the drag
                 // slop — toggles the drawer. A drag's release must not: the
@@ -876,803 +629,10 @@ impl SimpleComponent for AttachmentDrawer {
                 self.toggle_collapsed(&sender);
             }
             AttachmentDrawerInput::ToggleSettled { collapsed, gen } => {
-                // A skipped slide's settle arrives late; its work was already
-                // done synchronously when it was superseded.
-                if gen != self.toggle_gen {
-                    return;
-                }
-                // Order matters: flip the state first (the view update right
-                // after this hides the body, shrinking the drawer's minimum),
-                // THEN allow the end child its minimum again — the other way
-                // round the Paned jumps the divider to fit the still-visible
-                // body before the settle pulls it back.
-                if collapsed {
-                    self.settle_collapsed();
-                }
-                self.paned.set_shrink_end_child(false);
-                self.adjusting.set(false);
+                self.toggle_settled(collapsed, gen)
             }
         }
     }
 }
 
-/// Whether two lists show the same files, in the same order.
-fn same_files(a: &[Attachment], b: &[Attachment]) -> bool {
-    a.len() == b.len()
-        && a.iter().zip(b).all(|(x, y)| x.name == y.name && x.data.len() == y.data.len())
-}
-
-impl AttachmentDrawer {
-    /// The top-level window this drawer lives in (for modal children / dialogs).
-    fn window(&self) -> Option<gtk::Window> {
-        self.flow.root().and_downcast::<gtk::Window>()
-    }
-
-    /// Show a new list, fading the drawer in or out when it comes or goes
-    /// and dissolving one message's files into the next's, instead of
-    /// popping. Its room is given or taken at once either way: the reader
-    /// must change size in the same frame as the message does (see
-    /// `load_after_paint` in message_view), so only the look fades.
-    fn apply_items(&mut self, items: Vec<Attachment>, sender: &ComponentSender<Self>) {
-        // What is on screen, not the old list: the view has yet to follow.
-        let was_shown = self.drawer_body.as_ref().is_some_and(|b| b.is_visible());
-        if was_shown && items.is_empty() {
-            self.fade_out_drawer();
-        } else if was_shown && !same_files(&self.items, &items) {
-            self.swap_drawer();
-        }
-        self.items = items;
-        self.update_pill_visibility();
-        self.rebuild(sender);
-        if !was_shown && !self.items.is_empty() {
-            self.fade_in_drawer();
-        }
-    }
-
-    /// End a fade in or out where it was headed.
-    fn finish_presence_fade(&self) {
-        if let Some(running) = self.presence_anim.borrow_mut().take() {
-            running.skip();
-        }
-    }
-
-    /// Drop a swap's still: the drawer under it is going, or coming back.
-    fn finish_swap(&self) {
-        if let Some(running) = self.swap_anim.borrow_mut().take() {
-            running.skip();
-        }
-    }
-
-    /// A still of the drawer as it is on screen, or `None` with nothing to
-    /// take (not shown, or never laid out).
-    fn drawer_still(&self) -> Option<(gtk::gdk::Paintable, i32)> {
-        let body = self.drawer_body.as_ref()?;
-        let frame = self.drawer_frame.as_ref()?;
-        let height = frame.height();
-        if height <= 0 || !body.is_mapped() {
-            return None;
-        }
-        // Drawn the way the drawer's own overlay draws it, into a snapshot
-        // of our own: a WidgetPaintable's image of the body comes out empty.
-        // At the frame's size, so the body's place in it comes along and the
-        // still lies exactly over the drawer.
-        let snapshot = gtk::Snapshot::new();
-        frame.snapshot_child(body, &snapshot);
-        let size = gtk::graphene::Size::new(frame.width() as f32, height as f32);
-        Some((snapshot.to_paintable(Some(&size))?, height))
-    }
-
-    fn fade_in_drawer(&self) {
-        self.finish_presence_fade();
-        self.finish_swap();
-        let Some(body) = &self.drawer_body else { return };
-        let faded: [gtk::Widget; 2] = [body.clone().upcast(), self.pill.clone().upcast()];
-        for w in &faded {
-            w.set_opacity(0.0);
-        }
-        let target = adw::CallbackAnimationTarget::new(move |v| {
-            for w in &faded {
-                w.set_opacity(v);
-            }
-        });
-        // Timed on the split, which is on screen: the body isn't shown until
-        // the view catches up, and an animation on an unmapped widget
-        // jumps straight to its end.
-        let anim = adw::TimedAnimation::new(&self.paned, 0.0, 1.0, crate::ui::message_view::PAGE_FADE_MS, target);
-        anim.set_easing(adw::Easing::Linear);
-        anim.play();
-        *self.presence_anim.borrow_mut() = Some(anim);
-    }
-
-    /// The drawer goes at once; a still of it stays where it stood, over
-    /// the bottom of the reader that takes its room, and fades out with the
-    /// message it belonged to. Fading ahead of it would uncover the old
-    /// message's hidden end for a beat before the new one arrives.
-    fn fade_out_drawer(&self) {
-        self.finish_presence_fade();
-        let Some((still, height)) = self.drawer_still() else { return };
-        self.finish_swap();
-        self.leaving.set_size_request(-1, height);
-        self.dissolve(&self.leaving, still, &self.presence_anim);
-    }
-
-    /// One message's files for another's: the drawer stays, and a still of
-    /// the old one dissolves over the new, with the message.
-    fn swap_drawer(&self) {
-        // A swap not yet under way already shows what is on screen; the
-        // widgets under it may hold a list that was never drawn (a
-        // conversation's files arrive a few lists at a time).
-        let waiting = self
-            .swap_anim
-            .borrow()
-            .as_ref()
-            .is_some_and(|a| a.state() == adw::AnimationState::Idle);
-        if waiting {
-            return;
-        }
-        let Some((still, _)) = self.drawer_still() else { return };
-        self.finish_swap();
-        self.dissolve(&self.swapping, still, &self.swap_anim);
-    }
-
-    /// Show `still` over the drawer's place and fade it out with the
-    /// reader's next page change, or a beat later when none comes.
-    fn dissolve(
-        &self,
-        picture: &gtk::Picture,
-        still: gtk::gdk::Paintable,
-        slot: &Rc<std::cell::RefCell<Option<adw::TimedAnimation>>>,
-    ) {
-        picture.set_paintable(Some(&still));
-        picture.set_opacity(1.0);
-        picture.set_visible(true);
-        let target = {
-            let picture = picture.clone();
-            adw::CallbackAnimationTarget::new(move |v| picture.set_opacity(v))
-        };
-        let anim = adw::TimedAnimation::new(&self.paned, 1.0, 0.0, crate::ui::message_view::PAGE_FADE_MS, target);
-        anim.set_easing(adw::Easing::Linear);
-        {
-            let picture = picture.clone();
-            anim.connect_done(move |_| {
-                picture.set_visible(false);
-                picture.set_paintable(None::<&gtk::gdk::Paintable>);
-            });
-        }
-        *slot.borrow_mut() = Some(anim.clone());
-        // A fade that was cut short in the meantime (finished, or replaced)
-        // is not started again.
-        let start = {
-            let slot = slot.clone();
-            move || {
-                let current = slot.borrow().as_ref().is_some_and(|a| *a == anim);
-                if current && anim.state() == adw::AnimationState::Idle {
-                    anim.play();
-                }
-            }
-        };
-        crate::ui::message_view::on_next_page_fade(start.clone());
-        glib::timeout_add_local_once(std::time::Duration::from_millis(200), start);
-    }
-
-    /// The grab pill shows whenever the drawer does — collapsed included,
-    /// where a click or a drag brings the drawer back out. Only a message
-    /// with no attachments (no drawer, no seam) hides it.
-    fn update_pill_visibility(&self) {
-        self.pill.set_visible(!self.items.is_empty());
-    }
-
-    /// Flip collapsed/expanded — a plain click on the grab pill — sliding the
-    /// divider there like the split reply's entrance rather than jumping.
-    ///
-    /// Expanding shows the body at once so it rides the slide open; the
-    /// collapse keeps the body visible for the ride down and hides it when
-    /// the slide settles (`ToggleSettled`), else the thumbnails would vanish
-    /// a beat before the panel. Either way the drawer may momentarily be
-    /// squeezed below its minimum, so end-child shrink is allowed for the
-    /// duration.
-    fn toggle_collapsed(&mut self, sender: &ComponentSender<Self>) {
-        self.finish_running_toggle();
-        let total = self.paned.height();
-        if total <= 1 {
-            // Not allocated (never shown): the old instant flip.
-            self.collapsed = !self.collapsed;
-            self.apply_position();
-            config::save_drawer_collapsed(self.collapsed);
-            return;
-        }
-        let closing = !self.collapsed;
-        if !closing {
-            self.collapsed = false;
-        }
-        config::save_drawer_collapsed(closing);
-        let target_h = if closing { Self::header_height(&self.paned) } else { self.height };
-
-        let paned = self.paned.clone();
-        // The whole ride is programmatic — position-notify must not read it
-        // as a user drag.
-        self.adjusting.set(true);
-        paned.set_shrink_end_child(true);
-        let anim = adw::TimedAnimation::new(
-            &paned,
-            paned.position() as f64,
-            (total - target_h).max(0) as f64,
-            300,
-            adw::CallbackAnimationTarget::new({
-                let paned = paned.clone();
-                move |v| paned.set_position(v as i32)
-            }),
-        );
-        anim.set_easing(adw::Easing::EaseOutCubic);
-        self.toggle_gen += 1;
-        let gen = self.toggle_gen;
-        let cell = self.toggle_anim.clone();
-        let s = sender.clone();
-        // NOTHING is restored here: un-shrinking the drawer while its body is
-        // still visible makes the Paned jump the divider up to the body's
-        // minimum, then the settle snaps it back — a visible flash (and a
-        // window where the jump could be recorded as a height). The settle
-        // handler restores state in the right order instead.
-        anim.connect_done(move |_| {
-            cell.borrow_mut().take();
-            s.input_sender().emit(AttachmentDrawerInput::ToggleSettled { collapsed: closing, gen });
-        });
-        *self.toggle_anim.borrow_mut() = Some((anim.clone(), closing));
-        anim.play();
-    }
-
-    /// If an expand/collapse slide is running, jump it to its end and settle
-    /// its target state synchronously. The `ToggleSettled` it queues on the
-    /// way out is voided by bumping the generation.
-    fn finish_running_toggle(&mut self) {
-        let running = self.toggle_anim.borrow_mut().take();
-        let Some((anim, closing)) = running else { return };
-        self.toggle_gen += 1;
-        anim.skip();
-        if closing {
-            self.settle_collapsed();
-        }
-        self.paned.set_shrink_end_child(false);
-        self.adjusting.set(false);
-    }
-
-    /// The end state of a collapse: body hidden, divider locked, position
-    /// pinned to exactly the header.
-    fn settle_collapsed(&mut self) {
-        self.collapsed = true;
-        self.apply_position();
-    }
-
-    /// Natural height of the drawer's header row (the first child of the end
-    /// pane) — the drawer's height when collapsed.
-    fn header_height(paned: &gtk::Paned) -> i32 {
-        // The collapsed drawer keeps everything above the scroller: the edge
-        // strip and the header row.
-        let Some(end) = paned.end_child() else { return 44 };
-        // The body sits in the drawer's overlay (see init).
-        let body = end.downcast_ref::<gtk::Overlay>().and_then(|o| o.child()).unwrap_or(end);
-        let mut sum = 0;
-        let mut child = body.first_child();
-        while let Some(c) = child {
-            if c.is::<gtk::ScrolledWindow>() {
-                break;
-            }
-            sum += c.measure(gtk::Orientation::Vertical, -1).1;
-            child = c.next_sibling();
-        }
-        if sum > 0 { sum } else { 44 }
-    }
-
-    /// Move the Paned divider so the drawer body is the desired height: the
-    /// header alone when collapsed, else `self.height`. Guarded so the resulting
-    /// position-notify isn't taken for a user drag.
-    fn apply_position(&self) {
-        let total = self.paned.height();
-        if total <= 1 {
-            return; // not allocated yet
-        }
-        let drawer_h = if self.collapsed {
-            Self::header_height(&self.paned)
-        } else {
-            self.height
-        };
-        self.adjusting.set(true);
-        self.paned.set_position((total - drawer_h).max(0));
-        self.adjusting.set(false);
-    }
-
-    /// Make the Paned's own separator inert (there is no lock API on
-    /// GtkPaned, so this walks its internal children and untargets the child
-    /// that is neither pane). Called once at init and left off for good: the
-    /// separator's enlarged input region otherwise steals presses near the
-    /// seam and wears its own cursor. The pill zone and the drawer's edge
-    /// strip do all the clicking and dragging.
-    fn set_divider_draggable(&self, on: bool) {
-        let start = self.paned.start_child();
-        let end = self.paned.end_child();
-        let mut child = self.paned.first_child();
-        while let Some(c) = child {
-            if Some(&c) != start.as_ref() && Some(&c) != end.as_ref() {
-                c.set_can_target(on);
-            }
-            child = c.next_sibling();
-        }
-    }
-
-    /// Persist the dragged height, debounced past the end of the drag.
-    fn schedule_height_save(&self) {
-        let height = self.height;
-        let slot = self.height_save.clone();
-        if let Some(prev) = slot.borrow_mut().take() {
-            prev.remove();
-        }
-        let id = glib::timeout_add_local_once(std::time::Duration::from_millis(400), {
-            let slot = slot.clone();
-            move || {
-                slot.borrow_mut().take();
-                config::save_drawer_height(height);
-            }
-        });
-        *slot.borrow_mut() = Some(id);
-    }
-
-    /// Apply the remembered split once the Paned has been allocated. The drawer
-    /// has just become visible, so defer one loop iteration for layout to settle.
-    fn schedule_initial_position(&self) {
-        let paned = self.paned.clone();
-        let adjusting = self.adjusting.clone();
-        let positioned = self.positioned.clone();
-        let height = self.height;
-        let collapsed = self.collapsed;
-        glib::idle_add_local_once(move || {
-            if positioned.get() {
-                return;
-            }
-            let total = paned.height();
-            if total <= 1 {
-                return; // still unallocated; a later SetItems will retry
-            }
-            let drawer_h = if collapsed { Self::header_height(&paned) } else { height };
-            adjusting.set(true);
-            paned.set_position((total - drawer_h).max(0));
-            adjusting.set(false);
-            positioned.set(true);
-        });
-    }
-
-    /// Rebuild the thumbnail grid from the current items and thumbnail size.
-    fn rebuild(&mut self, sender: &ComponentSender<Self>) {
-        // Remove existing cells only, skipping anything that isn't a
-        // FlowBoxChild — and walk siblings captured before removal so this can
-        // never loop (removing a non-child is a no-op, which would spin
-        // `first_child()` forever).
-        let mut child = self.flow.first_child();
-        while let Some(c) = child {
-            let next = c.next_sibling();
-            if c.downcast_ref::<gtk::FlowBoxChild>().is_some() {
-                self.flow.remove(&c);
-            }
-            child = next;
-        }
-        // The grid keeps the message's own attachment order; the list is
-        // alphabetical (case-insensitive), flipped by the sort switch. Cells are
-        // handed their *display* index — `item_at` maps it back to `items`.
-        let mut order: Vec<usize> = (0..self.items.len()).collect();
-        if self.list_view {
-            order.sort_by(|&a, &b| {
-                self.items[a].name.to_lowercase().cmp(&self.items[b].name.to_lowercase())
-            });
-            if self.sort_desc {
-                order.reverse();
-            }
-        }
-        self.display_order = order;
-        for (i, &orig) in self.display_order.iter().enumerate() {
-            let att = &self.items[orig];
-            let deleting = self.deleting.iter().any(|(n, l)| *n == att.name && *l == att.data.len());
-            let cell = if self.list_view {
-                build_list_row(i, att, deleting, sender)
-            } else {
-                build_cell(i, att, self.thumb, deleting, sender)
-            };
-            self.flow.insert(&cell, -1);
-        }
-    }
-
-    /// Rebuild for a changed mark, unless a fade is running: its cell has
-    /// to stay put until it is gone, and the rebuild comes after it.
-    fn rebuild_unless_fading(&mut self, sender: &ComponentSender<Self>) {
-        if self.fading == 0 {
-            self.rebuild(sender);
-        }
-    }
-
-    /// The attachment shown at display position `i` (grid or sorted list).
-    fn item_at(&self, i: usize) -> Option<&Attachment> {
-        self.items.get(*self.display_order.get(i)?)
-    }
-
-    /// Save one attachment via a file chooser.
-    fn save_attachment(&self, att: &Attachment) {
-        let dialog = gtk::FileDialog::builder()
-            .initial_name(&att.name)
-            .title(&i18n("Save Attachment"))
-            .build();
-        let data = att.data.clone();
-        dialog.save(self.window().as_ref(), gtk::gio::Cancellable::NONE, move |res| {
-            if let Ok(file) = res {
-                if let Some(path) = file.path() {
-                    let _ = std::fs::write(path, &data);
-                }
-            }
-        });
-    }
-
-    /// Ask for a folder and write every attachment into it ("Save All").
-    fn save_all(&self) {
-        if self.items.is_empty() {
-            return;
-        }
-        let atts = self.items.clone();
-        let dialog = gtk::FileDialog::builder().title(&i18n("Save All Attachments")).build();
-        dialog.select_folder(self.window().as_ref(), gtk::gio::Cancellable::NONE, move |res| {
-            if let Ok(folder) = res {
-                if let Some(dir) = folder.path() {
-                    for att in &atts {
-                        let safe = att.name.replace(['/', '\\'], "_");
-                        let _ = std::fs::write(dir.join(&safe), &att.data);
-                    }
-                }
-            }
-        });
-    }
-
-    /// Right-click menu: Open / Download, Show in Message, and Delete from
-    /// Server, matching the gallery's actions.
-    fn show_context_menu(&self, index: usize, x: f64, y: f64, sender: &ComponentSender<Self>) {
-        let s = sender.clone();
-        let open = MenuEntry::new(i18n("Open"), move || s.input_sender().emit(AttachmentDrawerInput::Open(index)))
-            .icon("document-open-symbolic");
-        let s = sender.clone();
-        let download =
-            MenuEntry::new(i18n("Download…"), move || s.input_sender().emit(AttachmentDrawerInput::Download(index)))
-                .icon("folder-download-symbolic");
-        // The drawer gathers the whole conversation's files; this finds the
-        // message a file came with (#213).
-        let s = sender.clone();
-        let show = MenuEntry::new(i18n("Show in Message"), move || {
-            s.input_sender().emit(AttachmentDrawerInput::ShowInMessage(index))
-        })
-        .icon("mail-unread-symbolic");
-        let s = sender.clone();
-        let delete = MenuEntry::new(i18n("Delete from Server…"), move || {
-            s.input_sender().emit(AttachmentDrawerInput::DeleteFromServer(index))
-        })
-        .icon("user-trash-symbolic");
-
-        // Anchor on the clicked cell itself so the click point (already
-        // relative to it) needs no coordinate translation.
-        let parent: gtk::Widget = self
-            .flow
-            .child_at_index(index as i32)
-            .map(|c| c.upcast())
-            .unwrap_or_else(|| self.flow.clone().upcast());
-        show_context_menu(&parent, x, y, vec![vec![open, download], vec![show], vec![delete]]);
-    }
-
-    /// Ask the app to show its full-window lightbox over the message's
-    /// previewable attachments (images and PDFs), starting at `start`
-    /// (attachments order). The overlay lives at the window level so it fills
-    /// Hylki itself — a separate preview window meant double chrome.
-    fn show_lightbox(&self, start: usize, sender: &ComponentSender<Self>) {
-        let items: Vec<Attachment> =
-            self.items.iter().filter(|a| previewable(a)).cloned().collect();
-        if items.is_empty() {
-            return;
-        }
-        let start_pos = self
-            .items
-            .iter()
-            .take(start + 1)
-            .filter(|a| previewable(a))
-            .count()
-            .saturating_sub(1);
-        let _ = sender.output(DrawerOutput::ShowLightbox { items, start: start_pos });
-    }
-}
-
-/// Build one grid cell: a square thumbnail (image/PDF texture or type icon)
-/// with hover Download/Open actions and the filename beneath it.
-/// Whether an attachment is an OpenPGP public key: by its armour, or by a
-/// key file's usual name.
-fn is_key_attachment(att: &Attachment) -> bool {
-    let head = &att.data[..att.data.len().min(64)];
-    if head.starts_with(b"-----BEGIN PGP PUBLIC KEY BLOCK-----") {
-        return true;
-    }
-    let name = att.name.to_ascii_lowercase();
-    (name.ends_with(".asc") || name.ends_with(".gpg") || name.ends_with(".pgp") || name.ends_with(".key"))
-        && !head.starts_with(b"-----BEGIN PGP MESSAGE-----")
-        && !head.starts_with(b"-----BEGIN PGP SIGNATURE-----")
-}
-
-fn build_cell(
-    index: usize,
-    att: &Attachment,
-    thumb: i32,
-    deleting: bool,
-    sender: &ComponentSender<AttachmentDrawer>,
-) -> gtk::FlowBoxChild {
-    let cell = gtk::Box::new(gtk::Orientation::Vertical, 4);
-    cell.add_css_class("drawer-cell");
-    cell.set_halign(gtk::Align::Center);
-
-    // The thumbnail content: a cover-cropped image/PDF-page render, or a
-    // centred type icon. Anything not yet in the render cache gets a spinner
-    // while a worker decodes it — never a frozen window.
-    let content: gtk::Widget = match thumbnail_texture(&att.name, &att.data) {
-        Thumbnail::Ready(tex) => drawer_picture(&tex),
-        Thumbnail::Fallback => drawer_icon(&att.name, thumb),
-        Thumbnail::Pending => {
-            let holder = gtk::Box::new(gtk::Orientation::Horizontal, 0);
-            holder.set_hexpand(true);
-            holder.set_vexpand(true);
-            holder.append(&crate::ui::attachments_gallery::thumbnail_spinner());
-            let weak = holder.downgrade();
-            let name = att.name.clone();
-            spawn_thumbnail_render(&att.name, att.data.clone(), move |tex| {
-                let Some(holder) = weak.upgrade() else { return };
-                while let Some(child) = holder.first_child() {
-                    holder.remove(&child);
-                }
-                match tex {
-                    Some(tex) => holder.append(&drawer_picture(&tex)),
-                    None => holder.append(&drawer_icon(&name, thumb)),
-                }
-            });
-            holder.upcast()
-        }
-    };
-
-    // Force a fixed 1:1 square regardless of the image's intrinsic size, so cells
-    // stay uniform and the grid flows left-to-right, wrapping into rows.
-    let square = SquareBox::new(&content, thumb);
-    square.set_overflow(gtk::Overflow::Hidden);
-    square.add_css_class("drawer-thumb");
-
-    let overlay = gtk::Overlay::new();
-    overlay.set_child(Some(&square));
-
-    // Hover quick actions (Download, Open) — same style as the gallery.
-    let actions = gtk::Box::new(gtk::Orientation::Horizontal, 4);
-    actions.set_halign(gtk::Align::End);
-    actions.set_valign(gtk::Align::End);
-    actions.set_margin_end(6);
-    actions.set_margin_bottom(6);
-    let action_btn = |icon: &str, tip: &str| {
-        let b = gtk::Button::from_icon_name(icon);
-        b.add_css_class("gallery-open");
-        b.add_css_class("drawer-action");
-        b.add_css_class("circular");
-        b.add_css_class("osd");
-        b.set_tooltip_text(Some(tip));
-        b
-    };
-    let download = action_btn("folder-download-symbolic", &i18n("Download"));
-    let s = sender.clone();
-    download.connect_clicked(move |_| s.input_sender().emit(AttachmentDrawerInput::Download(index)));
-    actions.append(&download);
-    let open = action_btn("document-open-symbolic", &i18n("Open"));
-    let s = sender.clone();
-    open.connect_clicked(move |_| s.input_sender().emit(AttachmentDrawerInput::Open(index)));
-    actions.append(&open);
-    // An attached public key (#133): one click puts it in the keyring.
-    if is_key_attachment(att) {
-        let import = action_btn("channel-secure-symbolic", &i18n("Import OpenPGP key"));
-        let s = sender.clone();
-        import.connect_clicked(move |_| s.input_sender().emit(AttachmentDrawerInput::ImportKey(index)));
-        actions.append(&import);
-    }
-    if deleting {
-        cell.add_css_class("attachment-deleting");
-        overlay.add_overlay(&deleting_veil(false));
-    } else {
-        overlay.add_overlay(&actions);
-    }
-
-    cell.append(&overlay);
-
-    // The name, or "Deleting…" while the file is deleted from the server:
-    // whole, even where it is wider than the smallest thumbnail.
-    let name = if deleting { deleting_label() } else { gtk::Label::new(Some(&att.name)) };
-    if !deleting {
-        name.set_ellipsize(gtk::pango::EllipsizeMode::Middle);
-        name.set_max_width_chars(1);
-    }
-    name.set_width_request(thumb);
-    name.set_justify(gtk::Justification::Center);
-    name.set_tooltip_text(Some(&att.name));
-    name.add_css_class("drawer-filename");
-    name.add_css_class("caption");
-    cell.append(&name);
-
-    let child = gtk::FlowBoxChild::new();
-    child.set_child(Some(&cell));
-    // The full filename on hover anywhere in the cell — the label below the
-    // thumbnail is ellipsized, so the thumbnail itself must answer too.
-    child.set_tooltip_text(Some(&att.name));
-    // Nothing more to do with a file on its way off the server.
-    if deleting {
-        child.set_can_target(false);
-        return child;
-    }
-
-    // Right-click → context menu at the click point.
-    let right = gtk::GestureClick::new();
-    right.set_button(gtk::gdk::BUTTON_SECONDARY);
-    let s = sender.clone();
-    right.connect_pressed(move |_, _, x, y| {
-        s.input_sender().emit(AttachmentDrawerInput::ContextMenu { index, x, y });
-    });
-    child.add_controller(right);
-    add_double_click_open(&child, index, sender);
-
-    child
-}
-
-/// Double-click (primary): the drawer's activation gesture — previewable
-/// types open the lightbox, everything else its default application.
-fn add_double_click_open(
-    child: &gtk::FlowBoxChild,
-    index: usize,
-    sender: &ComponentSender<AttachmentDrawer>,
-) {
-    let dbl = gtk::GestureClick::new();
-    dbl.set_button(gtk::gdk::BUTTON_PRIMARY);
-    let s = sender.clone();
-    dbl.connect_pressed(move |_, n, _, _| {
-        if n == 2 {
-            s.input_sender().emit(AttachmentDrawerInput::Activate(index));
-        }
-    });
-    child.add_controller(dbl);
-}
-
-/// One row of the drawer's list view: type icon, filename, size, and the same
-/// Download/Open quick actions the grid shows on hover. Activation (click) and
-/// the right-click context menu match the grid's behaviour.
-fn build_list_row(
-    index: usize,
-    att: &Attachment,
-    deleting: bool,
-    sender: &ComponentSender<AttachmentDrawer>,
-) -> gtk::FlowBoxChild {
-    let row = gtk::Box::new(gtk::Orientation::Horizontal, 8);
-    row.add_css_class("drawer-list-row");
-
-    let icon = gtk::Image::from_icon_name(icon_for(&att.name));
-    icon.set_pixel_size(20);
-    icon.add_css_class(icon_color_class(&att.name));
-    row.append(&icon);
-
-    let name = gtk::Label::new(Some(&att.name));
-    name.set_ellipsize(gtk::pango::EllipsizeMode::Middle);
-    name.set_halign(gtk::Align::Start);
-    name.set_hexpand(true);
-    name.set_xalign(0.0);
-    row.append(&name);
-
-    let size = gtk::Label::new(Some(&att.human_size()));
-    size.add_css_class("dim-label");
-    size.add_css_class("caption");
-    size.set_valign(gtk::Align::Center);
-    row.append(&size);
-
-    let action_btn = |icon: &str, tip: &str| {
-        let b = gtk::Button::from_icon_name(icon);
-        b.add_css_class("flat");
-        b.set_valign(gtk::Align::Center);
-        b.set_tooltip_text(Some(tip));
-        b
-    };
-    // Spaced as the row spaces its other parts.
-    let actions = gtk::Box::new(gtk::Orientation::Horizontal, 8);
-    let download = action_btn("folder-download-symbolic", &i18n("Download"));
-    let s = sender.clone();
-    download.connect_clicked(move |_| s.input_sender().emit(AttachmentDrawerInput::Download(index)));
-    actions.append(&download);
-    let open = action_btn("document-open-symbolic", &i18n("Open"));
-    let s = sender.clone();
-    open.connect_clicked(move |_| s.input_sender().emit(AttachmentDrawerInput::Open(index)));
-    actions.append(&open);
-    if deleting {
-        row.append(&deleting_over(&actions));
-    } else {
-        row.append(&actions);
-    }
-
-    let child = gtk::FlowBoxChild::new();
-    child.set_child(Some(&row));
-    child.set_tooltip_text(Some(&att.name));
-    if deleting {
-        // The ground on the cell itself, where the hover and selection
-        // highlights are drawn, so it has their shape.
-        child.add_css_class("attachment-deleting");
-        child.set_can_target(false);
-        return child;
-    }
-
-    let right = gtk::GestureClick::new();
-    right.set_button(gtk::gdk::BUTTON_SECONDARY);
-    let s = sender.clone();
-    right.connect_pressed(move |_, _, x, y| {
-        s.input_sender().emit(AttachmentDrawerInput::ContextMenu { index, x, y });
-    });
-    child.add_controller(right);
-    add_double_click_open(&child, index, sender);
-
-    child
-}
-
-glib::wrapper! {
-    /// A single-child container that always measures to a fixed N×N square,
-    /// ignoring the child's intrinsic size. This keeps every thumbnail uniformly
-    /// sized (so images don't blow the cell out to their native pixel width) and
-    /// lets the grid pack many per row, flowing left-to-right.
-    pub struct SquareBox(ObjectSubclass<imp::SquareBox>) @extends gtk::Widget;
-}
-
-impl SquareBox {
-    fn new(child: &impl IsA<gtk::Widget>, size: i32) -> Self {
-        use gtk::subclass::prelude::ObjectSubclassIsExt;
-        let obj: Self = glib::Object::new();
-        obj.imp().size.set(size);
-        child.set_parent(&obj);
-        obj
-    }
-}
-
-mod imp {
-    use std::cell::Cell;
-
-    use gtk::glib;
-    use gtk::prelude::*;
-    use gtk::subclass::prelude::*;
-
-    #[derive(Default)]
-    pub struct SquareBox {
-        pub size: Cell<i32>,
-    }
-
-    #[glib::object_subclass]
-    impl ObjectSubclass for SquareBox {
-        const NAME: &'static str = "HylkiSquareBox";
-        type Type = super::SquareBox;
-        type ParentType = gtk::Widget;
-    }
-
-    impl ObjectImpl for SquareBox {
-        fn dispose(&self) {
-            while let Some(child) = self.obj().first_child() {
-                child.unparent();
-            }
-        }
-    }
-
-    impl WidgetImpl for SquareBox {
-        fn request_mode(&self) -> gtk::SizeRequestMode {
-            gtk::SizeRequestMode::ConstantSize
-        }
-
-        fn measure(&self, _orientation: gtk::Orientation, _for_size: i32) -> (i32, i32, i32, i32) {
-            let s = self.size.get().max(1);
-            (s, s, -1, -1)
-        }
-
-        fn size_allocate(&self, width: i32, height: i32, baseline: i32) {
-            if let Some(child) = self.obj().first_child() {
-                child.allocate(width, height, baseline, None);
-            }
-        }
-    }
-}
+impl AttachmentDrawer {}

@@ -3858,6 +3858,9 @@ msgstr ""
 msgid "Use Its Own Name"
 msgstr "Utilizar su nombre original"
 
+msgid "All Address Books"
+msgstr "Todas las libretas de direcciones"
+
 msgid "Move Contact?"
 msgstr "¿Mover el contacto?"
 
@@ -4185,6 +4188,18 @@ msgstr "Guardar los contactos nuevos en"
 
 msgid "Unless another is picked when the contact is made."
 msgstr "Salvo que se elija otra al crear el contacto."
+
+msgid "Layout"
+msgstr "Diseño"
+
+msgid "Contacts placement"
+msgstr "Ubicación de Contactos"
+
+msgid "'In the footer' disables expand/collapse."
+msgstr ""
+
+msgid "Keep the search field open"
+msgstr "Mantener abierto el campo de búsqueda"
 
 msgid ""
 "Evolution and other apps stop seeing it too. Nothing on the server changes."
@@ -5688,9 +5703,6 @@ msgstr "Posición de las etiquetas"
 msgid "Favorites placement"
 msgstr "Ubicación de Favoritos"
 
-msgid "Contacts placement"
-msgstr "Ubicación de Contactos"
-
 msgid "Icon rail"
 msgstr "Barra de iconos"
 
@@ -5717,9 +5729,6 @@ msgstr "El correo enviado usa el círculo de tu cuenta"
 msgid "The account's picture or emoji, as in the sidebar."
 msgstr "La imagen o el emoji de la cuenta, como en la barra lateral."
 
-msgid "Layout"
-msgstr "Diseño"
-
 msgid "Automatic uses single lines in wide windows."
 msgstr "El modo automático utiliza una sola línea en ventanas anchas."
 
@@ -5737,9 +5746,6 @@ msgstr "Etiquetas y rótulos debajo del texto"
 
 msgid "Gives the subject its full width."
 msgstr "Deja todo el ancho disponible para el asunto."
-
-msgid "Keep the search field open"
-msgstr "Mantener abierto el campo de búsqueda"
 
 msgid "Search field position"
 msgstr "Posición del campo de búsqueda"
@@ -6464,6 +6470,10 @@ msgstr "Sonidos"
 
 msgid "Forget this word"
 msgstr "Olvidar esta palabra"
+
+#, fuzzy
+msgid "In the footer"
+msgstr "¿Guardar el filtro?"
 
 #. GNOME Settings' own names for its alert sounds.
 msgid "Click"
@@ -8743,9 +8753,6 @@ msgstr "Hyprlab"
 #, fuzzy
 #~ msgid "Choose which address book to search"
 #~ msgstr "Elegir las carpetas en las que buscar"
-
-#~ msgid "All Address Books"
-#~ msgstr "Todas las libretas de direcciones"
 
 #~ msgid ""
 #~ "{name} is removed from your address book, and for a synced book, from the "

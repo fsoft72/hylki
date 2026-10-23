@@ -20,7 +20,7 @@ use gtk::prelude::*;
 /// and the callback to run on activation. Use `.enabled(false)` to grey an
 /// item out rather than hiding it — HIG prefers a disabled item users can
 /// still find over one that vanishes and makes the menu shift under them.
-pub struct MenuEntry {
+pub(crate) struct MenuEntry {
     label: String,
     icon: Option<String>,
     /// A color swatch in the icon slot instead of an icon (a tag's color,
@@ -32,19 +32,22 @@ pub struct MenuEntry {
     /// tick. A tick costs the icon that says what the entry *is*, which is
     /// the part worth keeping in a list of alternatives.
     selected: bool,
+    /// The keys that do the same, shown dim at the end of the row (#497).
+    accel: Option<String>,
     activate: Box<dyn Fn()>,
     /// Sections of a nested page this entry opens instead of acting.
     submenu: Option<Vec<Vec<MenuEntry>>>,
 }
 
 impl MenuEntry {
-    pub fn new(label: impl Into<String>, activate: impl Fn() + 'static) -> Self {
+    pub(crate) fn new(label: impl Into<String>, activate: impl Fn() + 'static) -> Self {
         Self {
             label: label.into(),
             icon: None,
             swatch: None,
             enabled: true,
             selected: false,
+            accel: None,
             activate: Box::new(activate),
             submenu: None,
         }
@@ -52,7 +55,7 @@ impl MenuEntry {
 
     /// An entry that opens `sections` as a page of the same popover, headed
     /// by a back row carrying this entry's label. Disabled when empty.
-    pub fn submenu(label: impl Into<String>, sections: Vec<Vec<MenuEntry>>) -> Self {
+    pub(crate) fn submenu(label: impl Into<String>, sections: Vec<Vec<MenuEntry>>) -> Self {
         let empty = sections.iter().all(|s| s.is_empty());
         Self {
             label: label.into(),
@@ -60,6 +63,7 @@ impl MenuEntry {
             swatch: None,
             enabled: !empty,
             selected: false,
+            accel: None,
             activate: Box::new(|| {}),
             submenu: Some(sections),
         }
@@ -67,25 +71,33 @@ impl MenuEntry {
 
     /// A colored disc in the icon slot — `on` fills it, off draws a ring —
     /// for entries that toggle something with a color of its own (tags).
-    pub fn swatch(mut self, color: impl Into<String>, on: bool) -> Self {
+    pub(super) fn swatch(mut self, color: impl Into<String>, on: bool) -> Self {
         self.swatch = Some((color.into(), on));
         self
     }
 
     /// Leading symbolic icon — use the same icon as the toolbar button that
     /// performs this action, so the menu teaches the toolbar.
-    pub fn icon(mut self, name: impl Into<String>) -> Self {
+    pub(crate) fn icon(mut self, name: impl Into<String>) -> Self {
         self.icon = Some(name.into());
         self
     }
 
-    pub fn enabled(mut self, enabled: bool) -> Self {
+    pub(crate) fn enabled(mut self, enabled: bool) -> Self {
         self.enabled = enabled;
         self
     }
 
+    /// The keys that do the same, as a GTK accelerator (`<Control>c`),
+    /// shown the way GTK's own menus show them.
+    pub(crate) fn accel(mut self, accel: &str) -> Self {
+        self.accel = gtk::accelerator_parse(accel)
+            .map(|(key, mods)| gtk::accelerator_get_label(key, mods).to_string());
+        self
+    }
+
     /// Mark this entry as the one the menu is set to.
-    pub fn selected(mut self, selected: bool) -> Self {
+    pub(crate) fn selected(mut self, selected: bool) -> Self {
         self.selected = selected;
         self
     }
@@ -96,13 +108,18 @@ impl MenuEntry {
 /// right-click landed on, so no coordinate translation is needed). `sections`
 /// groups entries into visually separated clusters, e.g. `[[Reply, Reply All,
 /// Forward], [Star, Mark Read], [Spam, Archive, Delete]]`.
-pub fn show_context_menu(parent: &impl IsA<gtk::Widget>, x: f64, y: f64, sections: Vec<Vec<MenuEntry>>) {
+pub(crate) fn show_context_menu(
+    parent: &impl IsA<gtk::Widget>,
+    x: f64,
+    y: f64,
+    sections: Vec<Vec<MenuEntry>>,
+) {
     show_context_menu_with_header(parent, x, y, None, sections);
 }
 
 /// [`show_context_menu`] with an optional dim caption header above the first
 /// section (e.g. the bulk menu's "5 selected").
-pub fn show_context_menu_with_header(
+pub(crate) fn show_context_menu_with_header(
     parent: &impl IsA<gtk::Widget>,
     x: f64,
     y: f64,
@@ -114,7 +131,7 @@ pub fn show_context_menu_with_header(
 
 /// [`show_context_menu_with_header`], handing back the popover for a caller
 /// that needs to know when it closes.
-pub fn show_context_menu_popover(
+pub(super) fn show_context_menu_popover(
     parent: &impl IsA<gtk::Widget>,
     x: f64,
     y: f64,
@@ -144,7 +161,10 @@ pub fn show_context_menu_popover(
     stack.set_visible_child_name("main");
 
     // Never taller than the window, scrolling past that (see below).
-    let root_height = parent.as_ref().root().map(|r| r.upcast_ref::<gtk::Widget>().height());
+    let root_height = parent
+        .as_ref()
+        .root()
+        .map(|r| r.upcast_ref::<gtk::Widget>().height());
     let scroller = gtk::ScrolledWindow::builder()
         .hscrollbar_policy(gtk::PolicyType::Never)
         .propagate_natural_height(true)
@@ -200,9 +220,12 @@ pub fn show_context_menu_popover(
                     stack.set_visible_child_name(&format!("sub:{which}"));
                 }
                 let stack = stack.clone();
-                gtk::glib::timeout_add_local_once(std::time::Duration::from_millis(600), move || {
-                    crate::app::showcase_capture(stack.upcast_ref(), &path);
-                });
+                gtk::glib::timeout_add_local_once(
+                    std::time::Duration::from_millis(600),
+                    move || {
+                        crate::ui::showcase::showcase_capture(stack.upcast_ref(), &path);
+                    },
+                );
             });
         }
     }
@@ -223,12 +246,17 @@ fn popup_after_release(popover: &gtk::Popover, parent: &gtk::Widget) {
         | gtk::gdk::ModifierType::BUTTON3_MASK;
     let display = parent.display();
     let is_x11 = display.type_().name() == "GdkX11Display";
-    let Some(root) = parent.root().filter(|_| is_x11) else { return popover.popup() };
+    let Some(root) = parent.root().filter(|_| is_x11) else {
+        return popover.popup();
+    };
     // The device's own modifier state reads empty on X11; asking the
     // window's surface where the pointer is queries the server, buttons too.
     let surface = root.surface();
     let pointer = display.default_seat().and_then(|s| s.pointer());
-    let state = surface.zip(pointer).and_then(|(s, p)| s.device_position(&p)).map(|(_, _, m)| m);
+    let state = surface
+        .zip(pointer)
+        .and_then(|(s, p)| s.device_position(&p))
+        .map(|(_, _, m)| m);
     let pressed = state.is_some_and(|m| m.intersects(held));
     if !pressed {
         return popover.popup();
@@ -272,14 +300,21 @@ const MENU_MARGIN: i32 = 12;
 fn fitted_anchor(parent: &gtk::Widget, natural: i32, x: f64, y: f64) -> f64 {
     let Some(root) = parent.root() else { return y };
     let root: &gtk::Widget = root.upcast_ref();
-    let Some(at) = parent.compute_point(root, &gtk::graphene::Point::new(x as f32, y as f32)) else {
+    let Some(at) = parent.compute_point(root, &gtk::graphene::Point::new(x as f32, y as f32))
+    else {
         return y;
     };
+    fitted_y(y, at.y() as f64, root.height(), natural)
+}
+
+/// The arithmetic of [`fitted_anchor`]: `top` is the point's height in a
+/// window `window_height` tall, `natural` the menu content's height.
+fn fitted_y(y: f64, top: f64, window_height: i32, natural: i32) -> f64 {
     // The popover itself measures nothing before it is mapped; its content
     // does (`natural`), and the menu's padding and shadow add a little.
-    let natural = root.height().saturating_sub(MENU_MARGIN).min(natural);
+    let natural = window_height.saturating_sub(MENU_MARGIN).min(natural);
     let height = natural + 2 * MENU_MARGIN;
-    let (top, bottom) = (at.y() as f64, root.height() as f64);
+    let bottom = window_height as f64;
     let fits_below = top + height as f64 <= bottom;
     let fits_above = top - (height as f64) >= 0.0;
     if fits_below || fits_above {
@@ -342,7 +377,10 @@ fn build_page(
 
     // Any icon in the menu means every row reserves the icon slot, keeping
     // the labels of iconless entries aligned with the rest.
-    let has_icons = sections.iter().flatten().any(|e| e.icon.is_some() || e.swatch.is_some());
+    let has_icons = sections
+        .iter()
+        .flatten()
+        .any(|e| e.icon.is_some() || e.swatch.is_some());
 
     let mut first = true;
     for entries in sections {
@@ -355,7 +393,16 @@ fn build_page(
         first = false;
 
         for entry in entries {
-            let MenuEntry { label, icon, swatch, enabled, selected, activate, submenu } = entry;
+            let MenuEntry {
+                label,
+                icon,
+                swatch,
+                enabled,
+                selected,
+                accel,
+                activate,
+                submenu,
+            } = entry;
 
             let row = gtk::Box::new(gtk::Orientation::Horizontal, 10);
             if selected {
@@ -380,6 +427,12 @@ fn build_page(
             lbl.set_ellipsize(gtk::pango::EllipsizeMode::End);
             lbl.set_max_width_chars(MAX_LABEL_CHARS);
             row.append(&lbl);
+            if let Some(accel) = accel {
+                let keys = gtk::Label::new(Some(&accel));
+                keys.add_css_class("dim-label");
+                keys.set_margin_start(12);
+                row.append(&keys);
+            }
 
             let btn = gtk::Button::new();
             btn.set_child(Some(&row));
@@ -398,7 +451,14 @@ fn build_page(
                 chevron.add_css_class("dim-label");
                 row.append(&chevron);
                 let name = format!("sub:{label}");
-                let page = build_page(popover, stack, &name, Some(&label), sections, Some(page_name));
+                let page = build_page(
+                    popover,
+                    stack,
+                    &name,
+                    Some(&label),
+                    sections,
+                    Some(page_name),
+                );
                 // Tall lists scroll within the page rather than past the
                 // screen; short ones size exactly, as every page does.
                 let scroller = gtk::ScrolledWindow::new();
@@ -427,7 +487,7 @@ fn build_page(
 
 /// A 16px color swatch for a menu row: a filled disc when `on`, a ring when
 /// not, in `color` (`#rrggbb`; an unparsable color falls back to grey).
-pub fn swatch_widget(color: &str, on: bool) -> gtk::DrawingArea {
+pub(crate) fn swatch_widget(color: &str, on: bool) -> gtk::DrawingArea {
     let area = gtk::DrawingArea::new();
     area.set_content_width(16);
     area.set_content_height(16);
@@ -451,4 +511,32 @@ pub fn swatch_widget(color: &str, on: bool) -> gtk::DrawingArea {
         }
     });
     area
+}
+
+#[cfg(test)]
+mod tests {
+    use super::fitted_y;
+
+    #[test]
+    fn a_menu_that_fits_either_way_stays_at_its_point() {
+        // 100 tall plus 24 of margins fits below 200 in an 800 window.
+        assert_eq!(fitted_y(50.0, 200.0, 800, 100), 50.0);
+        // And above 700, where it does not fit below.
+        assert_eq!(fitted_y(50.0, 700.0, 800, 100), 50.0);
+    }
+
+    #[test]
+    fn a_tall_menu_moves_up_just_enough_to_fit_below() {
+        // 500 + 24 fits neither below 400 nor above it in 800: the anchor
+        // moves to 800 - 524 - 12 = 264, 136 up from the point.
+        assert_eq!(fitted_y(390.0, 400.0, 800, 500), 254.0);
+        // A point given in another widget's coordinates moves by the same.
+        assert_eq!(fitted_y(10.0, 400.0, 800, 500), -126.0);
+    }
+
+    #[test]
+    fn a_menu_taller_than_the_window_is_cut_to_it() {
+        // Capped at 800 - 12, so 812 tall: it lands at the top.
+        assert_eq!(fitted_y(300.0, 300.0, 800, 5000), 0.0);
+    }
 }

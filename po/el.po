@@ -3903,6 +3903,9 @@ msgstr ""
 msgid "Use Its Own Name"
 msgstr "Χρήση του δικού του ονόματος"
 
+msgid "All Address Books"
+msgstr "Όλα τα βιβλία διευθύνσεων"
+
 msgid "Move Contact?"
 msgstr "Μετακίνηση επαφής;"
 
@@ -4231,6 +4234,18 @@ msgstr "Αποθήκευση νέων επαφών στο"
 
 msgid "Unless another is picked when the contact is made."
 msgstr "Εκτός αν επιλεγεί άλλος κατά τη δημιουργία της επαφής."
+
+msgid "Layout"
+msgstr "Διάταξη"
+
+msgid "Contacts placement"
+msgstr "Θέση επαφών"
+
+msgid "'In the footer' disables expand/collapse."
+msgstr ""
+
+msgid "Keep the search field open"
+msgstr "Διατήρηση ανοιχτού πεδίου αναζήτησης"
 
 msgid ""
 "Evolution and other apps stop seeing it too. Nothing on the server changes."
@@ -5741,9 +5756,6 @@ msgstr "Τοποθέτηση ετικετών"
 msgid "Favorites placement"
 msgstr "Θέση αγαπημένων"
 
-msgid "Contacts placement"
-msgstr "Θέση επαφών"
-
 msgid "Icon rail"
 msgstr "Γραμμή εικονιδίων"
 
@@ -5770,9 +5782,6 @@ msgstr "Τα απεσταλμένα χρησιμοποιούν τον κύκλο
 msgid "The account's picture or emoji, as in the sidebar."
 msgstr "Η εικόνα ή το emoji του λογαριασμού, όπως στην πλευρική στήλη."
 
-msgid "Layout"
-msgstr "Διάταξη"
-
 msgid "Automatic uses single lines in wide windows."
 msgstr "Η αυτόματη επιλογή χρησιμοποιεί μονές γραμμές σε πλατιά παράθυρα."
 
@@ -5790,9 +5799,6 @@ msgstr "Ετικέτες κάτω από το κείμενο"
 
 msgid "Gives the subject its full width."
 msgstr "Δίνει στο θέμα όλο το διαθέσιμο πλάτος."
-
-msgid "Keep the search field open"
-msgstr "Διατήρηση ανοιχτού πεδίου αναζήτησης"
 
 msgid "Search field position"
 msgstr "Θέση πεδίου αναζήτησης"
@@ -6522,6 +6528,10 @@ msgstr "Ήχοι"
 
 msgid "Forget this word"
 msgstr "Να ξεχαστεί αυτή η λέξη"
+
+#, fuzzy
+msgid "In the footer"
+msgstr "Αποθήκευση του φίλτρου;"
 
 #. GNOME Settings' own names for its alert sounds.
 msgid "Click"
@@ -8764,9 +8774,6 @@ msgstr "Hyprlab"
 
 #~ msgid "Choose which address book to search"
 #~ msgstr "Επιλέξτε τους φακέλους αναζήτησης"
-
-#~ msgid "All Address Books"
-#~ msgstr "Όλα τα βιβλία διευθύνσεων"
 
 #~ msgid ""
 #~ "{name} is removed from your address book, and for a synced book, from the "

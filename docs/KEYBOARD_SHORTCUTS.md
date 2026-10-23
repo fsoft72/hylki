@@ -175,7 +175,8 @@ These work with or without single-key shortcuts too:
 | <kbd>Ctrl+Shift+S</kbd> | Reveal the status bar (also: long-press Refresh) |
 | <kbd>Ctrl+Shift+A</kbd> | Show or hide the accounts in the sidebar |
 | <kbd>Ctrl+Shift+C</kbd> | Console mode, when it is enabled in Settings |
-| <kbd>Ctrl+W</kbd> | Close the window; mail keeps syncing in the background |
+| <kbd>Ctrl+,</kbd> | Open Settings |
+| <kbd>Ctrl+W</kbd> | Close the window; mail keeps syncing in the background. In Settings, a message window or a composer window, closes that window |
 | <kbd>Ctrl+Q</kbd> | Quit Hylki |
 
 In the composer, <kbd>Ctrl+Z</kbd> and <kbd>Ctrl+Shift+Z</kbd> undo and redo
@@ -199,7 +200,8 @@ puts the matches away.
 
 <kbd>Ctrl+F</kbd> in the Settings window opens its search, and closes it
 again. <kbd>Esc</kbd> closes it too, wherever the focus is in the window,
-including after you have picked a result.
+including after you have picked a result. Closing the window ends the
+search.
 
 <kbd>Ctrl++</kbd> and <kbd>Ctrl+-</kbd> zoom the message in the reading pane
 in and out, with or without Reader View, and so does <kbd>Ctrl</kbd> with the

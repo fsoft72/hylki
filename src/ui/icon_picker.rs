@@ -4,13 +4,13 @@
 
 use std::rc::Rc;
 
-use gtk::prelude::*;
 use crate::i18n::i18n;
+use gtk::prelude::*;
 
 /// The gallery as one row that scrolls sideways, its edges fading into the
 /// card wherever there is more to scroll to.
-pub fn strip(selected: &str, tile: i32, on_pick: Rc<dyn Fn(&str)>) -> gtk::Overlay {
-    let n = crate::app_icon::catalog().count() as u32;
+pub(super) fn strip(selected: &str, tile: i32, on_pick: Rc<dyn Fn(&str)>) -> gtk::Overlay {
+    let n = crate::desktop::app_icon::catalog().count() as u32;
     let row = build(selected, tile, n.max(1), on_pick);
     row.set_halign(gtk::Align::Start);
     row.set_hexpand(false);
@@ -37,10 +37,15 @@ pub fn strip(selected: &str, tile: i32, on_pick: Rc<dyn Fn(&str)>) -> gtk::Overl
     if let Some(child) = row.selected_children().into_iter().next() {
         let sw2 = sw.clone();
         gtk::glib::idle_add_local_once(move || {
+            // allocation() is deprecated for compute_bounds(), which takes
+            // a target widget and answers in floats: a different call.
+            #[allow(deprecated)]
             let x = child.allocation().x() as f64;
+            #[allow(deprecated)]
             let w = child.allocation().width() as f64;
             let page = sw2.hadjustment().page_size();
-            sw2.hadjustment().set_value((x + w / 2.0 - page / 2.0).max(0.0));
+            sw2.hadjustment()
+                .set_value((x + w / 2.0 - page / 2.0).max(0.0));
         });
     }
 
@@ -102,12 +107,12 @@ fn build(selected: &str, tile: i32, per_line: u32, on_pick: Rc<dyn Fn(&str)>) ->
     grid.set_hexpand(true);
 
     let mut to_select = None;
-    for choice in crate::app_icon::catalog() {
+    for choice in crate::desktop::app_icon::catalog() {
         let cell = gtk::Box::new(gtk::Orientation::Vertical, 4);
         cell.set_halign(gtk::Align::Center);
         let pic = gtk::Picture::new();
         // 2x for HiDPI; still far cheaper than decoding the full 512.
-        if let Some(tex) = crate::app_icon::texture(choice.id, tile * 2) {
+        if let Some(tex) = crate::desktop::app_icon::texture(choice.id, tile * 2) {
             pic.set_paintable(Some(&tex));
         }
         pic.set_size_request(tile, tile);
@@ -142,7 +147,13 @@ fn build(selected: &str, tile: i32, per_line: u32, on_pick: Rc<dyn Fn(&str)>) ->
     }
     // An empty `selected` rings nothing: the launcher shows an icon set
     // outside Hylki (#252), and every tile, the default's too, is a pick.
-    let fallback = || if selected.is_empty() { None } else { grid.child_at_index(0) };
+    let fallback = || {
+        if selected.is_empty() {
+            None
+        } else {
+            grid.child_at_index(0)
+        }
+    };
     if let Some(child) = to_select.or_else(fallback) {
         grid.select_child(&child);
     }
@@ -150,7 +161,9 @@ fn build(selected: &str, tile: i32, per_line: u32, on_pick: Rc<dyn Fn(&str)>) ->
     // Connected after the initial selection, so only the user's picks report.
     let current = std::cell::RefCell::new(selected.to_string());
     grid.connect_selected_children_changed(move |g| {
-        let Some(child) = g.selected_children().into_iter().next() else { return };
+        let Some(child) = g.selected_children().into_iter().next() else {
+            return;
+        };
         let id = child.widget_name().to_string();
         if *current.borrow() == id {
             return;

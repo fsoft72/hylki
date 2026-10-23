@@ -6,26 +6,28 @@
 use adw::prelude::*;
 
 use crate::i18n::{i18n, ni18n_f};
+use crate::ui::contacts_page::{
+    dragged_contacts, ContactScope, ContactTree, DropOn, TreeAction, TreeBook, TreeGroup,
+};
 use crate::ui::context_menu::{show_context_menu, MenuEntry};
-use crate::ui::contacts_page::{dragged_contacts, ContactScope, ContactTree, DropOn, TreeAction, TreeBook};
 use crate::ui::sidebar::SidebarInput;
 
 /// What [`fill`] made: the rows with the scope each picks, and what the
 /// sidebar folds and opens them with.
-pub struct Filled {
-    pub rows: Vec<(ContactScope, gtk::ListBoxRow)>,
-    pub layout: Vec<TreeRow>,
+pub(super) struct Filled {
+    pub(super) rows: Vec<(ContactScope, gtk::ListBoxRow)>,
+    pub(super) layout: Vec<TreeRow>,
     /// Each foldable node's chevron, by its key.
-    pub chevrons: Vec<(String, gtk::Image)>,
+    pub(super) chevrons: Vec<(String, gtk::Image)>,
 }
 
 /// A row that hides while the account or book above it is folded, sliding
 /// as folder rows do.
-pub struct TreeRow {
-    pub row: gtk::ListBoxRow,
-    pub revealer: gtk::Revealer,
+pub(super) struct TreeRow {
+    pub(super) row: gtk::ListBoxRow,
+    pub(super) revealer: gtk::Revealer,
     /// The keys of the nodes above it.
-    pub under: Vec<String>,
+    pub(super) under: Vec<String>,
 }
 
 /// The key that folds a book's groups.
@@ -40,7 +42,7 @@ fn book_key(uid: &str) -> String {
 /// account or book folds as a folder with sub-folders does (`folded` holds
 /// the keys of those folded). In the icon rail (`collapsed`) the books
 /// show as icons alone, with no accounts or groups.
-pub fn fill(
+pub(super) fn fill(
     list: &gtk::ListBox,
     tree: &ContactTree,
     collapsed: bool,
@@ -48,19 +50,37 @@ pub fn fill(
     folded: &std::collections::HashSet<String>,
     input: &relm4::Sender<SidebarInput>,
 ) -> Filled {
-    let mut out = Filled { rows: Vec::new(), layout: Vec::new(), chevrons: Vec::new() };
+    let mut out = Filled {
+        rows: Vec::new(),
+        layout: Vec::new(),
+        chevrons: Vec::new(),
+    };
     // The Hylki book heads the list, then the books of no account; the
     // accounts keep their order, and the books of one account go together.
     let mut books: Vec<&TreeBook> = tree.books.iter().collect();
-    books.sort_by_key(|b| (b.uid != crate::local_contacts::LOCAL_BOOK_UID, !b.account.is_empty()));
+    books.sort_by_key(|b| {
+        (
+            b.uid != crate::contacts::local::LOCAL_BOOK_UID,
+            !b.account.is_empty(),
+        )
+    });
     let mut accounts: Vec<(&str, Vec<&TreeBook>)> = Vec::new();
     for book in books {
-        match accounts.iter_mut().find(|(key, _)| !key.is_empty() && *key == book.key) {
+        match accounts
+            .iter_mut()
+            .find(|(key, _)| !key.is_empty() && *key == book.key)
+        {
             Some((_, books)) => books.push(book),
             None => accounts.push((book.key.as_str(), vec![book])),
         }
     }
-    let ctx = Ctx { list, collapsed, inset, folded, input };
+    let ctx = Ctx {
+        list,
+        collapsed,
+        inset,
+        folded,
+        input,
+    };
     for (key, books) in accounts {
         // An account of one book is that book's row, the account under its
         // name; one of several is a row of its own, its books folding
@@ -78,14 +98,27 @@ pub fn fill(
             Some((kind, address)) => (address.to_string(), kind.to_string()),
             None => (
                 account.clone(),
-                ni18n_f("{n} address book", "{n} address books", books.len() as u32, &[("n", &books.len().to_string())]),
+                ni18n_f(
+                    "{n} address book",
+                    "{n} address books",
+                    books.len() as u32,
+                    &[("n", &books.len().to_string())],
+                ),
             ),
         };
-        let total = books.iter().filter(|b| !b.directory).map(|b| b.count).sum::<usize>();
+        let total = books
+            .iter()
+            .filter(|b| !b.directory)
+            .map(|b| b.count)
+            .sum::<usize>();
         let directories = books.iter().all(|b| b.directory);
         let (button, chevron) = expander(&fold, folded, input);
         out.chevrons.push((fold.clone(), chevron));
-        let icon = if directories { "network-server-symbolic" } else { "x-office-address-book-symbolic" };
+        let icon = if directories {
+            "network-server-symbolic"
+        } else {
+            "x-office-address-book-symbolic"
+        };
         let r = row(
             &name,
             &place,
@@ -127,57 +160,58 @@ impl Ctx<'_> {
     /// A book's row, at `depth`, with its account under its name when
     /// `place` (not under its account's own row), and its groups under it;
     /// hidden while a node it is `under` is folded.
-    fn book(&self, out: &mut Filled, book: &TreeBook, depth: i32, place: bool, mut under: Vec<String>) {
-        let (list, collapsed, inset, folded, input) = (self.list, self.collapsed, self.inset, self.folded, self.input);
-        let icon = if book.directory { "network-server-symbolic" } else { "x-office-address-book-symbolic" };
+    fn book(
+        &self,
+        out: &mut Filled,
+        book: &TreeBook,
+        depth: i32,
+        place: bool,
+        mut under: Vec<String>,
+    ) {
+        let (list, collapsed, inset, folded, input) = (
+            self.list,
+            self.collapsed,
+            self.inset,
+            self.folded,
+            self.input,
+        );
+        let icon = if book.directory {
+            "network-server-symbolic"
+        } else {
+            "x-office-address-book-symbolic"
+        };
         // Where the book is kept, under its name: a book called "card" or
         // "Contacts" says little on its own.
         let place = if !place {
             String::new()
         } else if !book.account.is_empty() {
             book.account.clone()
-        } else if book.uid == crate::local_contacts::LOCAL_BOOK_UID {
+        } else if book.uid == crate::contacts::local::LOCAL_BOOK_UID {
             i18n("Hylki, on this computer")
         } else {
             String::new()
         };
-        let tip = if book.account.is_empty() { book.name.clone() } else { format!("{} · {}", book.name, book.account) };
+        let tip = if book.account.is_empty() {
+            book.name.clone()
+        } else {
+            format!("{} · {}", book.name, book.account)
+        };
         let count = (!book.directory).then_some(book.count);
         let key = book_key(&book.uid);
-        let expander = (!collapsed && !book.groups.is_empty()).then(|| expander(&key, folded, input));
+        let expander =
+            (!collapsed && !book.groups.is_empty()).then(|| expander(&key, folded, input));
         if let Some((_, chevron)) = &expander {
             out.chevrons.push((key.clone(), chevron.clone()));
         }
         let lead = expander.map(|(button, _)| button.upcast::<gtk::Widget>());
-        let r = row(&book.name, &place, &tip, icon, count, lead, depth, collapsed, inset);
+        let r = row(
+            &book.name, &place, &tip, icon, count, lead, depth, collapsed, inset,
+        );
         if book.writable && !book.directory {
             drop_target(&r, DropOn::Book(book.uid.clone()), input);
         }
         if !book.directory {
-            let (s, uid, writable, groups) = (input.clone(), book.uid.clone(), book.writable, book.takes_groups);
-            menu_on(&r, move || {
-                let act = |action: TreeAction| {
-                    let s = s.clone();
-                    move || {
-                        let _ = s.send(SidebarInput::ContactTreeMenu(action.clone()));
-                    }
-                };
-                let mut sections = Vec::new();
-                if writable {
-                    let mut entries = vec![MenuEntry::new(i18n("New Contact"), act(TreeAction::NewContact(uid.clone())))
-                        .icon("contact-new-symbolic")];
-                    if groups {
-                        entries.push(
-                            MenuEntry::new(i18n("New Group"), act(TreeAction::NewGroup(uid.clone())))
-                                .icon("system-users-symbolic"),
-                        );
-                    }
-                    sections.push(entries);
-                }
-                sections.push(vec![MenuEntry::new(i18n("Rename…"), act(TreeAction::RenameBook(uid.clone())))
-                    .icon("document-edit-symbolic")]);
-                sections
-            });
+            book_menu(&r, book, input);
         }
         list.append(&r);
         out.layout.push(slider(&r, under.clone(), folded));
@@ -187,41 +221,129 @@ impl Ctx<'_> {
         }
         under.push(key);
         for g in &book.groups {
-            let r = row(&g.name, "", &g.name, "system-users-symbolic", Some(g.count), None, depth + 1, false, inset);
-            if g.editable {
-                drop_target(&r, DropOn::Group { book: g.book.clone(), uid: g.uid.clone() }, input);
-            }
-            let (s, book, uid, editable, any) = (input.clone(), g.book.clone(), g.uid.clone(), g.editable, g.count > 0);
-            menu_on(&r, move || {
-                let act = |action: TreeAction| {
-                    let s = s.clone();
-                    move || {
-                        let _ = s.send(SidebarInput::ContactTreeMenu(action.clone()));
-                    }
-                };
-                let (b, u) = (book.clone(), uid.clone());
-                let mut first = vec![MenuEntry::new(i18n("New Message"), act(TreeAction::ComposeGroup { book: b, uid: u }))
-                    .icon("mail-message-new-symbolic")
-                    .enabled(any)];
-                if !editable {
-                    return vec![first];
-                }
-                first.push(
-                    MenuEntry::new(i18n("Edit Group"), act(TreeAction::EditGroup { book: book.clone(), uid: uid.clone() }))
-                        .icon("document-edit-symbolic"),
-                );
-                let delete = MenuEntry::new(
-                    i18n("Delete Group…"),
-                    act(TreeAction::DeleteGroup { book: book.clone(), uid: uid.clone() }),
-                )
-                .icon("user-trash-symbolic");
-                vec![first, vec![delete]]
-            });
-            list.append(&r);
-            out.layout.push(slider(&r, under.clone(), folded));
-            out.rows.push((ContactScope::Group { book: g.book.clone(), uid: g.uid.clone() }, r));
+            self.group(out, g, depth + 1, &under);
         }
     }
+
+    /// A group's row under its book, at `depth`, hidden while a node it is
+    /// `under` is folded.
+    fn group(&self, out: &mut Filled, g: &TreeGroup, depth: i32, under: &[String]) {
+        let (list, inset, folded, input) = (self.list, self.inset, self.folded, self.input);
+        let r = row(
+            &g.name,
+            "",
+            &g.name,
+            "system-users-symbolic",
+            Some(g.count),
+            None,
+            depth,
+            false,
+            inset,
+        );
+        if g.editable {
+            drop_target(
+                &r,
+                DropOn::Group {
+                    book: g.book.clone(),
+                    uid: g.uid.clone(),
+                },
+                input,
+            );
+        }
+        let (s, book, uid, editable, any) = (
+            input.clone(),
+            g.book.clone(),
+            g.uid.clone(),
+            g.editable,
+            g.count > 0,
+        );
+        menu_on(&r, move || {
+            let act = |action: TreeAction| {
+                let s = s.clone();
+                move || {
+                    let _ = s.send(SidebarInput::ContactTreeMenu(action.clone()));
+                }
+            };
+            let (b, u) = (book.clone(), uid.clone());
+            let mut first = vec![MenuEntry::new(
+                i18n("New Message"),
+                act(TreeAction::ComposeGroup { book: b, uid: u }),
+            )
+            .icon("mail-message-new-symbolic")
+            .enabled(any)];
+            if !editable {
+                return vec![first];
+            }
+            first.push(
+                MenuEntry::new(
+                    i18n("Edit Group"),
+                    act(TreeAction::EditGroup {
+                        book: book.clone(),
+                        uid: uid.clone(),
+                    }),
+                )
+                .icon("document-edit-symbolic"),
+            );
+            let delete = MenuEntry::new(
+                i18n("Delete Group…"),
+                act(TreeAction::DeleteGroup {
+                    book: book.clone(),
+                    uid: uid.clone(),
+                }),
+            )
+            .icon("user-trash-symbolic");
+            vec![first, vec![delete]]
+        });
+        list.append(&r);
+        out.layout.push(slider(&r, under.to_vec(), folded));
+        out.rows.push((
+            ContactScope::Group {
+                book: g.book.clone(),
+                uid: g.uid.clone(),
+            },
+            r,
+        ));
+    }
+}
+
+/// A book's menu: a new contact or group in it, when it takes them, and
+/// renaming it in Hylki.
+fn book_menu(r: &gtk::ListBoxRow, book: &TreeBook, input: &relm4::Sender<SidebarInput>) {
+    let (s, uid, writable, groups) = (
+        input.clone(),
+        book.uid.clone(),
+        book.writable,
+        book.takes_groups,
+    );
+    menu_on(r, move || {
+        let act = |action: TreeAction| {
+            let s = s.clone();
+            move || {
+                let _ = s.send(SidebarInput::ContactTreeMenu(action.clone()));
+            }
+        };
+        let mut sections = Vec::new();
+        if writable {
+            let mut entries = vec![MenuEntry::new(
+                i18n("New Contact"),
+                act(TreeAction::NewContact(uid.clone())),
+            )
+            .icon("contact-new-symbolic")];
+            if groups {
+                entries.push(
+                    MenuEntry::new(i18n("New Group"), act(TreeAction::NewGroup(uid.clone())))
+                        .icon("system-users-symbolic"),
+                );
+            }
+            sections.push(entries);
+        }
+        sections.push(vec![MenuEntry::new(
+            i18n("Rename…"),
+            act(TreeAction::RenameBook(uid.clone())),
+        )
+        .icon("document-edit-symbolic")]);
+        sections
+    });
 }
 
 /// The key that folds an account's books.
@@ -231,7 +353,11 @@ fn account_key(key: &str) -> String {
 
 /// Put `row`'s content in a revealer, shown unless a node it is `under` is
 /// folded.
-fn slider(row: &gtk::ListBoxRow, under: Vec<String>, folded: &std::collections::HashSet<String>) -> TreeRow {
+fn slider(
+    row: &gtk::ListBoxRow,
+    under: Vec<String>,
+    folded: &std::collections::HashSet<String>,
+) -> TreeRow {
     let hidden = under.iter().any(|k| folded.contains(k));
     let revealer = gtk::Revealer::new();
     revealer.set_transition_type(gtk::RevealerTransitionType::SlideDown);
@@ -243,12 +369,20 @@ fn slider(row: &gtk::ListBoxRow, under: Vec<String>, folded: &std::collections::
     revealer.set_reveal_child(!hidden);
     row.set_child(Some(&revealer));
     row.set_visible(!hidden);
-    TreeRow { row: row.clone(), revealer, under }
+    TreeRow {
+        row: row.clone(),
+        revealer,
+        under,
+    }
 }
 
 /// The caret that folds node `key`, as a folder's that has sub-folders:
 /// pointing on when folded, turned down when open.
-fn expander(key: &str, folded: &std::collections::HashSet<String>, input: &relm4::Sender<SidebarInput>) -> (gtk::Button, gtk::Image) {
+fn expander(
+    key: &str,
+    folded: &std::collections::HashSet<String>,
+    input: &relm4::Sender<SidebarInput>,
+) -> (gtk::Button, gtk::Image) {
     let img = gtk::Image::from_icon_name("pan-end-symbolic");
     img.add_css_class("tree-expander-icon");
     if !folded.contains(key) {
@@ -298,12 +432,15 @@ fn row(
         lead.append(&slot);
     }
     lead.append(&img);
-    let (row, badge) = crate::ui::sidebar::build_unified_sub_row(&lead, name, tip, 0, collapsed, inset, false);
+    let (row, badge) =
+        crate::ui::sidebar::build_unified_sub_row(&lead, name, tip, 0, collapsed, inset, false);
     badge.set_visible(false);
     if collapsed {
         return row;
     }
-    let Some(hbox) = row.child().and_downcast::<gtk::Box>() else { return row };
+    let Some(hbox) = row.child().and_downcast::<gtk::Box>() else {
+        return row;
+    };
     // The account under the name, small and dim, as a mail row's preview
     // sits under its subject.
     if !place.is_empty() {
@@ -349,12 +486,20 @@ fn menu_on(row: &gtk::ListBoxRow, sections: impl Fn() -> Vec<Vec<MenuEntry>> + '
 /// Contacts dragged from the list land on `row`: copied, or moved while
 /// Ctrl is held. The row is outlined while they are over it.
 fn drop_target(row: &gtk::ListBoxRow, on: DropOn, input: &relm4::Sender<SidebarInput>) {
-    let target = gtk::DropTarget::new(String::static_type(), gtk::gdk::DragAction::COPY | gtk::gdk::DragAction::MOVE);
+    let target = gtk::DropTarget::new(
+        String::static_type(),
+        gtk::gdk::DragAction::COPY | gtk::gdk::DragAction::MOVE,
+    );
     // Ctrl as the keyboard has it: on Wayland a drop's own event carries no
     // keys.
     let held = |t: &gtk::DropTarget| {
-        let keyboard = t.widget().and_then(|w| w.display().default_seat()).and_then(|seat| seat.keyboard());
-        let state = keyboard.map(|k| k.modifier_state()).unwrap_or(t.current_event_state());
+        let keyboard = t
+            .widget()
+            .and_then(|w| w.display().default_seat())
+            .and_then(|seat| seat.keyboard());
+        let state = keyboard
+            .map(|k| k.modifier_state())
+            .unwrap_or(t.current_event_state());
         (state | t.current_event_state()).contains(gtk::gdk::ModifierType::CONTROL_MASK)
     };
     {
@@ -363,10 +508,20 @@ fn drop_target(row: &gtk::ListBoxRow, on: DropOn, input: &relm4::Sender<SidebarI
             if let Some(row) = row.upgrade() {
                 row.add_css_class("drop-into");
             }
-            if held(t) { gtk::gdk::DragAction::MOVE } else { gtk::gdk::DragAction::COPY }
+            if held(t) {
+                gtk::gdk::DragAction::MOVE
+            } else {
+                gtk::gdk::DragAction::COPY
+            }
         });
     }
-    target.connect_motion(move |t, _, _| if held(t) { gtk::gdk::DragAction::MOVE } else { gtk::gdk::DragAction::COPY });
+    target.connect_motion(move |t, _, _| {
+        if held(t) {
+            gtk::gdk::DragAction::MOVE
+        } else {
+            gtk::gdk::DragAction::COPY
+        }
+    });
     {
         let row = row.downgrade();
         target.connect_leave(move |_| {
@@ -381,8 +536,19 @@ fn drop_target(row: &gtk::ListBoxRow, on: DropOn, input: &relm4::Sender<SidebarI
             if let Some(row) = row.upgrade() {
                 row.remove_css_class("drop-into");
             }
-            let Some(keys) = value.get::<String>().ok().as_deref().and_then(dragged_contacts) else { return false };
-            let _ = s.send(SidebarInput::ContactTreeDrop { keys, on: on.clone(), moving: held(t) });
+            let Some(keys) = value
+                .get::<String>()
+                .ok()
+                .as_deref()
+                .and_then(dragged_contacts)
+            else {
+                return false;
+            };
+            let _ = s.send(SidebarInput::ContactTreeDrop {
+                keys,
+                on: on.clone(),
+                moving: held(t),
+            });
             true
         });
     }

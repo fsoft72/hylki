@@ -2,6 +2,91 @@
 
 Hylki (formerly Vireo) is a clean, fast, GNOME-native email client built with Rust and libadwaita for Wayland desktops. Privacy-first: no telemetry, remote content blocked by default, and credentials kept in the system keyring.
 
+## What's new in 1.45.1
+
+### Fixes:
+
+- a folder with a backslash in its name not opening - (#514)
+- typing in the search field holding up the window - (#515)
+- Ctrl+, not opening Settings - (#513)
+- Ctrl+W not closing the Settings, message and composer windows - (#513)
+- a composer in a window of its own having no close button
+
+### Translations:
+
+- German, complete, by @samuel-edlmeier
+- Catalan, complete, by @jolupa
+
+## What's new in 1.45.0
+
+### New features:
+
+- A Debian package and signed apt repository, built on work by @ChrisLauinger77 - (#503)
+- CardDAV accounts in Settings - (#408)
+- One Contacts page in Settings for every address book
+- Contact groups, in CardDAV and iCloud books too
+- Contacts without an email address are listed, saved and edited
+- Several contacts selected at once, to group, move or delete
+- Moving contacts to another address book
+- Search and filters in Contacts
+- Contacts in the sidebar's footer, or as a row with its address books and groups
+- Favorites, Filters, Tags and Contacts placed above or below the accounts, or off
+- Favorites shows the mail of every favorite folder
+- Undo Send - (#434)
+- Recipient pills move between To, Cc and Bcc by drag, menu or keyboard - (#492)
+- Thunderbird's composer keys for attaching and the To, Cc and Bcc fields - (#490, #491)
+- Encrypted mail hides its subject - (#493)
+- Replied and forwarded arrows in the message list - (#454)
+- Replies filed beside the message they answer - (#468)
+- Hylki waits for the network and saves data on a metered connection - (#442)
+- Shift+Delete deletes permanently - (#471)
+- A search outside the Inbox starts in that folder - (#472)
+- The search field and the selection bar can open at the bottom of the list - (#496)
+- Zoom in the Markdown, HTML and plain text composer
+- Ctrl and the scroll wheel zoom messages and the composer
+- A dragged message shows as a card
+- Ctrl+C shows beside Copy in the message menu - (#497)
+- A double click opens or closes a unified row
+- Accounts open and close with their chevron or a double click
+- Shorter text in Settings
+
+### Fixes:
+
+- a message sent while the server was out of reach being lost - (#442)
+- the Outbox of a JMAP, Microsoft 365 or POP3 account waiting for Retry - (#442)
+- sent mail not showing its Bcc recipients - (#476)
+- Bcc recipients of a Microsoft 365 account not being sent the message - (#476)
+- mail zoomed out below 100% drifting right - (#473)
+- a search of all folders missing mail in folders not yet opened - (#472)
+- a conversation opening at its top instead of its new mail, by @Dandiccf - (#463)
+- a verified sender marked suspicious over its reply address, by @Dandiccf - (#464)
+- a message from another folder staying on "Loading…", by @Dandiccf - (#461)
+- a keyring that asks first taken for no keyring, by @llComodino - (#466)
+- Reply and New Message freezing when the contact service hangs, by @aheinze - (#484)
+- closing a message window just after it opened crashing Hylki - (#488)
+- a no-break space crashing the Markdown composer - (#479)
+- a message body staying blank until the window was resized, by @XRayAdams - (#487)
+- the unified Starred view being empty - (#482)
+- a star or tag key missing selected messages in Filters - (#481)
+- single-key shortcuts doing nothing in a message window or with Caps Lock on - (#392)
+- Delete doing nothing in the reader - (#486)
+- the unified views being slow to open
+- the first-run wizard saying Microsoft accounts need Online Accounts - (#506)
+- the filter editor's Save refusing an incomplete rule without a word
+- deleting one message of the open conversation closing it
+- a deleted reply filed in another folder staying counted
+- an Evolution contact list offered as a broken recipient
+- a photo in a message running off the side of its card
+- a zoomed attachment staying inside the lightbox's frame
+
+### Translations:
+
+- Greek, complete, by @yioannides
+- Spanish, complete, by @danielmigueltejedor
+- French by @frenchy82
+- German by @samuel-edlmeier
+- Catalan by @jolupa
+
 ## What's new in 1.44.0
 
 ### New features:

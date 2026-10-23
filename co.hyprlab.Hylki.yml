@@ -55,7 +55,7 @@ finish-args:
   - --filesystem=xdg-config/evolution:ro
   # Read the earlier names' sandbox data so accounts, settings and cached
   # mail carry over on first start (Veem through 1.5.1, Vireo through
-  # 1.34.0); nothing there is written to. See src/legacy.rs.
+  # 1.34.0); nothing there is written to. See src/desktop/legacy.rs.
   - --filesystem=~/.var/app/co.hyprlab.Vireo:ro
   - --filesystem=~/.var/app/com.getveem.Veem:ro
   # The chosen app icon (Settings → App icon) is written over the app's icon
@@ -176,8 +176,8 @@ modules:
     sources:
       - type: git
         url: https://github.com/hyprlab/hylki.git
-        tag: v1.44.0
-        commit: b4ec8bb53682c03dac972c9d5afe65d15e2cd372
+        tag: v1.45.1
+        commit: ad5cf733b92bef8e108917e32e6cb79b9ed2569a
       # Vendored crate sources for the offline Flatpak build. Generate with:
       #   flatpak-cargo-generator.py Cargo.lock -o cargo-sources.json
       - cargo-sources.json

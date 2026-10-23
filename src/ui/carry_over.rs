@@ -4,10 +4,11 @@
 
 use adw::prelude::*;
 
+use crate::desktop::legacy::Predecessor;
 use crate::i18n::{i18n, i18n_f};
-use crate::legacy::Predecessor;
 
-pub fn show(parent: &impl IsA<gtk::Window>, from: &'static Predecessor) {
+#[allow(deprecated)] // adw::MessageDialog: AlertDialog would change how it looks
+pub(crate) fn show(parent: &impl IsA<gtk::Window>, from: &'static Predecessor) {
     let heading = i18n_f("Welcome to Hylki, formerly {old}", &[("old", from.name)]);
     let mut body = i18n_f(
         "Your accounts, settings and cached mail were carried over from {old}. \
@@ -15,7 +16,7 @@ pub fn show(parent: &impl IsA<gtk::Window>, from: &'static Predecessor) {
          removed. Once everything is here, you can remove {old}.",
         &[("old", from.name)],
     );
-    if crate::legacy::default_mailer().is_some_and(|p| std::ptr::eq(p, from)) {
+    if crate::desktop::legacy::default_mailer().is_some_and(|p| std::ptr::eq(p, from)) {
         body.push_str("\n\n");
         body.push_str(&i18n_f(
             "{old} is still the app your desktop opens email links with. To hand \
@@ -52,8 +53,10 @@ pub fn show(parent: &impl IsA<gtk::Window>, from: &'static Predecessor) {
     text.set_justify(gtk::Justification::Center);
     content.append(&text);
 
-    if crate::platform::is_flatpak() {
-        let caption = gtk::Label::new(Some(i18n_f("To remove {old}, run:", &[("old", from.name)]).as_str()));
+    if crate::desktop::platform::is_flatpak() {
+        let caption = gtk::Label::new(Some(
+            i18n_f("To remove {old}, run:", &[("old", from.name)]).as_str(),
+        ));
         caption.set_xalign(0.0);
         caption.set_margin_top(6);
         caption.add_css_class("dim-label");

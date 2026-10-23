@@ -7,7 +7,7 @@
 //! worse than no token at all.
 
 /// Fill `buf` with random bytes from the OS entropy source.
-pub fn fill(buf: &mut [u8]) -> Result<(), getrandom::Error> {
+pub(crate) fn fill(buf: &mut [u8]) -> Result<(), getrandom::Error> {
     getrandom::getrandom(buf)
 }
 
@@ -23,12 +23,12 @@ const BASE64URL: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0
 ///
 /// Used for the OAuth `state` and the PKCE verifier, whose alphabet RFC 7636
 /// defines as exactly this set.
-pub fn token(len: usize) -> Result<String, getrandom::Error> {
+pub(crate) fn token(len: usize) -> Result<String, getrandom::Error> {
     from_alphabet(len, UNRESERVED)
 }
 
 /// A random `len`-character CSP nonce (base64url).
-pub fn nonce(len: usize) -> Result<String, getrandom::Error> {
+pub(crate) fn nonce(len: usize) -> Result<String, getrandom::Error> {
     from_alphabet(len, BASE64URL)
 }
 
@@ -37,7 +37,7 @@ pub fn nonce(len: usize) -> Result<String, getrandom::Error> {
 /// Rejection sampling, not `% alphabet.len()` — the modulo is biased whenever
 /// 256 is not a multiple of the alphabet size. It makes no practical difference
 /// at these lengths; getting it right costs one comparison.
-pub fn from_alphabet(len: usize, alphabet: &[u8]) -> Result<String, getrandom::Error> {
+pub(crate) fn from_alphabet(len: usize, alphabet: &[u8]) -> Result<String, getrandom::Error> {
     let mut out = String::with_capacity(len);
     let mut buf = [0u8; 64];
     // The largest multiple of the alphabet size that fits in a byte; bytes at or
@@ -98,6 +98,9 @@ mod tests {
         let a = token(32).expect("entropy");
         let b = token(32).expect("entropy");
         assert_ne!(a, b);
-        assert!(a.chars().collect::<std::collections::HashSet<_>>().len() > 4, "{a}");
+        assert!(
+            a.chars().collect::<std::collections::HashSet<_>>().len() > 4,
+            "{a}"
+        );
     }
 }

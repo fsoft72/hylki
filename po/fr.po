@@ -3941,6 +3941,9 @@ msgstr ""
 msgid "Use Its Own Name"
 msgstr "Utiliser son propre nom"
 
+msgid "All Address Books"
+msgstr "Tous les carnets d’adresses"
+
 msgid "Move Contact?"
 msgstr "Déplacer le contact ?"
 
@@ -4273,6 +4276,18 @@ msgstr "Enregistrer les nouveaux contacts dans"
 
 msgid "Unless another is picked when the contact is made."
 msgstr ""
+
+msgid "Layout"
+msgstr "Disposition"
+
+msgid "Contacts placement"
+msgstr "Emplacement des contacts"
+
+msgid "'In the footer' disables expand/collapse."
+msgstr ""
+
+msgid "Keep the search field open"
+msgstr "Garder le champ de recherche ouvert"
 
 #, fuzzy
 msgid ""
@@ -5813,9 +5828,6 @@ msgstr "Emplacement des tags"
 msgid "Favorites placement"
 msgstr "Emplacement des favoris"
 
-msgid "Contacts placement"
-msgstr "Emplacement des contacts"
-
 msgid "Icon rail"
 msgstr "Barre d’icônes"
 
@@ -5844,9 +5856,6 @@ msgstr ""
 "Les messages que vous avez envoyés affichent le Gravatar, l’image ou l’emoji "
 "du compte, comme son cercle dans la barre latérale."
 
-msgid "Layout"
-msgstr "Disposition"
-
 msgid "Automatic uses single lines in wide windows."
 msgstr ""
 
@@ -5864,9 +5873,6 @@ msgstr "Tags et étiquettes sous le texte"
 
 msgid "Gives the subject its full width."
 msgstr ""
-
-msgid "Keep the search field open"
-msgstr "Garder le champ de recherche ouvert"
 
 msgid "Search field position"
 msgstr ""
@@ -6598,6 +6604,10 @@ msgstr "Sons"
 
 msgid "Forget this word"
 msgstr "Oublier ce mot"
+
+#, fuzzy
+msgid "In the footer"
+msgstr "Enregistrer le filtre ?"
 
 #. GNOME Settings' own names for its alert sounds.
 msgid "Click"
@@ -8830,9 +8840,6 @@ msgstr "Hyprlab"
 #~ msgstr ""
 #~ "{name} est supprimé de votre carnet d’adresses et, pour un carnet "
 #~ "synchronisé, du serveur également."
-
-#~ msgid "All Address Books"
-#~ msgstr "Tous les carnets d’adresses"
 
 #~ msgid "Switch off an address book to leave it out of Hylki."
 #~ msgstr "Désactivez un carnet d’adresses pour l’exclure de Hylki."

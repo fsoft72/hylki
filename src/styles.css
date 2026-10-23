@@ -594,6 +594,27 @@ flowbox.attach-flow > flowboxchild {
   background-color: @accent_bg_color;
 }
 
+/* A dragged message: its circle, subject and sender on a card. The margin
+   leaves the drag surface room for the shadow. */
+.message-drag-card {
+  margin: 6px 12px 12px 6px;
+  padding: 8px 14px 8px 8px;
+  border-radius: 12px;
+  background-color: @view_bg_color;
+  color: @view_fg_color;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.18), 0 0 0 1px rgba(0, 0, 0, 0.06);
+}
+
+.message-drag-count {
+  min-width: 14px;
+  padding: 1px 6px;
+  border-radius: 9999px;
+  background-color: @accent_bg_color;
+  color: @accent_fg_color;
+  font-weight: bold;
+  font-size: 0.85em;
+}
+
 /* A contact's face in the list: the disc clips a photo round. */
 .contact-face {
   border-radius: 9999px;

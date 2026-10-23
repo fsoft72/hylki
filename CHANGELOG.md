@@ -2,6 +2,95 @@
 
 ## Unreleased
 
+- **Changed: the source is split into smaller files.** The 102 source
+  files, the largest 29,364 lines, are now 608 grouped by area under `src/`,
+  none longer than 1,360 lines. Behaviour is unchanged, and 204 new tests pin
+  it. The unused `relm4-components` dependency is gone.
+
+## 1.45.1 — 2026-10-22
+
+A folder with a backslash in its name opens, typing in the search field no
+longer holds up the window, Ctrl+, opens Settings and Ctrl+W closes every
+Hylki window. German and Catalan are complete.
+
+- **Translations:** German (PR #517 by Samuel Edlmeier) and Catalan (PR
+  #516 by jolupa) are complete.
+
+- **Fixed: a folder with a backslash in its name could not be opened**
+  (#514, reported by 3v1n0). The server's escaping was kept in the name, so
+  a Gmail label called `\All` showed as `\\All` and the server answered that
+  no such folder exists.
+
+- **Fixed: typing in the search field held up the window** (#515, reported
+  by 3v1n0). Each keystroke searched, sorted and regrouped every message of
+  every folder on the main loop, half a second for a large mailbox, and the
+  cross-folder pool was copied there twice as a search began. The pool is
+  now put together on another thread, a large list is searched on another
+  thread against text lowercased once per search, a newer query stops one
+  still running, and a search keeps the list's conversations instead of
+  working them out again from the matches.
+
+- **Fixed: Ctrl+, did not open Settings** (#513, reported by 3v1n0). The
+  command palette listed the keys but nothing was bound to them. They now
+  open Settings, and the main menu shows them beside its Settings item.
+  Closing the Settings window also ends a search left open in it, so the
+  next open shows the categories again. Ctrl+W now closes the Settings
+  window, a message window and a composer window, as it closes the main
+  one; before, it reached only the main window.
+
+- **Fixed: a composer in a window of its own had no close button.** Its
+  header hid the window buttons, as it does inline, where they belong to
+  the main window.
+
+## 1.45.0 — 2026-10-22
+
+Everything from 1.45.0-beta.1 to 1.45.0-beta.4: a Debian package with its
+own apt repository, CardDAV accounts, contact groups, Contacts as a full
+address book in the sidebar, Undo Send, recipient pills that move between
+To, Cc and Bcc, Thunderbird's composer keys, subjects hidden in encrypted
+mail, and replied and forwarded arrows in the message list. Greek and
+Spanish are complete.
+
+- **Translations:** Greek (PR #507 by Yiannis Ioannides) and Spanish (PR
+  #508 by Daniel Miguel) are complete; French (PRs #483, #500 by frenchy82),
+  German (PRs #480, #485, #501 by Samuel Edlmeier) and Catalan (PR #489 by
+  jolupa) are up to date.
+
+- **Added: a Debian package** (#503, requested by valqk; the build is adapted
+  from PR #310 by Christian Lauinger). Debian 13 and Ubuntu 25.10 and later
+  install Hylki from a signed apt repository on hylki.hyprlab.co, or from the
+  `.deb` attached to each release, and it updates with the rest of the
+  system. The package adds the repository itself, and the beta suite
+  switched off, as the RPM does. It is built in a Debian 13 container by
+  `tools/build-packages.sh deb`. See
+  [docs/INSTALLING.md](docs/INSTALLING.md#debian-and-ubuntu).
+
+- **Added: a dragged message shows as a card**, as a dragged contact does:
+  the row's circle, the subject and the sender, in place of the envelope.
+  A selection draws up to five cards stacked behind the grabbed one, with a
+  count of the whole selection.
+
+- **Added: Ctrl+C shows beside Copy in the message menu** (#497, requested
+  by valqk), so the key reads as available.
+
+- **Fixed: the single-key shortcuts did nothing with Caps Lock on** (#392,
+  reported by 3v1n0). A key is now read as Shift alone would make it, so
+  Caps Lock no longer turns j into J.
+
+- **Fixed: the filter editor's Save refused an incomplete rule without a
+  word.** Save is now dimmed until the rule has text to match and a folder
+  or a tag, since a rule left in the Inbox with no tag does nothing.
+
+- **Changed: Contacts is back in the sidebar's footer** by default, above
+  Attachments, for new and existing installs; one placed Off stays off.
+  **Settings → Sidebar → Sections → Contacts placement** has **In the
+  footer** beside Above the accounts, Below the accounts and Off, and
+  Settings → Contacts has the same choice. Without
+  its books in the sidebar, Contacts has its address book dropdown over the
+  list again, and the footer row's right-click menu opens GNOME Contacts.
+  **Settings → Contacts → Keep the search field open** keeps the Contacts
+  search shown; it no longer follows the message list's setting.
+
 - **Added: recipient pills move between To, Cc and Bcc** (#492, requested by
   warpedwood). Pills are selected as files are, with a click, Ctrl+click and
   Shift+click, across To, Cc and Bcc, or by dragging the pointer over them

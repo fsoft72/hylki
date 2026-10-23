@@ -4,7 +4,7 @@
 Reads data/logos/domains.txt, resolves each domain against gilbarbara/logos
 (full-color SVGs) and Simple Icons (monochrome SVGs with a brand color),
 downloads the chosen file into data/logos/<source>/, and writes
-data/logos/logos.toml (what src/logo.rs embeds and consults) plus
+data/logos/logos.toml (what src/services/logo.rs embeds and consults) plus
 resources/logos.gresource.xml (what build.rs compiles in).
 
 A color icon from gilbarbara wins when it is roughly square (an "-icon"

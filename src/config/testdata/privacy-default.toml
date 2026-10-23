@@ -1,0 +1,168 @@
+allowed_senders = []
+auto_remote_content = false
+gravatar = false
+avatars = true
+sender_logos = false
+own_mailbox_face = true
+tag_row_tint = true
+contact_book = ""
+date_style = "system"
+clock_style = "system"
+fetch_interval_secs = 300
+push = true
+metered_save_data = true
+blacklist = []
+palette_collapse_secs = 5
+card_palette_collapse_secs = 5
+threading = true
+threads_expanded = false
+thread_expansion = false
+thread_row_newest = false
+thread_newest_first = false
+fold_messages = "never"
+always_show_recipients = false
+pgp_labels = false
+single_message_card = true
+reader_mode = false
+reader_switch = true
+theme_switch_shown = true
+desktop_icons = false
+reader_default = "remember"
+reader_zoom = 100
+card_attachments = true
+attachment_drawer = true
+confirm_thread_delete = true
+message_theme = "system"
+override_fonts = false
+reader_font = ""
+override_colors = false
+plain_monospace = false
+plain_font = ""
+notifications = true
+notification_content = true
+notification_buttons = [
+    "mark_read",
+    "archive",
+    "delete",
+]
+show_attachments = true
+settings_open_accounts = false
+card_actions_hover = true
+card_actions_auto = false
+list_palette = true
+list_palette_hover = false
+card_palette_menu = true
+swipe_enabled = true
+swipe_reversed = false
+swipe_sensitivity = 3.5
+compose_inline = true
+reply_inline = true
+reply_fields = false
+compose_default_from = ""
+single_card_default_applied = false
+paste_plain = true
+return_paragraph = false
+toolbar_expanded = false
+compose_plain = false
+follow_plain = false
+reply_position = "top"
+signature_position = "above_quote"
+signature_dashes = false
+undo_send_secs = 5
+spellcheck = true
+spellcheck_langs = ""
+sidebar_hover_expand = false
+remember_sidebar = true
+remember_rail = true
+rail_dots = true
+seen_counts = false
+app_theme = "system"
+text_scale = 100
+theme = ""
+preview_lines = 1
+list_layout = "cards"
+list_columns = [
+    "star",
+    "replied",
+    "sender",
+    "subject",
+    "tags",
+    "attachment",
+    "date",
+]
+list_headings = false
+list_column_scroll = false
+list_group_by_date = true
+list_pills_below = false
+date_groups_default_applied = true
+list_search_open = false
+contacts_search_open = false
+list_search_bottom = false
+list_bulk_bar_bottom = false
+single_key_shortcuts = false
+gmail_keys = false
+keep_downloads_days = 0
+run_in_background = false
+autostart = false
+tray = false
+tray_icon = "symbolic"
+tray_mail = true
+launcher_count = true
+show_remote_banner = true
+show_spoof_banner = true
+show_unified = true
+unified_chip = true
+show_accounts = true
+section_style = "unified"
+filtered_placement = "above_accounts"
+tags_placement = "above_accounts"
+favorites_placement = "above_accounts"
+contacts_placement = "footer"
+contacts_footer_default_applied = true
+chevrons_left = false
+account_click_folds = false
+console_mode = false
+status_bar_top = false
+read_mark = "shown"
+files_action = "ask"
+files_large = "ask"
+files_limit_mb = 20
+link_browser = ""
+start_view = "all_inboxes"
+folder_sort = "custom"
+
+[rail_fold]
+enabled = true
+accounts = true
+all_inboxes = true
+starred = true
+sent = true
+drafts = true
+archive = true
+junk = true
+trash = true
+filtered = true
+tags = true
+
+[list_column_widths]
+
+[unified_chips]
+all_inboxes = true
+starred = true
+drafts = true
+archive = true
+junk = true
+trash = true
+
+[unified_kinds]
+starred = true
+sent = true
+drafts = true
+archive = true
+junk = false
+trash = false
+
+[print]
+page_numbers = true
+date = false
+punch_margin = false

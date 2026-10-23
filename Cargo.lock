@@ -1403,7 +1403,7 @@ checksum = "df3b46402a9d5adb4c86a0cf463f42e19994e3ee891101b1841f30a545cb49a9"
 
 [[package]]
 name = "hylki"
-version = "1.44.0"
+version = "1.45.1"
 dependencies = [
  "ammonia",
  "async-imap",
@@ -1430,7 +1430,6 @@ dependencies = [
  "poppler-rs",
  "pulldown-cmark",
  "relm4",
- "relm4-components",
  "rfc2047-decoder",
  "rusqlite",
  "serde",
@@ -2605,17 +2604,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "relm4-components"
-version = "0.9.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "fb3d67f2982131c5e6047af4278d8fe750266767e57b58bc15f2e11e190eef36"
-dependencies = [
- "once_cell",
- "relm4",
- "tracker",
-]
-
-[[package]]
 name = "relm4-css"
 version = "0.9.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3430,26 +3418,6 @@ dependencies = [
  "tracing",
  "tracing-core",
  "tracing-log",
-]
-
-[[package]]
-name = "tracker"
-version = "0.2.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ce5c98457ff700aaeefcd4a4a492096e78a2af1dd8523c66e94a3adb0fdbd415"
-dependencies = [
- "tracker-macros",
-]
-
-[[package]]
-name = "tracker-macros"
-version = "0.2.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "dc19eb2373ccf3d1999967c26c3d44534ff71ae5d8b9dacf78f4b13132229e48"
-dependencies = [
- "proc-macro2",
- "quote",
- "syn 2.0.118",
 ]
 
 [[package]]

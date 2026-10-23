@@ -3974,6 +3974,9 @@ msgstr ""
 msgid "Use Its Own Name"
 msgstr ""
 
+msgid "All Address Books"
+msgstr "Tutte le rubriche"
+
 #, fuzzy
 msgid "Move Contact?"
 msgstr "Apri Contatti"
@@ -4310,6 +4313,19 @@ msgid "Save new contacts in"
 msgstr "Salva i nuovi contatti in"
 
 msgid "Unless another is picked when the contact is made."
+msgstr ""
+
+msgid "Layout"
+msgstr "Layout"
+
+#, fuzzy
+msgid "Contacts placement"
+msgstr "Posizione etichette"
+
+msgid "'In the footer' disables expand/collapse."
+msgstr ""
+
+msgid "Keep the search field open"
 msgstr ""
 
 #, fuzzy
@@ -5850,10 +5866,6 @@ msgstr "Posizione etichette"
 msgid "Favorites placement"
 msgstr "Posizione filtri"
 
-#, fuzzy
-msgid "Contacts placement"
-msgstr "Posizione etichette"
-
 msgid "Icon rail"
 msgstr "Barra icone"
 
@@ -5882,9 +5894,6 @@ msgstr ""
 "I messaggi che hai inviato mostrano il Gravatar, la foto o l'emoji "
 "dell'account, come fa il suo cerchio nella barra laterale."
 
-msgid "Layout"
-msgstr "Layout"
-
 msgid "Automatic uses single lines in wide windows."
 msgstr ""
 
@@ -5901,9 +5910,6 @@ msgid "Tags and labels under the text"
 msgstr ""
 
 msgid "Gives the subject its full width."
-msgstr ""
-
-msgid "Keep the search field open"
 msgstr ""
 
 #, fuzzy
@@ -6639,6 +6645,10 @@ msgstr "Suoni"
 
 msgid "Forget this word"
 msgstr "Dimentica questa parola"
+
+#, fuzzy
+msgid "In the footer"
+msgstr "Salvare il filtro?"
 
 #. GNOME Settings' own names for its alert sounds.
 msgid "Click"
@@ -8822,9 +8832,6 @@ msgstr "Hyprlab"
 #, fuzzy
 #~ msgid "Choose which address book to search"
 #~ msgstr "Scegli le cartelle in cui cercare"
-
-#~ msgid "All Address Books"
-#~ msgstr "Tutte le rubriche"
 
 #~ msgid ""
 #~ "{name} is removed from your address book, and for a synced book, from the "

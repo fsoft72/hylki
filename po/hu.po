@@ -4012,6 +4012,10 @@ msgid "Use Its Own Name"
 msgstr ""
 
 #, fuzzy
+msgid "All Address Books"
+msgstr "Címjegyzék"
+
+#, fuzzy
 msgid "Move Contact?"
 msgstr "Névjegyek megnyitása"
 
@@ -4339,6 +4343,19 @@ msgid "Save new contacts in"
 msgstr "Új névjegy"
 
 msgid "Unless another is picked when the contact is made."
+msgstr ""
+
+msgid "Layout"
+msgstr ""
+
+#, fuzzy
+msgid "Contacts placement"
+msgstr "Címkék elhelyezése"
+
+msgid "'In the footer' disables expand/collapse."
+msgstr ""
+
+msgid "Keep the search field open"
 msgstr ""
 
 #, fuzzy
@@ -5894,10 +5911,6 @@ msgstr "Címkék elhelyezése"
 msgid "Favorites placement"
 msgstr "A szűrők elhelyezése"
 
-#, fuzzy
-msgid "Contacts placement"
-msgstr "Címkék elhelyezése"
-
 msgid "Icon rail"
 msgstr "Ikonok sora"
 
@@ -5926,9 +5939,6 @@ msgstr ""
 "Az általad elküldött üzenetek a fiók Gravatar-képét, fotóját vagy emojiját "
 "jelenítik meg, ahogyan az oldalsávban található kör is."
 
-msgid "Layout"
-msgstr ""
-
 msgid "Automatic uses single lines in wide windows."
 msgstr ""
 
@@ -5945,9 +5955,6 @@ msgid "Tags and labels under the text"
 msgstr ""
 
 msgid "Gives the subject its full width."
-msgstr ""
-
-msgid "Keep the search field open"
 msgstr ""
 
 #, fuzzy
@@ -6701,6 +6708,10 @@ msgstr "Hangok"
 
 msgid "Forget this word"
 msgstr "Szó elfelejtése"
+
+#, fuzzy
+msgid "In the footer"
+msgstr "Elmented a szűrőt?"
 
 #. GNOME Settings' own names for its alert sounds.
 msgid "Click"
@@ -8810,10 +8821,6 @@ msgstr "Hyprlab"
 #, fuzzy
 #~ msgid "Choose which address book to search"
 #~ msgstr "Válassza ki a keresendő mappákat"
-
-#, fuzzy
-#~ msgid "All Address Books"
-#~ msgstr "Címjegyzék"
 
 #~ msgid "Sort contacts"
 #~ msgstr "Névjegyek rendezése"

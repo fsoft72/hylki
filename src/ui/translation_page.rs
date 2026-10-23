@@ -10,9 +10,9 @@ use adw::prelude::*;
 use gtk::glib;
 
 use crate::i18n::{i18n, i18n_f};
-use crate::translate::{self, Service, Settings, LANGUAGES};
+use crate::services::translate::{self, Service, Settings, LANGUAGES};
 
-pub fn build() -> adw::PreferencesPage {
+pub(super) fn build() -> adw::PreferencesPage {
     let settings = Rc::new(RefCell::new(translate::load()));
     let page = adw::PreferencesPage::new();
 
@@ -25,7 +25,9 @@ pub fn build() -> adw::PreferencesPage {
     let names: Vec<String> = Service::ALL.iter().map(|s| s.name()).collect();
     let service_row = adw::ComboRow::new();
     service_row.set_title(&i18n("Service"));
-    service_row.set_model(Some(&gtk::StringList::new(&names.iter().map(String::as_str).collect::<Vec<_>>())));
+    service_row.set_model(Some(&gtk::StringList::new(
+        &names.iter().map(String::as_str).collect::<Vec<_>>(),
+    )));
     service_group.add(&service_row);
 
     let key_row = adw::PasswordEntryRow::new();
@@ -57,14 +59,22 @@ pub fn build() -> adw::PreferencesPage {
     reading_group.set_title(&i18n("Messages"));
     let mut targets = vec![i18n_f(
         "Hylki's language ({language})",
-        &[("language", &translate::language_name(&translate::ui_language()))],
+        &[(
+            "language",
+            &translate::language_name(&translate::ui_language()),
+        )],
     )];
     targets.extend(LANGUAGES.iter().map(|c| translate::language_name(c)));
     let target_row = adw::ComboRow::new();
     target_row.set_title(&i18n("Translate into"));
-    target_row.set_model(Some(&gtk::StringList::new(&targets.iter().map(String::as_str).collect::<Vec<_>>())));
+    target_row.set_model(Some(&gtk::StringList::new(
+        &targets.iter().map(String::as_str).collect::<Vec<_>>(),
+    )));
     target_row.set_selected(
-        LANGUAGES.iter().position(|c| *c == settings.borrow().target).map_or(0, |i| i as u32 + 1),
+        LANGUAGES
+            .iter()
+            .position(|c| *c == settings.borrow().target)
+            .map_or(0, |i| i as u32 + 1),
     );
     reading_group.add(&target_row);
 
@@ -99,7 +109,12 @@ pub fn build() -> adw::PreferencesPage {
         }
     };
     let service_now = settings.borrow().service;
-    service_row.set_selected(Service::ALL.iter().position(|s| *s == service_now).unwrap_or(0) as u32);
+    service_row.set_selected(
+        Service::ALL
+            .iter()
+            .position(|s| *s == service_now)
+            .unwrap_or(0) as u32,
+    );
     shape(service_now);
 
     // The key is read from the keyring when the page is first shown, not
@@ -152,7 +167,10 @@ pub fn build() -> adw::PreferencesPage {
         let load_key = load_key.clone();
         let check_row = check_row.clone();
         service_row.connect_selected_notify(move |row| {
-            let service = Service::ALL.get(row.selected() as usize).copied().unwrap_or_default();
+            let service = Service::ALL
+                .get(row.selected() as usize)
+                .copied()
+                .unwrap_or_default();
             save(&|s| s.service = service);
             shape(service);
             load_key(service);
@@ -185,7 +203,10 @@ pub fn build() -> adw::PreferencesPage {
         target_row.connect_selected_notify(move |row| {
             let target = match row.selected() {
                 0 => String::new(),
-                n => LANGUAGES.get(n as usize - 1).map(|c| c.to_string()).unwrap_or_default(),
+                n => LANGUAGES
+                    .get(n as usize - 1)
+                    .map(|c| c.to_string())
+                    .unwrap_or_default(),
             };
             save(&|s| s.target = target.clone());
         });
@@ -215,21 +236,24 @@ pub fn build() -> adw::PreferencesPage {
             });
             let b = b.clone();
             let check_row = check_row.clone();
-            glib::timeout_add_local(std::time::Duration::from_millis(200), move || match rx.try_recv() {
-                Ok(result) => {
-                    check_row.set_subtitle(&match result {
-                        Ok((sent, back)) => {
-                            i18n_f("It works: “{sent}” came back as “{back}”.", &[("sent", &sent), ("back", &back)])
-                        }
-                        Err(why) => why,
-                    });
-                    b.set_sensitive(true);
-                    glib::ControlFlow::Break
-                }
-                Err(std::sync::mpsc::TryRecvError::Empty) => glib::ControlFlow::Continue,
-                Err(_) => {
-                    b.set_sensitive(true);
-                    glib::ControlFlow::Break
+            glib::timeout_add_local(std::time::Duration::from_millis(200), move || {
+                match rx.try_recv() {
+                    Ok(result) => {
+                        check_row.set_subtitle(&match result {
+                            Ok((sent, back)) => i18n_f(
+                                "It works: “{sent}” came back as “{back}”.",
+                                &[("sent", &sent), ("back", &back)],
+                            ),
+                            Err(why) => why,
+                        });
+                        b.set_sensitive(true);
+                        glib::ControlFlow::Break
+                    }
+                    Err(std::sync::mpsc::TryRecvError::Empty) => glib::ControlFlow::Continue,
+                    Err(_) => {
+                        b.set_sensitive(true);
+                        glib::ControlFlow::Break
+                    }
                 }
             });
         });

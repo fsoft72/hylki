@@ -3558,6 +3558,9 @@ msgstr ""
 msgid "Use Its Own Name"
 msgstr ""
 
+msgid "All Address Books"
+msgstr ""
+
 msgid "Move Contact?"
 msgstr ""
 
@@ -3855,6 +3858,18 @@ msgid "Save new contacts in"
 msgstr ""
 
 msgid "Unless another is picked when the contact is made."
+msgstr ""
+
+msgid "Layout"
+msgstr ""
+
+msgid "Contacts placement"
+msgstr ""
+
+msgid "'In the footer' disables expand/collapse."
+msgstr ""
+
+msgid "Keep the search field open"
 msgstr ""
 
 msgid ""
@@ -5260,9 +5275,6 @@ msgstr ""
 msgid "Favorites placement"
 msgstr ""
 
-msgid "Contacts placement"
-msgstr ""
-
 msgid "Icon rail"
 msgstr ""
 
@@ -5287,9 +5299,6 @@ msgstr ""
 msgid "The account's picture or emoji, as in the sidebar."
 msgstr ""
 
-msgid "Layout"
-msgstr ""
-
 msgid "Automatic uses single lines in wide windows."
 msgstr ""
 
@@ -5306,9 +5315,6 @@ msgid "Tags and labels under the text"
 msgstr ""
 
 msgid "Gives the subject its full width."
-msgstr ""
-
-msgid "Keep the search field open"
 msgstr ""
 
 msgid "Search field position"
@@ -5987,6 +5993,9 @@ msgid "Sounds"
 msgstr ""
 
 msgid "Forget this word"
+msgstr ""
+
+msgid "In the footer"
 msgstr ""
 
 #. GNOME Settings' own names for its alert sounds.

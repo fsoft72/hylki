@@ -1,0 +1,16 @@
+left = [
+    "reply",
+    "reply_all",
+    "forward",
+    "star",
+    "archive",
+    "delete",
+]
+right = [
+    "tags",
+    "read_unread",
+    "spam",
+    "move_to",
+    "find",
+    "print",
+]

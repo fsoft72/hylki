@@ -1,6 +1,6 @@
 [package]
 name = "hylki"
-version = "1.44.0"
+version = "1.45.1"
 edition = "2021"
 description = "A clean, fast GNOME-native email client"
 license = "AGPL-3.0-or-later"
@@ -25,7 +25,6 @@ gtk = { package = "gtk4", version = "0.9", features = ["v4_14"] }
 # libadwaita 1.7 is a 2025 release; the GNOME 50 runtime has 1.9.
 adw = { package = "libadwaita", version = "0.7", features = ["v1_7"] }
 relm4 = { version = "0.9", features = ["macros", "libadwaita"] }
-relm4-components = "0.9"
 # v2_44 for WebKitEditorState::changed: the composer's undo (#200) has to know
 # when the body's own text history gains or loses a step, and that signal is
 # the only thing that says so. WebKitGTK 6.0 starts at 2.40, so the floor this
@@ -93,9 +92,10 @@ markup5ever_rcdom = "0.39.0"
 html5ever = "0.39"
 css-inline = { version = "0.21.2", default-features = false }
 # A notification button that shows no window has to tell GNOME Shell its
-# launch is over (see src/startup.rs). On Wayland that takes gtk_shell1, which
-# GTK binds but keeps private, so a second binding is made on GTK's own
-# connection. client_system: share libwayland's display rather than open one.
+# launch is over (see src/desktop/startup.rs). On Wayland that takes
+# gtk_shell1, which GTK binds but keeps private, so a second binding is made on
+# GTK's own connection. client_system: share libwayland's display rather than
+# open one.
 wayland-client = "0.31"
 wayland-backend = { version = "0.3", features = ["client_system"] }
 wayland-scanner = "0.31"
