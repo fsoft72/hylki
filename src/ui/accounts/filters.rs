@@ -464,6 +464,10 @@ impl AccountsWindow {
                 dest_path: dest.clone(),
                 tag,
                 count_unread: count_row.is_active(),
+                forward_to: Vec::new(),
+                forward_since: 0,
+                mark_read: false,
+                delete: false,
             };
             rule.set_conditions(conditions);
             Some(rule)
