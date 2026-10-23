@@ -2,6 +2,17 @@
 
 ## Unreleased
 
+- **New: filters can forward, mark as read and delete.** The "Then" part of a
+  filter is now a list of actions you build row by row: Forward to one or more
+  addresses, Mark as Read, Move to a folder and Delete. Forward sends the mail
+  in the same format as the Forward button, only for mail that arrived after
+  the action was added, and never twice for the same message. Nothing else a
+  rule does to a message happens until its forward is on its way, so a failed
+  forward never loses mail. Delete erases the message from the server for
+  good, without going through Trash, and cannot be combined with Move. Filters
+  still run only while Hylki is open and syncing. Existing filters are
+  unchanged and `filters.toml` stays readable by older versions.
+
 - **Changed: the source is split into smaller files.** The 102 source
   files, the largest 29,364 lines, are now 608 grouped by area under `src/`,
   none longer than 1,360 lines. Behaviour is unchanged, and 204 new tests pin
