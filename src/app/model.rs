@@ -632,6 +632,14 @@ pub(crate) struct AppModel {
     /// (the message still showed up in the last sync). A sync racing the
     /// server-side move must neither re-request the move nor re-notify.
     pub(super) filter_moved: std::collections::HashMap<(u32, u32), std::collections::HashSet<u32>>,
+    /// The messages filters have forwarded, so none goes out twice.
+    pub(super) forwarded_log: config::ForwardedLog,
+    /// Forwards waiting for the body or the files of their message.
+    pub(super) auto_forwards: Vec<super::filter_forward::AutoForward>,
+    /// Keys of the forwards under way (waiting or sent, not yet answered).
+    pub(super) auto_forward_inflight: std::collections::HashSet<String>,
+    /// Send ticket to the (key, rule label) of a forward sent by a filter.
+    pub(super) auto_forward_tickets: std::collections::HashMap<u64, (String, String)>,
     /// Per (account, folder): the body-search hits of the last sync (#191),
     /// uid → lowercased alternatives the server found in the message. What
     /// [`apply_filters`] consults for "Message body" conditions.

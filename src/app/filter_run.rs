@@ -37,6 +37,11 @@ pub(super) struct FolderTally {
     /// add up across passes.
     pub(super) tagged: usize,
     pub(super) filed: usize,
+    /// Forwards started (they finish on their own), messages marked read,
+    /// and messages deleted for good. Like `filed`, once per message.
+    pub(super) forwarded: usize,
+    pub(super) read: usize,
+    pub(super) deleted: usize,
 }
 
 /// A manual "Apply Filters" run (#198): the folders it covers, what the rules
@@ -66,6 +71,9 @@ impl FilterRun {
                 t.matched += f.matched;
                 t.tagged += f.tagged;
                 t.filed += f.filed;
+                t.forwarded += f.forwarded;
+                t.read += f.read;
+                t.deleted += f.deleted;
                 t
             })
     }
@@ -254,6 +262,9 @@ impl AppModel {
                 &[("n", &t.filed.to_string())],
             ));
         }
+        if let Some(line) = Self::filter_extras_line(&t) {
+            lines.push(line);
+        }
         // Only worth saying which folder the run is on when there is more
         // than one of them.
         if run.folders.len() > 1 {
@@ -266,6 +277,44 @@ impl AppModel {
             ));
         }
         d.body.set_label(&lines.join("\n"));
+    }
+
+    /// "Started 2 forwards, marked 3 as read, deleted 1": what a run did
+    /// beyond tagging and filing, or `None` when it did none of it.
+    fn filter_extras_line(t: &FolderTally) -> Option<String> {
+        let mut parts = Vec::new();
+        if t.forwarded > 0 {
+            parts.push(ni18n_f(
+                "started {n} forward",
+                "started {n} forwards",
+                t.forwarded as u32,
+                &[("n", &t.forwarded.to_string())],
+            ));
+        }
+        if t.read > 0 {
+            parts.push(ni18n_f(
+                "marked {n} message as read",
+                "marked {n} messages as read",
+                t.read as u32,
+                &[("n", &t.read.to_string())],
+            ));
+        }
+        if t.deleted > 0 {
+            parts.push(ni18n_f(
+                "deleted {n} message",
+                "deleted {n} messages",
+                t.deleted as u32,
+                &[("n", &t.deleted.to_string())],
+            ));
+        }
+        if parts.is_empty() {
+            return None;
+        }
+        let line = parts.join(", ");
+        let mut chars = line.chars();
+        chars
+            .next()
+            .map(|c| c.to_uppercase().collect::<String>() + chars.as_str())
     }
 
     /// Fold one pass's work into the run's tally for that folder.
@@ -281,6 +330,9 @@ impl AppModel {
             tally.matched = tally.matched.max(pass.matched);
             tally.tagged += pass.tagged;
             tally.filed += pass.filed;
+            tally.forwarded += pass.forwarded;
+            tally.read += pass.read;
+            tally.deleted += pass.deleted;
         }
         self.update_filter_run_dialog();
     }
@@ -351,6 +403,7 @@ impl AppModel {
         let matched_s = t.matched.to_string();
         let tagged_s = t.tagged.to_string();
         let filed_s = t.filed.to_string();
+        let extras = t.forwarded + t.read + t.deleted;
         let text = match (t.matched, t.tagged, t.filed) {
             (0, _, _) => ni18n_f(
                 "Filters looked at {n} message, and it matched nothing",
@@ -361,6 +414,12 @@ impl AppModel {
             // Matches that needed nothing: the rules had already done their
             // work on an earlier sync (#201). Saying "none matched" here
             // made working rules look broken.
+            (_, 0, 0) if extras > 0 => ni18n_f(
+                "Filters looked at {n} message",
+                "Filters looked at {n} messages",
+                t.checked as u32,
+                &[("n", &n)],
+            ),
             (_, 0, 0) => ni18n_f(
                 "Filters matched {matched} of {n} message, and it was already tagged or filed",
                 "Filters matched {matched} of {n} messages, and all of them were already tagged or filed",
@@ -385,6 +444,10 @@ impl AppModel {
                 t.checked as u32,
                 &[("tagged", &tagged_s), ("filed", &filed_s), ("n", &n)],
             ),
+        };
+        let text = match Self::filter_extras_line(&t) {
+            Some(line) => format!("{text}\n{line}"),
+            None => text,
         };
         // Waited on the dialog: the report belongs there, and nowhere else.
         // Sent to the background: the status bar is the only place left. A
@@ -473,6 +536,7 @@ mod tests {
                 matched: 2,
                 tagged: 1,
                 filed: 0,
+                ..Default::default()
             },
         );
         run.folders.insert(
@@ -482,6 +546,7 @@ mod tests {
                 matched: 1,
                 tagged: 0,
                 filed: 1,
+                ..Default::default()
             },
         );
         run.pending.insert((1, 2));

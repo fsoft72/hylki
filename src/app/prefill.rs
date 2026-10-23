@@ -149,12 +149,17 @@ fn is_own_address(recipient: &str, own: &[String]) -> bool {
         .any(|o| !o.is_empty() && (o == addr || o == untagged))
 }
 
-pub(super) fn forward_prefill(m: &Message) -> ComposePrefill {
-    let subject = if m.subject.to_lowercase().starts_with("fwd:") {
-        m.subject.clone()
+/// A forward's subject: the original's, with one "Fwd:" in front.
+pub(super) fn forward_subject(subject: &str) -> String {
+    if subject.to_lowercase().starts_with("fwd:") {
+        subject.to_string()
     } else {
-        format!("Fwd: {}", m.subject)
-    };
+        format!("Fwd: {subject}")
+    }
+}
+
+pub(super) fn forward_prefill(m: &Message) -> ComposePrefill {
+    let subject = forward_subject(&m.subject);
     let header = format!(
         "---------- Forwarded message ----------\nFrom: {} <{}>\nDate: {}\nSubject: {}",
         m.from_name, m.from_addr, m.date, m.subject

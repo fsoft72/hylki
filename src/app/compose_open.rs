@@ -244,7 +244,7 @@ impl AppModel {
     /// Asks for what a copy of `m` (a forward, an edit as new) still
     /// lacks: its body first, then its attachments. True when a request
     /// went out; the caller holds `m` until the answer re-enters.
-    fn fetch_for_copy(&self, m: &Message) -> bool {
+    pub(super) fn fetch_for_copy(&self, m: &Message) -> bool {
         if m.body.is_empty() {
             if let Some(path) = self.resolve_folder_path(m) {
                 self.send_to(
