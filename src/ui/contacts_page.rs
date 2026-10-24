@@ -2,161 +2,47 @@
 //! gallery): a searchable, sortable list of every GNOME Contacts entry beside
 //! the selected contact's full card, with editing, creation and deletion done
 //! right here (writes go through EDS, so GNOME Contacts and CardDAV stay in
-//! sync). Anything Hylki doesn't do — linking, photos, address books — is one
-//! click away via "Open GNOME Contacts".
+//! sync). Anything Hylki doesn't do — linking, photos — is one click away via
+//! a contact's "Open in GNOME Contacts".
 
 use std::cell::RefCell;
+use std::collections::HashMap;
 use std::rc::Rc;
 
 use adw::prelude::*;
 use relm4::prelude::*;
 
-use crate::contacts::{ContactDetails, ContactEdit, Labeled};
-use crate::ui::context_menu::{show_context_menu, MenuEntry};
-use crate::i18n::{i18n, i18n_f, i18n_noop};
+use crate::i18n::i18n;
 
-/// Where the people found in the LDAP directories (#307) start in the
-/// index space `selected` and `row_map` share with `contacts`: an index this
-/// high or higher is `directory_hits[index - DIRECTORY]`.
-const DIRECTORY: usize = usize::MAX / 2;
+mod actions;
+mod detail;
+mod forms;
+mod list;
+mod member_editor;
+mod menus;
+mod rows;
+mod types;
 
-/// At most this many directory entries are listed for one search.
-const DIRECTORY_LIMIT: usize = 50;
+use menus::{book_label_factory, new_menu, FilterMenu};
+use rows::{row_factory, DragKeys};
 
-/// How the contact list is ordered.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum ContactSort {
-    FirstName,
-    LastName,
-    Email,
-}
+pub(crate) use menus::choose_vcf_files;
+pub(crate) use rows::dragged_contacts;
+pub(crate) use types::*;
 
-/// Live handles into the open editor form.
-struct Editor {
-    name: adw::EntryRow,
-    nickname: adw::EntryRow,
-    org: adw::EntryRow,
-    title: adw::EntryRow,
-    note: gtk::TextView,
-    emails: Rc<RefCell<Vec<(adw::EntryRow, String)>>>,
-    phones: Rc<RefCell<Vec<(adw::EntryRow, String)>>>,
-    urls: Rc<RefCell<Vec<(adw::EntryRow, String)>>>,
-    /// The book a new contact goes to; `None` when editing one (it stays in
-    /// its book) or before the books are known.
-    book: Option<adw::ComboRow>,
-}
+mod update_edit;
+mod update_groups;
+mod update_list;
 
-pub struct ContactsPage {
-    contacts: Vec<ContactDetails>,
-    query: String,
-    sort: ContactSort,
-    /// Index into `contacts` of the contact shown in the detail pane.
-    selected: Option<usize>,
-    /// Filtered + sorted list-row order → index into `contacts`.
-    row_map: Vec<usize>,
-    /// A load is underway (the page was just opened).
-    loading: bool,
-    /// The editor form, while open. `editing_target` is the contact being
-    /// edited, `None` for a brand-new one.
-    editor: Option<Editor>,
-    editing_target: Option<usize>,
-    /// EDS UIDs deleted here but possibly still in EDS's local cache — a
-    /// re-read races the CardDAV flush, and without these tombstones a
-    /// deleted contact pops right back into the list. A tombstone lives
-    /// until a fresh read no longer contains its contact. Keyed by book and
-    /// UID: an imported card keeps the UID of the book it came from.
-    deleted: std::collections::HashSet<(String, String)>,
-    /// The books new contacts can go to, the chosen default first; the
-    /// Hylki book is always among them.
-    books: Vec<crate::contacts::Book>,
-    /// The book the list is narrowed to, or `None` for every book.
-    book_filter: Option<String>,
-    /// The filter's entries after "All Address Books": (book UID, name).
-    filter_books: Vec<(String, String)>,
-    /// Set while the filter's model is replaced, which fires its notify.
-    filter_guard: std::cell::Cell<bool>,
-    /// The people the LDAP directories hold for the search (#307), listed
-    /// after the contacts under their own heading. Read-only: they can be
-    /// written to and added to Contacts, not edited.
-    directory_hits: Vec<ContactDetails>,
-    /// Bumped at every change to the search, so an answer to an older one
-    /// is dropped.
-    directory_generation: u64,
-    /// The directories switched on, as (UID, name): the list shows, with
-    /// its search box, even with no contacts of its own, and the book
-    /// filter offers each after the address books.
-    directories: Vec<(String, String)>,
-    /// The directories that did not answer the search, listed under the
-    /// people found, so a search that finds nobody says why (#307).
-    directory_failures: Vec<crate::directory::DirectoryFailure>,
-}
+#[cfg(test)]
+mod tests;
 
-#[derive(Debug)]
-pub enum ContactsPageInput {
-    /// Fresh EDS read: replace everything (keeps the selection when possible).
-    SetContacts(Vec<ContactDetails>),
-    /// The page was just opened; a read is on its way.
-    SetLoading,
-    Query(String),
-    SetSort(ContactSort),
-    RowSelected(i32),
-    Compose(String),
-    OpenUrl(String),
-    /// Edit the selected contact / a specific one (context menu).
-    Edit,
-    EditIndex(usize),
-    /// The header's "+": a blank editor for a new contact.
-    NewContact,
-    /// The header's import button: choose `.vcf` files for the Hylki book.
-    ImportContacts,
-    CancelEdit,
-    SaveEdit,
-    OpenInGnome(usize),
-    DeleteRequest(usize),
-    /// The Delete key on the list: ask to delete the contact shown.
-    DeleteSelected,
-    /// The contact to delete, by book and UID: the list may have been
-    /// re-read and re-sorted while the dialog was open.
-    DeleteConfirmed { book_uid: String, uid: String },
-    /// The card's photo was clicked: expand it in the app lightbox.
-    OpenPhoto { name: String, data: Vec<u8> },
-    /// The books new contacts can go to, freshly read, default first.
-    SetBooks(Vec<crate::contacts::Book>),
-    /// The book filter above the list: 0 is every book.
-    FilterBook(u32),
-    /// The LDAP directories switched on, as (UID, name).
-    DirectoriesKnown(Vec<(String, String)>),
-    /// The search paused: ask the directories, unless it changed since.
-    DirectoryLookup { generation: u64, query: String },
-    DirectoryResults { generation: u64, hits: Vec<ContactDetails>, failed: Vec<crate::directory::DirectoryFailure> },
-    /// Copy a directory entry into the default address book.
-    AddDirectoryHit(usize),
-    /// Put this in the search box, as if typed.
-    SetSearch(String),
-    /// Pick this entry of the book filter, as if chosen.
-    PickBook(u32),
-}
+/// What a message handler leaves to `update_with_view`: `Continue` runs
+/// `update_view` after it, `Break` (a handler that returned early) skips it,
+/// as the early returns of the original single `match` did.
+type Flow = std::ops::ControlFlow<()>;
 
-#[derive(Debug)]
-pub enum ContactsPageOutput {
-    /// Start a message to this address.
-    Compose(String),
-    /// The header's sidebar button (same spot as the message list's).
-    ToggleSidebar,
-    /// Persist an edit: the patched vCard back to its book.
-    SaveContact { book_uid: String, vcard: String },
-    /// Create a brand-new contact in the book picked in the editor
-    /// (`None`: the default book).
-    CreateContact { book_uid: Option<String>, vcard: String },
-    /// Delete, already confirmed by the user.
-    DeleteContact { book_uid: String, uid: String },
-    /// `.vcf` files chosen for import into the local Hylki book.
-    ImportContacts(Vec<std::path::PathBuf>),
-    /// Show the contact's photo in the app lightbox.
-    ShowPhoto { name: String, data: Vec<u8> },
-}
-
-#[relm4::component(pub)]
+#[relm4::component(pub(crate))]
 impl Component for ContactsPage {
     /// The app's compose revealer, mounted over the detail pane.
     type Init = gtk::Revealer;
@@ -187,24 +73,16 @@ impl Component for ContactsPage {
                         },
                     },
                     pack_end = &gtk::Button {
-                        set_icon_name: "x-office-address-book-symbolic",
-                        set_tooltip_text: Some(i18n("Open GNOME Contacts").as_str()),
-                        add_css_class: "flat",
-                        connect_clicked => move |_| {
-                            crate::ui::contacts_browser::launch_gnome_contacts();
-                        },
-                    },
-                    pack_end = &gtk::Button {
-                        set_icon_name: "list-add-symbolic",
-                        set_tooltip_text: Some(i18n("New contact").as_str()),
-                        add_css_class: "flat",
-                        connect_clicked => ContactsPageInput::NewContact,
-                    },
-                    pack_end = &gtk::Button {
                         set_icon_name: "document-open-symbolic",
                         set_tooltip_text: Some(i18n("Import vCard files into the Hylki address book").as_str()),
                         add_css_class: "flat",
                         connect_clicked => ContactsPageInput::ImportContacts,
+                    },
+                    pack_end = &gtk::Button {
+                        set_icon_name: "list-add-symbolic",
+                        set_tooltip_text: Some(i18n("New contact or group").as_str()),
+                        add_css_class: "flat",
+                        connect_clicked[sender] => move |b| new_menu(b, &sender),
                     },
                 },
 
@@ -277,13 +155,20 @@ impl Component for ContactsPage {
                                 let _ = sender.output(ContactsPageOutput::ToggleSidebar);
                             },
                         },
-                        // pack_end packs right-to-left: sort at the far right
-                        // (matching the message list), then the count, then
-                        // the GNOME Contacts launcher, then "+".
-                        #[name = "sort_btn"]
+                        // Beside it, as in the message list's header.
+                        pack_start = &gtk::Button {
+                            set_icon_name: "system-search-symbolic",
+                            set_tooltip_text: Some(i18n("Search contacts (Ctrl+F)").as_str()),
+                            add_css_class: "flat",
+                            connect_clicked => ContactsPageInput::FocusSearch,
+                        },
+                        // pack_end packs right-to-left: sort and filter at the
+                        // far right (matching the message list), then the
+                        // count, then import, then "+", first on the right.
+                        #[name = "filter_btn"]
                         pack_end = &gtk::MenuButton {
-                            set_icon_name: "view-sort-descending-symbolic",
-                            set_tooltip_text: Some(i18n("Sort contacts").as_str()),
+                            set_icon_name: "filter-symbolic",
+                            set_tooltip_text: Some(i18n("Sort and filter contacts").as_str()),
                             set_valign: gtk::Align::Center,
                             add_css_class: "flat",
                         },
@@ -293,24 +178,16 @@ impl Component for ContactsPage {
                             add_css_class: "list-count",
                         },
                         pack_end = &gtk::Button {
-                            set_icon_name: "x-office-address-book-symbolic",
-                            set_tooltip_text: Some(i18n("Open GNOME Contacts").as_str()),
-                            add_css_class: "flat",
-                            connect_clicked => move |_| {
-                                crate::ui::contacts_browser::launch_gnome_contacts();
-                            },
-                        },
-                        pack_end = &gtk::Button {
-                            set_icon_name: "list-add-symbolic",
-                            set_tooltip_text: Some(i18n("New contact").as_str()),
-                            add_css_class: "flat",
-                            connect_clicked => ContactsPageInput::NewContact,
-                        },
-                        pack_end = &gtk::Button {
                             set_icon_name: "document-open-symbolic",
                             set_tooltip_text: Some(i18n("Import vCard files into the Hylki address book").as_str()),
                             add_css_class: "flat",
                             connect_clicked => ContactsPageInput::ImportContacts,
+                        },
+                        pack_end = &gtk::Button {
+                            set_icon_name: "list-add-symbolic",
+                            set_tooltip_text: Some(i18n("New contact or group").as_str()),
+                            add_css_class: "flat",
+                            connect_clicked[sender] => move |b| new_menu(b, &sender),
                         },
                     },
 
@@ -319,31 +196,53 @@ impl Component for ContactsPage {
                         set_orientation: gtk::Orientation::Vertical,
                         set_width_request: 280,
 
-                        #[name = "search"]
-                        gtk::SearchEntry {
-                            set_placeholder_text: Some(i18n("Search contacts").as_str()),
-                            set_margin_top: 8,
-                            set_margin_bottom: 8,
-                            set_margin_start: 10,
-                            set_margin_end: 10,
-                            connect_search_changed[sender] => move |e| {
-                                sender.input(ContactsPageInput::Query(e.text().to_string()));
+                        // The search, shown by the header's search button:
+                        // the message list's search bar.
+                        gtk::Revealer {
+                            set_transition_type: gtk::RevealerTransitionType::SlideDown,
+                            #[watch]
+                            set_reveal_child: model.search_open || model.search_pinned,
+
+                            gtk::Box {
+                                set_spacing: 6,
+                                add_css_class: "list-search-row",
+
+                                #[name = "search"]
+                                gtk::SearchEntry {
+                                    set_hexpand: true,
+                                    set_width_chars: 3,
+                                    set_placeholder_text: Some(i18n("Search contacts").as_str()),
+                                    connect_search_changed[sender] => move |e| {
+                                        sender.input(ContactsPageInput::Query(e.text().to_string()));
+                                    },
+                                    connect_stop_search[sender] => move |_| {
+                                        sender.input(ContactsPageInput::CloseSearch);
+                                    },
+                                    // Leaving it empty closes it too.
+                                    add_controller = gtk::EventControllerFocus {
+                                        connect_leave[sender] => move |ctl| {
+                                            let Some(entry) = ctl.widget().and_downcast::<gtk::SearchEntry>() else { return };
+                                            let sender = sender.clone();
+                                            crate::ui::close_if_focus_left_row(&entry, move || {
+                                                sender.input(ContactsPageInput::CloseSearch);
+                                            });
+                                        },
+                                    },
+                                },
+
                             },
                         },
 
-                        // Which address book the list shows: every one, the
-                        // Hylki book, or one of GNOME Contacts'. Hidden while
-                        // there is only one.
+                        // Which address book the list shows, while the
+                        // sidebar does not list them: every one, or one.
                         #[name = "book_filter"]
                         gtk::DropDown {
-                            set_margin_bottom: 8,
+                            set_margin_top: 6,
+                            set_margin_bottom: 6,
                             set_margin_start: 10,
                             set_margin_end: 10,
                             set_visible: false,
                             set_tooltip_text: Some(i18n("Address book").as_str()),
-                            connect_selected_notify[sender] => move |d| {
-                                sender.input(ContactsPageInput::FilterBook(d.selected()));
-                            },
                         },
 
                         gtk::ScrolledWindow {
@@ -351,15 +250,9 @@ impl Component for ContactsPage {
                             set_hscrollbar_policy: gtk::PolicyType::Never,
 
                             #[name = "list"]
-                            gtk::ListBox {
+                            gtk::ListView {
                                 add_css_class: "navigation-sidebar",
                                 add_css_class: "contacts-listbox",
-                                set_selection_mode: gtk::SelectionMode::Single,
-                                connect_row_selected[sender] => move |_, row| {
-                                    if let Some(row) = row {
-                                        sender.input(ContactsPageInput::RowSelected(row.index()));
-                                    }
-                                },
                             },
                         },
                     },
@@ -378,6 +271,7 @@ impl Component for ContactsPage {
                         add_css_class: "flat",
                         set_show_start_title_buttons: false,
                         // Top-left of the card pane: edit the shown contact.
+                        #[name = "edit_btn"]
                         pack_start = &gtk::Button {
                             set_icon_name: "document-edit-symbolic",
                             set_tooltip_text: Some(i18n("Edit contact").as_str()),
@@ -423,24 +317,41 @@ impl Component for ContactsPage {
         root: Self::Root,
         sender: ComponentSender<Self>,
     ) -> ComponentParts<Self> {
-        let model = ContactsPage {
+        let mut model = ContactsPage {
             contacts: Vec::new(),
             query: String::new(),
             sort: ContactSort::FirstName,
+            scope: ContactScope::All,
+            tree: None,
+            drag: Rc::new(RefCell::new(DragKeys::default())),
+            filters: 0,
+            filter_menu: None,
+            book_picker: false,
+            picker_labels: Vec::new(),
+            picker_guard: Rc::new(std::cell::Cell::new(false)),
+            search_open: false,
+            search_pinned: false,
+            search_closed_at: None,
             selected: None,
+            multi: Vec::new(),
             row_map: Vec::new(),
+            store: gtk::gio::ListStore::new::<gtk::glib::BoxedAnyObject>(),
+            selection: gtk::MultiSelection::new(None::<gtk::gio::ListStore>),
+            rows: Rc::new(RefCell::new(HashMap::new())),
+            items: Vec::new(),
             loading: true,
             editor: None,
             editing_target: None,
             deleted: std::collections::HashSet::new(),
             books: Vec::new(),
-            book_filter: None,
             filter_books: Vec::new(),
-            filter_guard: std::cell::Cell::new(false),
             directory_hits: Vec::new(),
             directory_generation: 0,
             directories: Vec::new(),
             directory_failures: Vec::new(),
+            suggestions: Rc::new(RefCell::new(Vec::new())),
+            pending: None,
+            decoding: std::collections::HashSet::new(),
         };
         let widgets = view_output!();
         widgets.detail_overlay.add_overlay(&compose_slot);
@@ -461,60 +372,39 @@ impl Component for ContactsPage {
             widgets.list.add_controller(keys);
         }
 
-        // The sort menu: a radio per order, mirroring the message list's
-        // sort button.
+        model.filter_menu = Some(FilterMenu::new(&widgets.filter_btn, sender.input_sender()));
+
+        // The dropdown's own label gives way in a narrow pane; its list
+        // shows each name whole.
+        widgets
+            .book_filter
+            .set_factory(Some(&book_label_factory(true)));
+        widgets
+            .book_filter
+            .set_list_factory(Some(&book_label_factory(false)));
         {
-            let pop = gtk::Popover::new();
-            let vbox = gtk::Box::new(gtk::Orientation::Vertical, 2);
-            vbox.set_margin_top(6);
-            vbox.set_margin_bottom(6);
-            vbox.set_margin_start(6);
-            vbox.set_margin_end(6);
-            let mut first: Option<gtk::CheckButton> = None;
-            for (label, sort) in [
-                (i18n_noop("First name"), ContactSort::FirstName),
-                (i18n_noop("Last name"), ContactSort::LastName),
-                (i18n_noop("Email"), ContactSort::Email),
-            ] {
-                let check = gtk::CheckButton::with_label(&i18n(label));
-                if let Some(f) = &first {
-                    check.set_group(Some(f));
-                } else {
-                    check.set_active(true);
-                    first = Some(check.clone());
+            let s = sender.input_sender().clone();
+            let guard = model.picker_guard.clone();
+            widgets.book_filter.connect_selected_notify(move |d| {
+                if !guard.get() {
+                    let _ = s.send(ContactsPageInput::PickBook(d.selected()));
                 }
-                let s = sender.input_sender().clone();
-                let p = pop.clone();
-                check.connect_toggled(move |c| {
-                    if c.is_active() {
-                        let _ = s.send(ContactsPageInput::SetSort(sort));
-                        p.popdown();
-                    }
-                });
-                vbox.append(&check);
-            }
-            pop.set_child(Some(&vbox));
-            widgets.sort_btn.set_popover(Some(&pop));
+            });
         }
 
-        // The directory entries sit under a heading of their own, so nobody
-        // takes them for contacts.
-        widgets.list.set_header_func(|row, before| {
-            let first = row.has_css_class("directory-hit")
-                && !before.is_some_and(|b| b.has_css_class("directory-hit"));
-            if !first {
-                row.set_header(None::<&gtk::Widget>);
-                return;
-            }
-            let heading = gtk::Label::new(Some(&i18n("In Directories")));
-            heading.add_css_class("heading");
-            heading.add_css_class("dim-label");
-            heading.set_xalign(0.0);
-            heading.set_margin_top(12);
-            heading.set_margin_bottom(4);
-            heading.set_margin_start(12);
-            row.set_header(Some(&heading));
-        });
+        model.selection.set_model(Some(&model.store));
+        {
+            let s = sender.input_sender().clone();
+            model.selection.connect_selection_changed(move |_, _, _| {
+                let _ = s.send(ContactsPageInput::SelectionChanged);
+            });
+        }
+        widgets.list.set_model(Some(&model.selection));
+        widgets.list.set_factory(Some(&row_factory(
+            &model.rows,
+            sender.input_sender(),
+            &model.drag,
+        )));
 
         ComponentParts { model, widgets }
     }
@@ -526,1111 +416,113 @@ impl Component for ContactsPage {
         sender: ComponentSender<Self>,
         _root: &Self::Root,
     ) {
-        match message {
-            ContactsPageInput::SetLoading => {
-                self.loading = true;
-                if self.contacts.is_empty() && self.directories.is_empty() {
-                    widgets.page_stack.set_visible_child_name("none");
-                }
-                let s = sender.input_sender().clone();
-                std::thread::spawn(move || {
-                    let _ = s.send(ContactsPageInput::DirectoriesKnown(crate::directory::enabled_names()));
-                });
+        let flow = match message {
+            ContactsPageInput::SetLoading => self.on_set_loading(widgets, sender.clone()),
+            // A read that comes in while a form is open waits in `pending`
+            // until the form closes.
+            ContactsPageInput::SetContacts(contacts) if self.editor.is_some() => {
+                self.pending = Some(contacts);
+                Flow::Continue(())
             }
-
-            ContactsPageInput::SetContacts(mut contacts) => {
-                // Drop tombstoned (locally deleted) entries the read still
-                // carries; a tombstone retires once a read comes back clean.
-                let incoming: std::collections::HashSet<(String, String)> =
-                    contacts.iter().map(|c| (c.book_uid.clone(), c.eds_uid.clone())).collect();
-                self.deleted.retain(|key| incoming.contains(key));
-                contacts.retain(|c| !self.deleted.contains(&(c.book_uid.clone(), c.eds_uid.clone())));
-                // Keep the same person selected across a refresh, by identity.
-                let on_hit = self.selected.filter(|&i| i >= DIRECTORY);
-                let keep = self
-                    .selected
-                    .and_then(|i| self.contacts.get(i))
-                    .map(|c| (c.name.clone(), c.primary_email().map(str::to_string)));
-                self.contacts = contacts;
-                self.loading = false;
-                self.editor = None;
-                self.editing_target = None;
-                self.selected = keep
-                    .and_then(|(name, email)| {
-                        self.contacts.iter().position(|c| {
-                            c.name == name && c.primary_email().map(str::to_string) == email
-                        })
-                    })
-                    .or(on_hit);
-                // One just added from a directory is a contact now.
-                self.drop_known_hits();
-                if self.selected.is_some_and(|i| self.entry(i).is_none()) {
-                    self.selected = None;
-                }
-                self.refresh_book_filter(widgets);
-                self.rebuild(widgets, &sender);
+            ContactsPageInput::SetContacts(contacts) => {
+                self.on_set_contacts(widgets, sender.clone(), contacts)
             }
-
-            ContactsPageInput::Query(q) => {
-                self.query = q.to_lowercase();
-                self.directory_generation = self.directory_generation.wrapping_add(1);
-                let typed = q.trim().to_string();
-                if typed.chars().count() < crate::directory::MIN_QUERY {
-                    self.directory_hits.clear();
-                    self.directory_failures.clear();
-                } else {
-                    // What the directories found before narrows with the
-                    // search until they answer this one.
-                    let query = self.query.clone();
-                    self.directory_hits.retain(|c| matches_query(c, query.trim()));
-                    // Asked once the typing pauses, not per key.
-                    let generation = self.directory_generation;
-                    let s = sender.input_sender().clone();
-                    gtk::glib::timeout_add_local_once(std::time::Duration::from_millis(300), move || {
-                        let _ = s.send(ContactsPageInput::DirectoryLookup { generation, query: typed });
-                    });
-                }
-                if self.selected.is_some_and(|i| self.entry(i).is_none()) {
-                    self.selected = None;
-                }
-                self.rebuild(widgets, &sender);
+            ContactsPageInput::Query(q) if q.to_lowercase() == self.query => Flow::Continue(()),
+            ContactsPageInput::Query(q) => self.on_query(widgets, sender.clone(), q),
+            ContactsPageInput::SetSearch(text) => self.on_set_search(widgets, text),
+            ContactsPageInput::FocusSearch => self.on_focus_search(widgets, sender.clone()),
+            ContactsPageInput::CloseSearch => self.on_close_search(widgets, sender.clone()),
+            ContactsPageInput::SetBookPicker(on) => self.on_set_book_picker(widgets, on),
+            ContactsPageInput::SetSearchPinned(on) => self.on_set_search_pinned(on),
+            ContactsPageInput::SetFilter(filter, on) => {
+                self.on_set_filter(widgets, sender.clone(), filter, on)
             }
-
-            ContactsPageInput::SetSearch(text) => {
-                widgets.search.set_text(&text);
+            ContactsPageInput::ClearFilters => self.on_clear_filters(widgets, sender.clone()),
+            ContactsPageInput::SuggestionsLoaded(suggestions) => {
+                self.on_suggestions_loaded(suggestions)
             }
-
-            ContactsPageInput::PickBook(n) => {
-                widgets.book_filter.set_selected(n);
-            }
-
+            ContactsPageInput::PickBook(n) => self.on_pick_book(sender.clone(), n),
             ContactsPageInput::DirectoriesKnown(directories) => {
-                if directories == self.directories {
-                    return;
-                }
-                self.directories = directories;
-                self.refresh_book_filter(widgets);
-                if !self.directories.is_empty() && self.contacts.is_empty() && !self.loading {
-                    widgets.page_stack.set_visible_child_name("browser");
-                }
+                self.on_directories_known(widgets, sender.clone(), directories)
             }
-
             ContactsPageInput::DirectoryLookup { generation, query } => {
-                if generation != self.directory_generation {
-                    return;
-                }
-                let s = sender.input_sender().clone();
-                std::thread::spawn(move || {
-                    let (hits, failed) = crate::directory::search_contacts(&query, DIRECTORY_LIMIT);
-                    let _ = s.send(ContactsPageInput::DirectoryResults { generation, hits, failed });
-                });
+                self.on_directory_lookup(sender.clone(), generation, query)
             }
-
-            ContactsPageInput::DirectoryResults { generation, hits, failed } => {
-                if generation != self.directory_generation {
-                    return;
-                }
-                self.directory_failures = failed;
-                // The entry shown may be at another place in the new list.
-                let shown = self
-                    .selected
-                    .filter(|&i| i >= DIRECTORY)
-                    .and_then(|i| self.entry(i))
-                    .map(|c| (c.name.clone(), c.primary_email().map(str::to_string)));
-                self.directory_hits = hits;
-                self.drop_known_hits();
-                if let Some((name, email)) = shown {
-                    self.selected = self
-                        .directory_hits
-                        .iter()
-                        .position(|c| c.name == name && c.primary_email().map(str::to_string) == email)
-                        .map(|i| DIRECTORY + i);
-                }
-                // An open editor stays as it is; the list catches up with
-                // the next change.
-                if self.editor.is_none() {
-                    self.rebuild(widgets, &sender);
-                }
-            }
-
+            ContactsPageInput::DirectoryResults {
+                generation,
+                hits,
+                failed,
+            } => self.on_directory_results(widgets, sender.clone(), generation, hits, failed),
             ContactsPageInput::AddDirectoryHit(idx) => {
-                let Some(c) = idx.checked_sub(DIRECTORY).and_then(|i| self.directory_hits.get(i)) else {
-                    return;
-                };
-                // A card of its own, not the directory's, whose UID is the
-                // directory's name for the entry.
-                let edit = ContactEdit {
-                    name: c.name.clone(),
-                    nickname: c.nickname.clone(),
-                    org: c.org.clone(),
-                    title: c.title.clone(),
-                    note: c.note.clone(),
-                    emails: c.emails.clone(),
-                    phones: c.phones.clone(),
-                    urls: c.urls.clone(),
-                };
-                let _ = sender.output(ContactsPageOutput::CreateContact {
-                    book_uid: None,
-                    vcard: crate::contacts::new_vcard(&edit),
-                });
+                self.on_add_directory_hit(sender.clone(), idx)
             }
-
-            ContactsPageInput::SetSort(sort) => {
-                if self.sort != sort {
-                    self.sort = sort;
-                    self.rebuild(widgets, &sender);
-                }
+            ContactsPageInput::SetSort(sort) => self.on_set_sort(widgets, sender.clone(), sort),
+            ContactsPageInput::SetScope(scope) => self.on_set_scope(widgets, sender.clone(), scope),
+            ContactsPageInput::DropContacts { keys, on, moving } => {
+                self.on_drop_contacts(widgets, sender.clone(), keys, on, moving)
             }
-
-            ContactsPageInput::RowSelected(row) => {
-                let Some(&idx) = self.row_map.get(row as usize) else { return };
-                if self.selected == Some(idx) && self.editor.is_none() {
-                    return;
-                }
-                // Moving away abandons an open editor.
-                self.editor = None;
-                self.editing_target = None;
-                self.selected = Some(idx);
-                self.render_detail(widgets, &sender);
+            ContactsPageInput::Tree(action) => self.on_tree(widgets, sender.clone(), action),
+            ContactsPageInput::RemoveFromGroup(people) => {
+                self.on_remove_from_group(sender.clone(), people)
             }
-
-            ContactsPageInput::Compose(email) => {
-                let _ = sender.output(ContactsPageOutput::Compose(email));
+            ContactsPageInput::SelectionChanged => {
+                self.on_selection_changed(widgets, sender.clone())
             }
-
-            ContactsPageInput::OpenUrl(url) => {
-                // Bare "example.org" URLs are common in vCards.
-                let full = if url.contains("://") { url } else { format!("https://{url}") };
-                crate::ui::launch::open_link(&full, None);
+            ContactsPageInput::SelectFirst(n) => self.on_select_first(n),
+            ContactsPageInput::BulkAddToGroup(g) => self.on_bulk_add_to_group(sender.clone(), g),
+            ContactsPageInput::BulkMoveRequest(to) => {
+                self.on_bulk_move_request(widgets, sender.clone(), to)
             }
-
-            ContactsPageInput::Edit => {
-                if self.selected.is_some_and(|i| i < DIRECTORY) {
-                    self.editing_target = self.selected;
-                    self.render_editor(widgets, &sender);
-                }
+            ContactsPageInput::MoveRequest { idx, to } => {
+                self.on_move_request(widgets, sender.clone(), idx, to)
             }
-
-            ContactsPageInput::EditIndex(idx) => {
-                if idx < self.contacts.len() {
-                    self.selected = Some(idx);
-                    self.select_row_for(widgets, idx);
-                    self.editing_target = Some(idx);
-                    self.render_editor(widgets, &sender);
-                }
+            ContactsPageInput::EditMoveConfirmed { to, key, vcard } => {
+                self.on_edit_move_confirmed(widgets, sender.clone(), to, key, vcard)
             }
-
-            ContactsPageInput::NewContact => {
-                self.editing_target = None;
-                widgets.page_stack.set_visible_child_name("browser");
-                self.render_editor(widgets, &sender);
+            ContactsPageInput::BulkMoveConfirmed { to, keys } => {
+                self.on_bulk_move_confirmed(widgets, sender.clone(), to, keys)
             }
-
-            ContactsPageInput::ImportContacts => {
-                let parent = relm4::main_application().active_window();
-                let s = sender.clone();
-                choose_vcf_files(parent.as_ref(), move |paths| {
-                    let _ = s.output(ContactsPageOutput::ImportContacts(paths));
-                });
+            ContactsPageInput::WriteFailed => self.on_write_failed(),
+            ContactsPageInput::BulkDeleteRequest => {
+                self.on_bulk_delete_request(widgets, sender.clone())
             }
-
-            ContactsPageInput::CancelEdit => {
-                self.editor = None;
-                self.editing_target = None;
-                if self.contacts.is_empty() && self.directories.is_empty() {
-                    widgets.page_stack.set_visible_child_name("none");
-                }
-                self.render_detail(widgets, &sender);
+            ContactsPageInput::Compose(email) => self.on_compose(sender.clone(), email),
+            ContactsPageInput::OpenUrl(url) => self.on_open_url(url),
+            ContactsPageInput::Edit => self.on_edit(widgets, sender.clone()),
+            ContactsPageInput::EditIndex(idx) => self.on_edit_index(widgets, sender.clone(), idx),
+            ContactsPageInput::NewContact => self.on_new_contact(widgets, sender.clone()),
+            ContactsPageInput::NewGroup => self.on_new_group(widgets, sender.clone()),
+            ContactsPageInput::ComposeGroup(idx) => self.on_compose_group(sender.clone(), idx),
+            ContactsPageInput::AddToGroup { group, person } => {
+                self.on_add_to_group(sender.clone(), group, person)
             }
-
-            ContactsPageInput::SaveEdit => {
-                let Some(editor) = &self.editor else { return };
-                let edit = collect_edit(editor);
-                if edit.name.is_empty() && edit.emails.is_empty() {
-                    return; // nothing worth saving
-                }
-                match self.editing_target.and_then(|i| self.contacts.get(i)) {
-                    Some(c) => {
-                        let vcard = crate::contacts::patched_vcard(&c.raw_vcard, &edit);
-                        let _ = sender.output(ContactsPageOutput::SaveContact {
-                            book_uid: c.book_uid.clone(),
-                            vcard,
-                        });
-                    }
-                    None => {
-                        let vcard = crate::contacts::new_vcard(&edit);
-                        let book_uid = editor
-                            .book
-                            .as_ref()
-                            .and_then(|row| self.books.get(row.selected() as usize))
-                            .map(|b| b.uid.clone());
-                        let _ = sender.output(ContactsPageOutput::CreateContact { book_uid, vcard });
-                    }
-                }
-                // The app re-reads EDS and pushes SetContacts; until then the
-                // card shows the pre-edit state rather than a half-saved one.
-                self.editor = None;
-                self.editing_target = None;
-                self.render_detail(widgets, &sender);
-            }
-
-            ContactsPageInput::OpenInGnome(idx) => {
-                if let Some(c) = self.contacts.get(idx) {
-                    crate::ui::contacts_browser::launch_gnome_contacts_for(&c.eds_uid);
-                }
-            }
-
-            ContactsPageInput::DeleteSelected => {
-                // Not while an editor is open: that contact is being changed.
-                if self.editor.is_some() {
-                    return;
-                }
-                if let Some(idx) = self.selected {
-                    sender.input(ContactsPageInput::DeleteRequest(idx));
-                }
-            }
-
+            ContactsPageInput::ImportContacts => self.on_import_contacts(sender.clone()),
+            ContactsPageInput::CancelEdit => self.on_cancel_edit(widgets, sender.clone()),
+            ContactsPageInput::SaveEdit => self.on_save_edit(widgets, sender.clone()),
+            ContactsPageInput::OpenInGnome(idx) => self.on_open_in_gnome(idx),
+            ContactsPageInput::DeleteSelected => self.on_delete_selected(sender.clone()),
             ContactsPageInput::DeleteRequest(idx) => {
-                let Some(c) = self.contacts.get(idx) else { return };
-                let win = widgets.page_stack.root().and_downcast::<gtk::Window>();
-                let dialog = adw::MessageDialog::new(
-                    win.as_ref(),
-                    Some(i18n("Delete Contact?").as_str()),
-                    Some(&i18n_f(
-                        "{name} is removed from your address book, and for a synced book, from the server too.",
-                        &[("name", &c.name)],
-                    )),
-                );
-                dialog.add_response("cancel", &i18n("Cancel"));
-                dialog.add_response("delete", &i18n("Delete"));
-                dialog.set_response_appearance("delete", adw::ResponseAppearance::Destructive);
-                dialog.set_default_response(Some("cancel"));
-                dialog.set_close_response("cancel");
-                let s = sender.input_sender().clone();
-                let (book_uid, uid) = (c.book_uid.clone(), c.eds_uid.clone());
-                dialog.connect_response(None, move |_, resp| {
-                    if resp == "delete" {
-                        let _ = s.send(ContactsPageInput::DeleteConfirmed {
-                            book_uid: book_uid.clone(),
-                            uid: uid.clone(),
-                        });
-                    }
-                });
-                dialog.present();
+                self.on_delete_request(widgets, sender.clone(), idx)
             }
-
-            ContactsPageInput::SetBooks(books) => {
-                self.books = books;
-                self.refresh_book_filter(widgets);
+            ContactsPageInput::SetBooks(books) => self.on_set_books(sender.clone(), books),
+            ContactsPageInput::PhotosDecoded => self.on_photos_decoded(),
+            ContactsPageInput::RowMenu { idx, x, y } => {
+                self.on_row_menu(widgets, sender.clone(), idx, x, y)
             }
-
-            ContactsPageInput::FilterBook(index) => {
-                if self.filter_guard.get() {
-                    return;
-                }
-                self.book_filter = (index as usize)
-                    .checked_sub(1)
-                    .and_then(|i| self.filter_books.get(i))
-                    .map(|(uid, _)| uid.clone());
-                if self.editor.is_none() {
-                    self.selected = None;
-                }
-                self.rebuild(widgets, &sender);
-            }
-
             ContactsPageInput::OpenPhoto { name, data } => {
-                let _ = sender.output(ContactsPageOutput::ShowPhoto { name, data });
+                self.on_open_photo(sender.clone(), name, data)
             }
-
-            ContactsPageInput::DeleteConfirmed { book_uid, uid } => {
-                let Some(idx) =
-                    self.contacts.iter().position(|c| c.book_uid == book_uid && c.eds_uid == uid)
-                else {
-                    return;
-                };
-                let c = self.contacts.remove(idx);
-                if !c.eds_uid.is_empty() {
-                    self.deleted.insert((c.book_uid.clone(), c.eds_uid.clone()));
-                    let _ = sender.output(ContactsPageOutput::DeleteContact {
-                        book_uid: c.book_uid,
-                        uid: c.eds_uid,
-                    });
-                }
-                // The entry leaves the list right now; the EDS delete and the
-                // reconciling re-read follow behind.
-                self.selected = None;
-                self.editor = None;
-                self.editing_target = None;
-                self.rebuild(widgets, &sender);
+            ContactsPageInput::DeleteConfirmed(keys) => {
+                self.on_delete_confirmed(widgets, sender.clone(), keys)
             }
-        }
-        // Overriding `update_with_view` replaces the generated body that ran
-        // `update_view` after every message; without this the `#[watch]`
-        // bindings above (the "Loading Contacts…" / "No Contacts" face) only
-        // ever hold their `init` values, and an empty address book looked
-        // like a load that never finished.
-        self.update_view(widgets, sender);
-    }
-}
-
-impl ContactsPage {
-    /// Whether a contact matches the active search.
-    fn matches(&self, c: &ContactDetails) -> bool {
-        if self.book_filter.as_ref().is_some_and(|b| *b != c.book_uid) {
-            return false;
-        }
-        matches_query(c, &self.query)
-    }
-
-    /// The entry at `idx`, a directory entry's index included.
-    fn entry(&self, idx: usize) -> Option<&ContactDetails> {
-        match idx.checked_sub(DIRECTORY) {
-            Some(i) => self.directory_hits.get(i),
-            None => self.contacts.get(idx),
-        }
-    }
-
-    /// Someone already in Contacts is not listed again. One found in two
-    /// directories stays in both, for when one of them is picked; the list
-    /// of every book shows the first only.
-    fn drop_known_hits(&mut self) {
-        let known: std::collections::HashSet<String> =
-            self.contacts.iter().flat_map(|c| c.emails.iter().map(|e| e.value.to_lowercase())).collect();
-        self.directory_hits.retain(|c| !c.emails.iter().any(|e| known.contains(&e.value.to_lowercase())));
-    }
-
-    /// Fill the book filter from the books known: the writable ones (the
-    /// Hylki book always among them) and any others the contacts come from.
-    /// The book picked stays picked while it is still there.
-    fn refresh_book_filter(&mut self, widgets: &ContactsPageWidgets) {
-        let mut books: Vec<(String, String)> =
-            self.books.iter().map(|b| (b.uid.clone(), b.name.clone())).collect();
-        for c in &self.contacts {
-            if !c.book_uid.is_empty() && !books.iter().any(|(uid, _)| *uid == c.book_uid) {
-                books.push((c.book_uid.clone(), c.book_name.clone()));
-            }
-        }
-        // A directory lists the people a search finds in it (#307).
-        for (uid, name) in &self.directories {
-            if !books.iter().any(|(u, _)| u == uid) {
-                books.push((uid.clone(), format!("LDAP — {name}")));
-            }
-        }
-        if books == self.filter_books {
-            return;
-        }
-        self.filter_books = books;
-        let all = i18n("All Address Books");
-        let mut labels: Vec<&str> = vec![all.as_str()];
-        labels.extend(self.filter_books.iter().map(|(_, name)| name.as_str()));
-        let at = self
-            .book_filter
-            .as_ref()
-            .and_then(|uid| self.filter_books.iter().position(|(u, _)| u == uid))
-            .map_or(0, |i| i + 1);
-        if at == 0 {
-            self.book_filter = None;
-        }
-        self.filter_guard.set(true);
-        widgets.book_filter.set_model(Some(&gtk::StringList::new(&labels)));
-        widgets.book_filter.set_selected(at as u32);
-        self.filter_guard.set(false);
-        widgets.book_filter.set_visible(self.filter_books.len() > 1);
-    }
-
-    /// Move the list selection to the row showing contact `idx` (if visible).
-    fn select_row_for(&self, widgets: &ContactsPageWidgets, idx: usize) {
-        if let Some(pos) = self.row_map.iter().position(|&i| i == idx) {
-            if let Some(row) = widgets.list.row_at_index(pos as i32) {
-                widgets.list.select_row(Some(&row));
-            }
-        }
-    }
-
-    /// Rebuild the list from `contacts` + `query` + `sort`, keep (or default)
-    /// the selection, and render its detail card.
-    fn rebuild(&mut self, widgets: &ContactsPageWidgets, sender: &ComponentSender<Self>) {
-        let empty = self.contacts.is_empty() && self.directories.is_empty();
-        widgets.page_stack.set_visible_child_name(if empty { "none" } else { "browser" });
-
-        while let Some(child) = widgets.list.first_child() {
-            widgets.list.remove(&child);
-        }
-        self.row_map = (0..self.contacts.len())
-            .filter(|&i| self.matches(&self.contacts[i]))
-            .collect();
-        self.row_map.sort_by_key(|&i| {
-            let c = &self.contacts[i];
-            let name = c.name.to_lowercase();
-            match self.sort {
-                ContactSort::FirstName => name,
-                // Sort by the final word of the name (then the whole name for
-                // ties) — how an address book orders by surname.
-                ContactSort::LastName => {
-                    format!("{} {name}", name.rsplit(' ').next().unwrap_or(&name))
-                }
-                ContactSort::Email => {
-                    c.primary_email().map(str::to_lowercase).unwrap_or(name)
-                }
-            }
-        });
-        widgets.count_label.set_label(&if self.query.is_empty() {
-            self.contacts.len().to_string()
-        } else {
-            i18n_f(
-                "{shown} of {total}",
-                &[
-                    ("shown", &self.row_map.len().to_string()),
-                    ("total", &self.contacts.len().to_string()),
-                ],
-            )
-        });
-        for &idx in &self.row_map {
-            let c = &self.contacts[idx];
-            let row = adw::ActionRow::new();
-            row.set_title(&gtk::glib::markup_escape_text(&c.name));
-            if let Some(email) = c.primary_email() {
-                if email != c.name {
-                    row.set_subtitle(&gtk::glib::markup_escape_text(email));
-                }
-            }
-            row.set_activatable(true);
-            row.add_prefix(&avatar_for(c, 34));
-
-            // Right-click: the quick actions on this entry.
-            let local = crate::contacts::is_local_book(&c.book_uid);
-            let right_click = gtk::GestureClick::new();
-            right_click.set_button(3);
-            let s = sender.input_sender().clone();
-            right_click.connect_pressed(move |gesture, _, x, y| {
-                let Some(widget) = gesture.widget() else { return };
-                let (se, sd, sg) = (s.clone(), s.clone(), s.clone());
-                let mut first = vec![MenuEntry::new(i18n("Edit"), move || {
-                    let _ = se.send(ContactsPageInput::EditIndex(idx));
-                })
-                .icon("document-edit-symbolic")];
-                // GNOME Contacts knows nothing of the Hylki book.
-                if !local {
-                    first.push(
-                        MenuEntry::new(i18n("Open in GNOME Contacts"), move || {
-                            let _ = sg.send(ContactsPageInput::OpenInGnome(idx));
-                        })
-                        .icon("adw-external-link-symbolic"),
-                    );
-                }
-                show_context_menu(
-                    &widget,
-                    x,
-                    y,
-                    vec![
-                        first,
-                        vec![MenuEntry::new(i18n("Delete…"), move || {
-                            let _ = sd.send(ContactsPageInput::DeleteRequest(idx));
-                        })
-                        .icon("user-trash-symbolic")],
-                    ],
-                );
-            });
-            row.add_controller(right_click);
-            widgets.list.append(&row);
-        }
-
-        // The directories' answers, after the contacts and by name whatever
-        // the sort. The book filter keeps those of the directory it names.
-        let in_filter = |uid: &str| self.book_filter.as_deref().is_none_or(|b| b == uid);
-        let mut listed = std::collections::HashSet::new();
-        for (i, c) in self.directory_hits.iter().enumerate() {
-            if !in_filter(&c.book_uid) {
-                continue;
-            }
-            let emails: Vec<String> = c.emails.iter().map(|e| e.value.to_lowercase()).collect();
-            if emails.iter().any(|e| listed.contains(e)) {
-                continue;
-            }
-            listed.extend(emails);
-            let idx = DIRECTORY + i;
-            self.row_map.push(idx);
-            let row = adw::ActionRow::new();
-            row.add_css_class("directory-hit");
-            row.set_title(&gtk::glib::markup_escape_text(&c.name));
-            // Which directory it is in, after the address.
-            let sub = match c.primary_email() {
-                Some(email) => format!("{email} · {}", c.book_name),
-                None => c.book_name.clone(),
-            };
-            row.set_subtitle(&gtk::glib::markup_escape_text(&sub));
-            row.set_activatable(true);
-            row.add_prefix(&avatar_for(c, 34));
-            let right_click = gtk::GestureClick::new();
-            right_click.set_button(3);
-            let s = sender.input_sender().clone();
-            let email = c.primary_email().map(str::to_string);
-            right_click.connect_pressed(move |gesture, _, x, y| {
-                let Some(widget) = gesture.widget() else { return };
-                let mut entries = Vec::new();
-                if let Some(email) = email.clone() {
-                    let sc = s.clone();
-                    entries.push(
-                        MenuEntry::new(i18n("New message"), move || {
-                            let _ = sc.send(ContactsPageInput::Compose(email.clone()));
-                        })
-                        .icon("mail-message-new-symbolic"),
-                    );
-                }
-                let sa = s.clone();
-                entries.push(
-                    MenuEntry::new(i18n("Add to Contacts"), move || {
-                        let _ = sa.send(ContactsPageInput::AddDirectoryHit(idx));
-                    })
-                    .icon("contact-new-symbolic"),
-                );
-                show_context_menu(&widget, x, y, vec![entries]);
-            });
-            row.add_controller(right_click);
-            widgets.list.append(&row);
-        }
-
-        // A directory that did not answer, last and not selectable, so a
-        // search that finds nobody in it says why.
-        for f in self.directory_failures.iter().filter(|f| in_filter(&f.uid)) {
-            let row = adw::ActionRow::new();
-            row.add_css_class("directory-hit");
-            row.set_selectable(false);
-            row.set_activatable(false);
-            row.set_title(&gtk::glib::markup_escape_text(&f.name));
-            row.set_subtitle(&gtk::glib::markup_escape_text(&f.message));
-            row.set_subtitle_lines(3);
-            let icon = gtk::Image::from_icon_name("dialog-warning-symbolic");
-            icon.add_css_class("warning");
-            // As wide as an avatar, so the names line up.
-            icon.set_size_request(34, -1);
-            row.add_prefix(&icon);
-            widgets.list.append(&row);
-        }
-
-        // A directory picked in the book filter is empty until searched.
-        let directory_picked = self
-            .book_filter
-            .as_ref()
-            .is_some_and(|b| self.directories.iter().any(|(uid, _)| uid == b));
-        if directory_picked && widgets.list.first_child().is_none() {
-            let text = if self.query.trim().chars().count() < crate::directory::MIN_QUERY {
-                i18n("Type three letters or more to search the directory.")
-            } else {
-                i18n("Nobody in the directory matches.")
-            };
-            let label = gtk::Label::new(Some(&text));
-            label.add_css_class("dim-label");
-            label.set_wrap(true);
-            label.set_justify(gtk::Justification::Center);
-            label.set_margin_top(24);
-            label.set_margin_start(12);
-            label.set_margin_end(12);
-            let row = gtk::ListBoxRow::new();
-            row.set_selectable(false);
-            row.set_activatable(false);
-            row.set_child(Some(&label));
-            widgets.list.append(&row);
-        }
-
-        // Selection: keep it if it survived the filter, else the first match.
-        let shown_pos = self
-            .selected
-            .and_then(|sel| self.row_map.iter().position(|&i| i == sel))
-            .or((!self.row_map.is_empty()).then_some(0));
-        match shown_pos {
-            Some(pos) => {
-                self.selected = Some(self.row_map[pos]);
-                if let Some(row) = widgets.list.row_at_index(pos as i32) {
-                    widgets.list.select_row(Some(&row));
-                }
-            }
-            None => self.selected = None,
-        }
-        self.render_detail(widgets, sender);
-    }
-
-    /// Fill the right-hand pane with the selected contact's card.
-    fn render_detail(&mut self, widgets: &ContactsPageWidgets, sender: &ComponentSender<Self>) {
-        self.editor = None;
-        let detail = &widgets.detail_box;
-        while let Some(child) = detail.first_child() {
-            detail.remove(&child);
-        }
-        let Some(c) = self.selected.and_then(|i| self.entry(i)) else {
-            return;
         };
-        let hit = self.selected.filter(|&i| i >= DIRECTORY);
-
-        // ---- identity header: photo, name, who they are ----
-        let avatar = avatar_for(c, 96);
-        if let Some(photo) = &c.photo {
-            // A real photo expands to the lightbox on click.
-            let btn = gtk::Button::new();
-            btn.set_child(Some(&avatar));
-            btn.add_css_class("flat");
-            btn.add_css_class("circular");
-            btn.set_halign(gtk::Align::Center);
-            btn.set_tooltip_text(Some(i18n("View photo").as_str()));
-            let s = sender.input_sender().clone();
-            let name = c.name.clone();
-            let data = photo.clone();
-            btn.connect_clicked(move |_| {
-                let _ = s.send(ContactsPageInput::OpenPhoto {
-                    name: name.clone(),
-                    data: data.clone(),
-                });
-            });
-            detail.append(&btn);
-        } else {
-            avatar.set_halign(gtk::Align::Center);
-            detail.append(&avatar);
-        }
-
-        let name = gtk::Label::new(Some(&c.name));
-        name.add_css_class("title-1");
-        name.set_wrap(true);
-        name.set_justify(gtk::Justification::Center);
-        name.set_margin_top(12);
-        detail.append(&name);
-
-        let mut byline = Vec::new();
-        if !c.nickname.is_empty() && c.nickname != c.name {
-            byline.push(format!("“{}”", c.nickname));
-        }
-        match (!c.title.is_empty(), !c.org.is_empty()) {
-            (true, true) => byline.push(format!("{} · {}", c.title, c.org)),
-            (true, false) => byline.push(c.title.clone()),
-            (false, true) => byline.push(c.org.clone()),
-            (false, false) => {}
-        }
-        if !byline.is_empty() {
-            let sub = gtk::Label::new(Some(&byline.join("  —  ")));
-            sub.add_css_class("dim-label");
-            sub.set_wrap(true);
-            sub.set_justify(gtk::Justification::Center);
-            sub.set_margin_top(4);
-            detail.append(&sub);
-        }
-
-        // From a directory: it can be kept as a contact, not edited here.
-        if let Some(idx) = hit {
-            let add = gtk::Button::with_label(&i18n("Add to Contacts"));
-            add.add_css_class("pill");
-            add.set_halign(gtk::Align::Center);
-            add.set_margin_top(12);
-            let s = sender.input_sender().clone();
-            add.connect_clicked(move |b| {
-                b.set_sensitive(false);
-                let _ = s.send(ContactsPageInput::AddDirectoryHit(idx));
-            });
-            detail.append(&add);
-        }
-
-        // ---- field groups ----
-        if !c.emails.is_empty() {
-            let list = group(detail, &i18n("Email"));
-            for e in &c.emails {
-                let row = labeled_row(e);
-                let compose = flat_button(
-                    "mail-message-new-symbolic",
-                    &i18n("New message"),
-                );
-                let s = sender.input_sender().clone();
-                let addr = e.value.clone();
-                compose.connect_clicked(move |_| {
-                    let _ = s.send(ContactsPageInput::Compose(addr.clone()));
-                });
-                row.add_suffix(&copy_button(&e.value));
-                row.add_suffix(&compose);
-                row.set_activatable(true);
-                let s = sender.input_sender().clone();
-                let addr = e.value.clone();
-                row.connect_activated(move |_| {
-                    let _ = s.send(ContactsPageInput::Compose(addr.clone()));
-                });
-                list.append(&row);
-            }
-        }
-
-        if !c.phones.is_empty() {
-            let list = group(detail, &i18n("Phone"));
-            for p in &c.phones {
-                let row = labeled_row(p);
-                row.add_suffix(&copy_button(&p.value));
-                list.append(&row);
-            }
-        }
-
-        if !c.addresses.is_empty() {
-            let list = group(detail, &i18n("Address"));
-            for a in &c.addresses {
-                let row = labeled_row(a);
-                row.add_suffix(&copy_button(&a.value));
-                list.append(&row);
-            }
-        }
-
-        if !c.urls.is_empty() {
-            let list = group(detail, &i18n("Website"));
-            for url in &c.urls {
-                let row = adw::ActionRow::new();
-                row.set_title(&gtk::glib::markup_escape_text(url));
-                row.set_activatable(true);
-                let icon =
-                    gtk::Image::from_icon_name("adw-external-link-symbolic");
-                icon.add_css_class("dim-label");
-                row.add_suffix(&icon);
-                let s = sender.input_sender().clone();
-                let url = url.clone();
-                row.connect_activated(move |_| {
-                    let _ = s.send(ContactsPageInput::OpenUrl(url.clone()));
-                });
-                list.append(&row);
-            }
-        }
-
-        let mut extras: Vec<Labeled> = Vec::new();
-        if !c.birthday.is_empty() {
-            extras.push(Labeled { label: i18n("Birthday"), value: c.birthday.clone() });
-        }
-        if !c.note.is_empty() {
-            extras.push(Labeled { label: i18n("Note"), value: c.note.clone() });
-        }
-        // Where this entry lives: the local book, a synced account, or the
-        // directory it was found in.
-        if hit.is_some() {
-            extras.push(Labeled { label: i18n("Directory"), value: c.book_name.clone() });
-        } else if !c.book_name.is_empty() {
-            extras.push(Labeled { label: i18n("Address Book"), value: c.book_name.clone() });
-        }
-        if !extras.is_empty() {
-            let list = group(detail, &i18n("Details"));
-            for x in &extras {
-                let row = adw::ActionRow::new();
-                row.set_title(&gtk::glib::markup_escape_text(&x.label));
-                row.set_subtitle(&gtk::glib::markup_escape_text(&x.value));
-                row.add_css_class("property");
-                list.append(&row);
-            }
+        if flow.is_continue() {
+            // Overriding `update_with_view` replaces the generated body that ran
+            // `update_view` after every message; without this the `#[watch]`
+            // bindings above (the "Loading Contacts…" / "No Contacts" face) only
+            // ever hold their `init` values, and an empty address book looked
+            // like a load that never finished.
+            self.update_view(widgets, sender);
         }
     }
-
-    /// Replace the detail pane with the editor form for `editing_target`
-    /// (blank for a new contact).
-    fn render_editor(&mut self, widgets: &ContactsPageWidgets, sender: &ComponentSender<Self>) {
-        let detail = &widgets.detail_box;
-        while let Some(child) = detail.first_child() {
-            detail.remove(&child);
-        }
-        let blank = ContactDetails::default();
-        let c = self
-            .editing_target
-            .and_then(|i| self.contacts.get(i))
-            .unwrap_or(&blank);
-
-        // ---- Cancel · title · Save bar (dialog-header layout) ----
-        let bar = gtk::CenterBox::new();
-        let cancel = gtk::Button::with_label(&i18n("Cancel"));
-        let s = sender.input_sender().clone();
-        cancel.connect_clicked(move |_| {
-            let _ = s.send(ContactsPageInput::CancelEdit);
-        });
-        let save = gtk::Button::with_label(&i18n("Save"));
-        save.add_css_class("suggested-action");
-        let s = sender.input_sender().clone();
-        save.connect_clicked(move |_| {
-            let _ = s.send(ContactsPageInput::SaveEdit);
-        });
-        let heading = gtk::Label::new(Some(if self.editing_target.is_some() { i18n("Edit Contact") } else { i18n("New Contact") }.as_str()));
-        heading.add_css_class("title-4");
-        bar.set_start_widget(Some(&cancel));
-        bar.set_center_widget(Some(&heading));
-        bar.set_end_widget(Some(&save));
-        detail.append(&bar);
-
-        // ---- identity fields ----
-        let identity = group(detail, &i18n("Identity"));
-        let name = entry_row(&i18n("Name"), &c.name);
-        let nickname = entry_row(&i18n("Nickname"), &c.nickname);
-        let org = entry_row(&i18n("Organization"), &c.org);
-        let title = entry_row(&i18n("Title"), &c.title);
-        identity.append(&name);
-        identity.append(&nickname);
-        identity.append(&org);
-        identity.append(&title);
-
-        // ---- the address book: chosen for a new contact, named for one
-        // being edited (a contact stays in its book) ----
-        let mut book = None;
-        if self.editing_target.is_none() && !self.books.is_empty() {
-            let row = adw::ComboRow::new();
-            row.set_title(&i18n("Address book"));
-            let labels: Vec<&str> = self.books.iter().map(|b| b.name.as_str()).collect();
-            row.set_model(Some(&gtk::StringList::new(&labels)));
-            // The book the list is narrowed to, else the default (first).
-            let at = self
-                .book_filter
-                .as_ref()
-                .and_then(|uid| self.books.iter().position(|b| b.uid == *uid))
-                .unwrap_or(0);
-            row.set_selected(at as u32);
-            row.set_sensitive(self.books.len() > 1);
-            identity.prepend(&row);
-            book = Some(row);
-        } else if !c.book_name.is_empty() {
-            let row = adw::ActionRow::new();
-            row.set_title(&i18n("Address book"));
-            row.set_subtitle(&gtk::glib::markup_escape_text(&c.book_name));
-            row.add_css_class("property");
-            identity.prepend(&row);
-        }
-
-        // ---- repeating value groups ----
-        let emails = editable_values(
-            detail,
-            &i18n("Email"),
-            &i18n("Add email"),
-            &c.emails.iter().map(|l| (l.value.clone(), l.label.clone())).collect::<Vec<_>>(),
-        );
-        let phones = editable_values(
-            detail,
-            &i18n("Phone"),
-            &i18n("Add phone"),
-            &c.phones.iter().map(|l| (l.value.clone(), l.label.clone())).collect::<Vec<_>>(),
-        );
-        let urls = editable_values(
-            detail,
-            &i18n("Website"),
-            &i18n("Add website"),
-            &c.urls.iter().map(|u| (u.clone(), String::new())).collect::<Vec<_>>(),
-        );
-
-        // ---- note ----
-        let note_list = group(detail, &i18n("Note"));
-        let note = gtk::TextView::new();
-        note.set_wrap_mode(gtk::WrapMode::WordChar);
-        note.buffer().set_text(&c.note);
-        note.set_top_margin(8);
-        note.set_bottom_margin(8);
-        note.set_left_margin(10);
-        note.set_right_margin(10);
-        note.set_height_request(72);
-        let note_row = gtk::ListBoxRow::new();
-        note_row.set_activatable(false);
-        note_row.set_child(Some(&note));
-        note_list.append(&note_row);
-
-        self.editor = Some(Editor { name, nickname, org, title, note, emails, phones, urls, book });
-    }
-}
-
-/// Whether a contact matches a search, already lower case; an empty one
-/// matches everyone.
-fn matches_query(c: &ContactDetails, q: &str) -> bool {
-    if q.is_empty() {
-        return true;
-    }
-    c.name.to_lowercase().contains(q)
-        || c.nickname.to_lowercase().contains(q)
-        || c.org.to_lowercase().contains(q)
-        || c.emails.iter().any(|e| e.value.to_lowercase().contains(q))
-        || c.phones.iter().any(|p| p.value.to_lowercase().contains(q))
-}
-
-/// Ask for `.vcf` files to import into the Hylki book, and hand their paths
-/// to `done` (never called for a cancelled dialog or no files).
-pub fn choose_vcf_files(parent: Option<&gtk::Window>, done: impl Fn(Vec<std::path::PathBuf>) + 'static) {
-    let dialog = gtk::FileDialog::builder().title(&i18n("Import Contacts")).build();
-    let filter = gtk::FileFilter::new();
-    filter.set_name(Some(&i18n("vCard files")));
-    filter.add_pattern("*.vcf");
-    filter.add_pattern("*.vcard");
-    filter.add_mime_type("text/vcard");
-    filter.add_mime_type("text/x-vcard");
-    let filters = gtk::gio::ListStore::new::<gtk::FileFilter>();
-    filters.append(&filter);
-    let any = gtk::FileFilter::new();
-    any.set_name(Some(&i18n("All files")));
-    any.add_pattern("*");
-    filters.append(&any);
-    dialog.set_filters(Some(&filters));
-    dialog.open_multiple(parent, gtk::gio::Cancellable::NONE, move |res| {
-        let Ok(files) = res else { return };
-        let paths: Vec<std::path::PathBuf> =
-            files.iter::<gtk::gio::File>().flatten().filter_map(|f| f.path()).collect();
-        if !paths.is_empty() {
-            done(paths);
-        }
-    });
-}
-
-/// Read the editor form back into a `ContactEdit`.
-fn collect_edit(e: &Editor) -> ContactEdit {
-    let values = |rows: &Rc<RefCell<Vec<(adw::EntryRow, String)>>>| -> Vec<Labeled> {
-        rows.borrow()
-            .iter()
-            .filter_map(|(entry, label)| {
-                let value = entry.text().trim().to_string();
-                (!value.is_empty()).then(|| Labeled { label: label.clone(), value })
-            })
-            .collect()
-    };
-    let buffer = e.note.buffer();
-    ContactEdit {
-        name: e.name.text().trim().to_string(),
-        nickname: e.nickname.text().trim().to_string(),
-        org: e.org.text().trim().to_string(),
-        title: e.title.text().trim().to_string(),
-        note: buffer
-            .text(&buffer.start_iter(), &buffer.end_iter(), false)
-            .trim()
-            .to_string(),
-        emails: values(&e.emails),
-        phones: values(&e.phones),
-        urls: values(&e.urls).into_iter().map(|l| l.value).collect(),
-    }
-}
-
-/// A titled group of editable value rows with a remove button each and an
-/// "add" row at the bottom. Returns the live handle used at save time.
-fn editable_values(
-    detail: &gtk::Box,
-    title: &str,
-    add_label: &str,
-    initial: &[(String, String)],
-) -> Rc<RefCell<Vec<(adw::EntryRow, String)>>> {
-    let list = group(detail, title);
-    let rows: Rc<RefCell<Vec<(adw::EntryRow, String)>>> = Rc::new(RefCell::new(Vec::new()));
-
-    // The "add" row sits last; value rows are inserted above it.
-    let add_row = gtk::ListBoxRow::new();
-    add_row.set_activatable(true);
-    let add_box = gtk::Box::new(gtk::Orientation::Horizontal, 8);
-    add_box.set_margin_top(10);
-    add_box.set_margin_bottom(10);
-    add_box.set_margin_start(12);
-    let plus = gtk::Image::from_icon_name("list-add-symbolic");
-    plus.add_css_class("dim-label");
-    let label = gtk::Label::new(Some(add_label));
-    label.add_css_class("dim-label");
-    add_box.append(&plus);
-    add_box.append(&label);
-    add_row.set_child(Some(&add_box));
-
-    let field = title.to_string();
-    let add_value = {
-        let list = list.clone();
-        let rows = rows.clone();
-        let add_row = add_row.clone();
-        move |value: &str, label: String, grab: bool| {
-            let entry = adw::EntryRow::new();
-            entry.set_title(&if label.is_empty() { field.clone() } else { label.clone() });
-            entry.set_text(value);
-            let remove = gtk::Button::from_icon_name("user-trash-symbolic");
-            remove.set_tooltip_text(Some(i18n("Remove").as_str()));
-            remove.set_valign(gtk::Align::Center);
-            remove.add_css_class("flat");
-            {
-                let list = list.clone();
-                let rows = rows.clone();
-                let entry = entry.clone();
-                remove.connect_clicked(move |_| {
-                    rows.borrow_mut().retain(|(e, _)| e != &entry);
-                    list.remove(&entry);
-                });
-            }
-            entry.add_suffix(&remove);
-            // Insert above the trailing "add" row.
-            list.insert(&entry, add_row.index());
-            rows.borrow_mut().push((entry.clone(), label));
-            if grab {
-                entry.grab_focus();
-            }
-        }
-    };
-
-    for (value, label) in initial {
-        add_value(value, label.clone(), false);
-    }
-    {
-        let add_value = add_value.clone();
-        let add_row = add_row.clone();
-        list.connect_row_activated(move |_, row| {
-            if row == &add_row {
-                add_value("", String::new(), true);
-            }
-        });
-    }
-    list.append(&add_row);
-    rows
-}
-
-fn entry_row(title: &str, value: &str) -> adw::EntryRow {
-    let row = adw::EntryRow::new();
-    row.set_title(title);
-    row.set_text(value);
-    row
-}
-
-/// The contact's avatar: their GNOME Contacts photo when they have one, the
-/// usual initials disc when not.
-fn avatar_for(c: &ContactDetails, size: i32) -> adw::Avatar {
-    let avatar = adw::Avatar::new(size, Some(&c.name), true);
-    if let Some(photo) = &c.photo {
-        let bytes = gtk::glib::Bytes::from(photo.as_slice());
-        if let Ok(texture) = gtk::gdk::Texture::from_bytes(&bytes) {
-            avatar.set_custom_image(Some(&texture));
-        }
-    }
-    avatar
-}
-
-/// A titled boxed list appended to the detail column; returns the list.
-fn group(detail: &gtk::Box, title: &str) -> gtk::ListBox {
-    let heading = gtk::Label::new(Some(title));
-    heading.add_css_class("heading");
-    heading.set_halign(gtk::Align::Start);
-    heading.set_margin_top(20);
-    heading.set_margin_bottom(6);
-    detail.append(&heading);
-    let list = gtk::ListBox::new();
-    list.add_css_class("boxed-list");
-    list.set_selection_mode(gtk::SelectionMode::None);
-    detail.append(&list);
-    list
-}
-
-/// A value row with its (optional) "Home"/"Work" label as the subtitle.
-fn labeled_row(l: &Labeled) -> adw::ActionRow {
-    let row = adw::ActionRow::new();
-    row.set_title(&gtk::glib::markup_escape_text(&l.value));
-    if !l.label.is_empty() {
-        row.set_subtitle(&gtk::glib::markup_escape_text(&l.label));
-    }
-    row
-}
-
-fn flat_button(icon: &str, tooltip: &str) -> gtk::Button {
-    let b = gtk::Button::from_icon_name(icon);
-    b.set_tooltip_text(Some(tooltip));
-    b.set_valign(gtk::Align::Center);
-    b.add_css_class("flat");
-    b
-}
-
-/// A suffix button that puts `text` on the clipboard, confirming by briefly
-/// swapping its icon for a checkmark.
-fn copy_button(text: &str) -> gtk::Button {
-    let b = flat_button("edit-copy-symbolic", "Copy");
-    let text = text.to_string();
-    b.connect_clicked(move |b| {
-        b.clipboard().set_text(&text);
-        b.set_icon_name("verified-checkmark-symbolic");
-        let b = b.clone();
-        gtk::glib::timeout_add_local_once(std::time::Duration::from_millis(1200), move || {
-            b.set_icon_name("edit-copy-symbolic");
-        });
-    });
-    b
 }

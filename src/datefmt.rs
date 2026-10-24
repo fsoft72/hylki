@@ -25,8 +25,13 @@ use std::sync::{Mutex, OnceLock};
 static DATE_STYLE: AtomicU8 = AtomicU8::new(0);
 static CLOCK_STYLE: AtomicU8 = AtomicU8::new(0);
 
+/// Held by a test that changes the style and by a test that pins a formatted
+/// date, so the one never formats under the other's passing style.
+#[cfg(test)]
+pub(crate) static TEST_STYLE_LOCK: Mutex<()> = Mutex::new(());
+
 /// Apply the user's preference. Called at startup and whenever it changes.
-pub fn set_style(date: DateStyle, clock: ClockStyle) {
+pub(crate) fn set_style(date: DateStyle, clock: ClockStyle) {
     DATE_STYLE.store(
         match date {
             DateStyle::System => 0,
@@ -52,7 +57,10 @@ fn local(ts: i64) -> Option<glib::DateTime> {
 }
 
 fn fmt(dt: &glib::DateTime, pattern: &str) -> String {
-    let text = dt.format(pattern).map(|s| s.to_string()).unwrap_or_default();
+    let text = dt
+        .format(pattern)
+        .map(|s| s.to_string())
+        .unwrap_or_default();
     // Some locales pad a field ("%b" is " 8月" in Japanese), which doubles up
     // against the space this pattern already puts there.
     text.split_whitespace().collect::<Vec<_>>().join(" ")
@@ -163,7 +171,8 @@ fn system_ampm() -> bool {
 /// The desktop's clock format (GNOME's Time Format): `None` where the
 /// desktop has no such setting.
 fn desktop_ampm() -> Option<bool> {
-    match crate::desktop::setting("org.gnome.desktop.interface", "clock-format")?.as_str() {
+    match crate::desktop::session::setting("org.gnome.desktop.interface", "clock-format")?.as_str()
+    {
         "12h" => Some(true),
         "24h" => Some(false),
         _ => None,
@@ -187,7 +196,7 @@ fn locale_ampm() -> bool {
 
 /// A whole hour on the clock in use: "8:00" or "8:00 AM", for labels
 /// that name a time of day (Send Later's presets).
-pub fn clock_label(hour: u32) -> String {
+pub(crate) fn clock_label(hour: u32) -> String {
     let Ok(dt) = glib::DateTime::from_local(2026, 1, 1, hour as i32, 0, 0.0) else {
         return format!("{hour}:00");
     };
@@ -204,7 +213,7 @@ fn ampm_from_probe(probe: &str) -> bool {
 }
 
 /// The time of day, without seconds: "2:03 PM" or "14:03", as the locale has it.
-pub fn time(ts: i64) -> String {
+pub(crate) fn time(ts: i64) -> String {
     let Some(dt) = local(ts) else {
         return String::new();
     };
@@ -216,7 +225,7 @@ pub fn time(ts: i64) -> String {
 }
 
 /// Day and month, no year: "Aug 23" or "23. Aug".
-pub fn day_month(ts: i64) -> String {
+pub(crate) fn day_month(ts: i64) -> String {
     let Some(dt) = local(ts) else {
         return String::new();
     };
@@ -235,7 +244,7 @@ pub fn day_month(ts: i64) -> String {
 /// a glance in a list of mail, and "Aug 23" is quicker to place than "08/23" —
 /// the point of #32 was that the *order* and the *clock* were American, not that
 /// the month should stop being spelled.
-pub fn day_month_year(ts: i64) -> String {
+pub(crate) fn day_month_year(ts: i64) -> String {
     let Some(dt) = local(ts) else {
         return String::new();
     };
@@ -250,17 +259,20 @@ pub fn day_month_year(ts: i64) -> String {
 }
 
 /// Date and time together, for the reader's header and printed pages.
-pub fn date_time(ts: i64) -> String {
+pub(crate) fn date_time(ts: i64) -> String {
     if local(ts).is_none() {
         return String::new();
     }
-    crate::i18n::i18n_f("{date} at {time}", &[("date", &day_month_year(ts)), ("time", &time(ts))])
+    crate::i18n::i18n_f(
+        "{date} at {time}",
+        &[("date", &day_month_year(ts)), ("time", &time(ts))],
+    )
 }
 
 /// The day an event falls on, with its weekday: "Monday, 2 Nov 2026".
 /// An appointment is placed by its weekday more than by its date, which is
 /// why a calendar invitation names it and a message list does not.
-pub fn weekday_date(ts: i64) -> String {
+fn weekday_date(ts: i64) -> String {
     let Some(dt) = local(ts) else {
         return String::new();
     };
@@ -276,7 +288,7 @@ pub fn weekday_date(ts: i64) -> String {
 ///
 /// `end` at or before `start` (an event written with no end) shows the
 /// start alone rather than a range that goes backwards.
-pub fn event_span(start: i64, end: i64, all_day: bool) -> String {
+pub(crate) fn event_span(start: i64, end: i64, all_day: bool) -> String {
     if local(start).is_none() {
         return String::new();
     }
@@ -305,12 +317,12 @@ pub fn event_span(start: i64, end: i64, all_day: bool) -> String {
 }
 
 /// The year a timestamp falls in, locally.
-pub fn year(ts: i64) -> i32 {
+pub(crate) fn year(ts: i64) -> i32 {
     local(ts).map(|dt| dt.year()).unwrap_or_default()
 }
 
 /// The local calendar day a timestamp falls on, as (year, day-of-year).
-pub fn day_key(ts: i64) -> (i32, i32) {
+pub(crate) fn day_key(ts: i64) -> (i32, i32) {
     local(ts)
         .map(|dt| (dt.year(), dt.day_of_year()))
         .unwrap_or_default()
@@ -320,22 +332,41 @@ pub fn day_key(ts: i64) -> (i32, i32) {
 /// last 14 days, today included in both (#435). Counted in calendar days,
 /// so a day an hour short or long for daylight saving still starts at
 /// midnight.
-pub fn day_starts(now: i64) -> [i64; 4] {
+pub(crate) fn day_starts(now: i64) -> [i64; 4] {
     let midnight = local(now).and_then(|dt| {
-        glib::DateTime::new(&dt.timezone(), dt.year(), dt.month(), dt.day_of_month(), 0, 0, 0.0).ok()
+        glib::DateTime::new(
+            &dt.timezone(),
+            dt.year(),
+            dt.month(),
+            dt.day_of_month(),
+            0,
+            0,
+            0.0,
+        )
+        .ok()
     });
     let Some(midnight) = midnight else {
         let today = now - now.rem_euclid(86_400);
-        return [today, today - 86_400, today - 6 * 86_400, today - 13 * 86_400];
+        return [
+            today,
+            today - 86_400,
+            today - 6 * 86_400,
+            today - 13 * 86_400,
+        ];
     };
-    let back = |days: i32| midnight.add_days(-days).map(|d| d.to_unix()).unwrap_or(i64::MIN);
+    let back = |days: i32| {
+        midnight
+            .add_days(-days)
+            .map(|d| d.to_unix())
+            .unwrap_or(i64::MIN)
+    };
     [midnight.to_unix(), back(1), back(6), back(13)]
 }
 
 /// Now, as a timestamp. The demo's mail is dated in October 2025; a
 /// showcase can set the clock it is read against with `HYLKI_DEMO_NOW`
 /// (Unix seconds).
-pub fn now() -> i64 {
+pub(crate) fn now() -> i64 {
     static DEMO_NOW: std::sync::OnceLock<Option<i64>> = std::sync::OnceLock::new();
     let demo = DEMO_NOW.get_or_init(|| {
         std::env::var_os("HYLKI_DEMO")?;
@@ -344,7 +375,9 @@ pub fn now() -> i64 {
     if let Some(ts) = demo {
         return *ts;
     }
-    glib::DateTime::now_local().map(|d| d.to_unix()).unwrap_or_default()
+    glib::DateTime::now_local()
+        .map(|d| d.to_unix())
+        .unwrap_or_default()
 }
 
 #[cfg(test)]
@@ -382,7 +415,10 @@ mod tests {
         // All day: the date alone, even though the event runs to midnight.
         let day = event_span(start, start + 86_400, true);
         assert!(!day.contains('–'), "{day}");
-        assert!(!day.contains('·'), "no time of day on an all-day event: {day}");
+        assert!(
+            !day.contains('·'),
+            "no time of day on an all-day event: {day}"
+        );
 
         // Two days: both dates.
         let two = event_span(start, start + 2 * 86_400, true);
@@ -406,19 +442,36 @@ mod tests {
 
     #[test]
     fn a_chosen_format_overrides_the_locale() {
+        let _style = TEST_STYLE_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         // The C locale this test runs under writes month-first on a 24-hour clock;
         // each choice has to hold regardless of that.
         let ts = 1787478020; // 2026-08-23, 09:40 UTC
         set_style(DateStyle::DayFirst, ClockStyle::Twelve);
-        assert!(day_month_year(ts).starts_with("23"), "{}", day_month_year(ts));
+        assert!(
+            day_month_year(ts).starts_with("23"),
+            "{}",
+            day_month_year(ts)
+        );
         assert!(time(ts).contains(':') && time(ts).len() > 5, "{}", time(ts));
 
         set_style(DateStyle::YearFirst, ClockStyle::TwentyFour);
-        assert!(day_month_year(ts).starts_with("2026"), "{}", day_month_year(ts));
-        assert!(!time(ts).contains("AM") && !time(ts).contains("PM"), "{}", time(ts));
+        assert!(
+            day_month_year(ts).starts_with("2026"),
+            "{}",
+            day_month_year(ts)
+        );
+        assert!(
+            !time(ts).contains("AM") && !time(ts).contains("PM"),
+            "{}",
+            time(ts)
+        );
 
         set_style(DateStyle::MonthFirst, ClockStyle::System);
-        assert!(day_month_year(ts).starts_with("Aug"), "{}", day_month_year(ts));
+        assert!(
+            day_month_year(ts).starts_with("Aug"),
+            "{}",
+            day_month_year(ts)
+        );
 
         // Back to following the locale, so the other tests see it as they found it.
         set_style(DateStyle::System, ClockStyle::System);

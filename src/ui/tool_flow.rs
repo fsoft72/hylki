@@ -46,11 +46,11 @@ mod imp {
     use std::cell::{Cell, RefCell};
 
     #[derive(Default)]
-    pub struct ToolFlow {
-        pub end: RefCell<Option<gtk::Widget>>,
+    pub(crate) struct ToolFlow {
+        pub(super) end: RefCell<Option<gtk::Widget>>,
         /// The tools hidden as one (a message written as source), the end
         /// widget staying.
-        pub hidden: Cell<bool>,
+        pub(super) hidden: Cell<bool>,
     }
 
     #[glib::object_subclass]
@@ -94,7 +94,11 @@ mod imp {
                 }
                 (min, nat, -1, -1)
             } else {
-                let width = if for_size < 0 { obj.measure(gtk::Orientation::Horizontal, -1).1 } else { for_size };
+                let width = if for_size < 0 {
+                    obj.measure(gtk::Orientation::Horizontal, -1).1
+                } else {
+                    for_size
+                };
                 let h = obj.flow(width).height();
                 (h, h, -1, -1)
             }
@@ -107,7 +111,8 @@ mod imp {
             for p in &flow.placed {
                 let top = flow.line_top(p.line) + (flow.lines[p.line] - p.h) / 2;
                 let x = if rtl { width - p.x - p.w } else { p.x };
-                p.child.size_allocate(&gtk::Allocation::new(x, top, p.w, p.h), -1);
+                p.child
+                    .size_allocate(&gtk::Allocation::new(x, top, p.w, p.h), -1);
             }
             if let (Some(end), Some((w, h))) = (obj.end_shown(), flow.end) {
                 let x = if rtl { 0 } else { width - w };
@@ -119,7 +124,7 @@ mod imp {
 }
 
 glib::wrapper! {
-    pub struct ToolFlow(ObjectSubclass<imp::ToolFlow>)
+    pub(crate) struct ToolFlow(ObjectSubclass<imp::ToolFlow>)
         @extends gtk::Widget,
         @implements gtk::Accessible, gtk::Buildable, gtk::ConstraintTarget;
 }
@@ -131,12 +136,12 @@ impl Default for ToolFlow {
 }
 
 impl ToolFlow {
-    pub fn new() -> Self {
+    pub(crate) fn new() -> Self {
         glib::Object::new()
     }
 
     /// Add a tool at the end of the flow.
-    pub fn append(&self, child: &impl IsA<gtk::Widget>) {
+    pub(crate) fn append(&self, child: &impl IsA<gtk::Widget>) {
         let child = child.as_ref();
         match self.imp().end.borrow().as_ref() {
             // Tools stay ahead of the end widget among the children, so
@@ -148,14 +153,14 @@ impl ToolFlow {
     }
 
     /// The widget that holds the top right corner (top left, right to left).
-    pub fn set_end(&self, end: &impl IsA<gtk::Widget>) {
+    pub(super) fn set_end(&self, end: &impl IsA<gtk::Widget>) {
         let end = end.as_ref();
         end.set_parent(self);
         self.imp().end.replace(Some(end.clone()));
     }
 
     /// Show or hide every tool at once; the end widget stays.
-    pub fn set_tools_shown(&self, on: bool) {
+    pub(super) fn set_tools_shown(&self, on: bool) {
         self.imp().hidden.set(!on);
         let end = self.imp().end.borrow().clone();
         let mut child = self.first_child();
@@ -169,7 +174,7 @@ impl ToolFlow {
     }
 
     /// The room left on `child`'s row after it, at the bar's current width.
-    pub fn room_after(&self, child: &gtk::Widget) -> Option<i32> {
+    pub(super) fn room_after(&self, child: &gtk::Widget) -> Option<i32> {
         let width = self.width();
         let flow = self.flow(width);
         let p = flow.placed.iter().find(|p| &p.child == child)?;
@@ -194,17 +199,26 @@ impl ToolFlow {
     }
 
     fn end_shown(&self) -> Option<gtk::Widget> {
-        self.imp().end.borrow().clone().filter(|e| e.should_layout())
+        self.imp()
+            .end
+            .borrow()
+            .clone()
+            .filter(|e| e.should_layout())
     }
 
     /// What the first row leaves for the end widget, spacing included.
     fn reserve(&self) -> i32 {
-        self.end_shown().map_or(0, |e| e.measure(gtk::Orientation::Horizontal, -1).1 + SPACING)
+        self.end_shown().map_or(0, |e| {
+            e.measure(gtk::Orientation::Horizontal, -1).1 + SPACING
+        })
     }
 
     fn flow(&self, width: i32) -> Flow {
         let end = self.end_shown().map(|e| {
-            let w = e.measure(gtk::Orientation::Horizontal, -1).1.min(width.max(0));
+            let w = e
+                .measure(gtk::Orientation::Horizontal, -1)
+                .1
+                .min(width.max(0));
             (w, e.measure(gtk::Orientation::Vertical, w).1)
         });
         let reserve = self.reserve();
@@ -216,7 +230,9 @@ impl ToolFlow {
             let room = |line: usize| width - if line == 0 { reserve } else { 0 };
             // A tool that does not fit after the last one takes the next
             // row; the first row may stay the end widget's alone.
-            if (x > 0 && x + cnat.min(room(line)).max(cmin) > room(line)) || (x == 0 && line == 0 && cmin > room(0)) {
+            if (x > 0 && x + cnat.min(room(line)).max(cmin) > room(line))
+                || (x == 0 && line == 0 && cmin > room(0))
+            {
                 line += 1;
                 x = 0;
                 heights.push(0);
@@ -224,7 +240,13 @@ impl ToolFlow {
             let w = cnat.min(room(line)).max(cmin);
             let h = child.measure(gtk::Orientation::Vertical, w).1;
             heights[line] = heights[line].max(h);
-            placed.push(Placed { child, x, w, h, line });
+            placed.push(Placed {
+                child,
+                x,
+                w,
+                h,
+                line,
+            });
             x += w + SPACING;
         }
         if heights.len() > 1 && heights[0] == 0 {
@@ -234,6 +256,10 @@ impl ToolFlow {
                 p.line -= 1;
             }
         }
-        Flow { placed, lines: heights, end }
+        Flow {
+            placed,
+            lines: heights,
+            end,
+        }
     }
 }

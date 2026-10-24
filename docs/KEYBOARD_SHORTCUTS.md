@@ -100,6 +100,13 @@ none selected says that a selection is needed.
 its own. A <kbd>g</kbd> or <kbd>*</kbd> waits a second and a half for the key
 that follows.
 
+A message window takes the same keys for its own conversation:
+<kbd>n</kbd>, <kbd>p</kbd>, <kbd>;</kbd> and <kbd>:</kbd> move through it,
+and the action keys act on it as they do on an open conversation in the main
+window. <kbd>u</kbd> and <kbd>Esc</kbd> close the window, as archiving or
+marking it unread does. The list's keys, <kbd>g</kbd> and <kbd>*</kbd> do
+nothing there.
+
 With several messages selected, in the list or as cards of a conversation,
 archive, delete, spam, star, read and tag keys act on all of them. A
 conversation's row stands for every message of it the folder holds, so
@@ -124,9 +131,21 @@ writing, the composer keeps them: there <kbd>Ctrl+U</kbd> underlines.
 any of its address rows. It does what the Send button does, so a message with
 no recipient is not sent, and one scheduled for later is queued.
 
+<kbd>Ctrl+Shift+A</kbd> attaches files, and <kbd>Ctrl+Shift+T</kbd>,
+<kbd>Ctrl+Shift+C</kbd> and <kbd>Ctrl+Shift+B</kbd> put the cursor in To, Cc
+and Bcc, showing the row if it is hidden, as in Thunderbird. Outside the
+composer, <kbd>Ctrl+Shift+A</kbd> and <kbd>Ctrl+Shift+C</kbd> keep the
+meanings below.
+
 In To, Cc and Bcc, a space after an address, <kbd>Return</kbd> or a comma
 makes it a pill, and <kbd>Backspace</kbd> on an empty field turns the last
-pill back into text. See [Addresses as pills](DOCUMENTATION.md#addresses-as-pills).
+pill back into text. <kbd>Left</kbd> at the start of the field selects the
+last pill, and <kbd>Ctrl+A</kbd> on an empty field selects all of them. On a
+selected pill, <kbd>Left</kbd> and <kbd>Right</kbd> select the next one
+(<kbd>Shift</kbd> extends the selection), <kbd>Delete</kbd> removes the
+selection, <kbd>Return</kbd> edits the pill, and <kbd>Menu</kbd> or
+<kbd>Shift+F10</kbd> opens the menu, which moves the selection to another
+field. See [Addresses as pills](DOCUMENTATION.md#addresses-as-pills).
 
 In the body, <kbd>Return</kbd> starts a new line and <kbd>Shift+Return</kbd>
 a new paragraph; **Settings → Composing → Return starts a new paragraph**
@@ -145,9 +164,10 @@ These work with or without single-key shortcuts too:
 | --- | --- |
 | <kbd>Ctrl+K</kbd> | Command palette: type to find an action, a folder, a view, a tag or a smart folder, and Enter runs it; start with `>` for actions only |
 | <kbd>Ctrl+Shift+K</kbd> | Command palette with `>` already typed: actions only |
-| <kbd>Delete</kbd> <kbd>Backspace</kbd> | Delete the selected messages, with the list focused |
+| <kbd>Delete</kbd> | Delete the selected messages, or the message you are reading, in the main window or its own |
+| <kbd>Backspace</kbd> | Delete the selected messages, with the list focused |
 | <kbd>Shift+Delete</kbd> | Delete the selected messages permanently, without going to Trash, after asking |
-| <kbd>Ctrl+F</kbd> | Search the message list |
+| <kbd>Ctrl+F</kbd> | Search the message list, or find in the message when it has the focus |
 | <kbd>Ctrl+P</kbd> | Print the message you are reading |
 | <kbd>Ctrl+Shift+P</kbd> | Preview it as a PDF first |
 | <kbd>Ctrl+Z</kbd> | Undo the last action (a move, a delete, a star) |
@@ -155,7 +175,9 @@ These work with or without single-key shortcuts too:
 | <kbd>Ctrl+Shift+S</kbd> | Reveal the status bar (also: long-press Refresh) |
 | <kbd>Ctrl+Shift+A</kbd> | Show or hide the accounts in the sidebar |
 | <kbd>Ctrl+Shift+C</kbd> | Console mode, when it is enabled in Settings |
-| <kbd>Ctrl+W</kbd> | Close the window; mail keeps syncing in the background |
+| <kbd>F11</kbd> | Fullscreen on or off |
+| <kbd>Ctrl+,</kbd> | Open Settings |
+| <kbd>Ctrl+W</kbd> | Close the window; mail keeps syncing in the background. In Settings, a message window or a composer window, closes that window |
 | <kbd>Ctrl+Q</kbd> | Quit Hylki |
 
 In the composer, <kbd>Ctrl+Z</kbd> and <kbd>Ctrl+Shift+Z</kbd> undo and redo
@@ -166,12 +188,21 @@ In the attachment drawer, <kbd>Space</kbd> or <kbd>Enter</kbd> previews the
 highlighted attachment. In the attachments gallery's preview, <kbd>←</kbd> and
 <kbd>→</kbd> step to the previous and next one, and <kbd>Esc</kbd> closes it.
 
-In the Contacts view, <kbd>Delete</kbd> asks to delete the contact shown,
-while the contact list has the focus.
+In the Contacts view, <kbd>Ctrl+F</kbd> and <kbd>/</kbd> open its search
+and <kbd>Esc</kbd> closes it, as in the message list. <kbd>Ctrl</kbd> or
+<kbd>Shift</kbd> and a click select several contacts, and <kbd>Ctrl+A</kbd>
+all of them. <kbd>Delete</kbd> asks to delete the contact shown, or those
+selected, while the contact list has the focus. Contacts dragged onto an
+address book in the sidebar are copied there, or moved with <kbd>Ctrl</kbd>
+held as they are dropped. In a group's form, <kbd>↓</kbd> and
+<kbd>↑</kbd> move through the people matching what is typed in the field
+that adds them, <kbd>Enter</kbd> adds the one highlighted, and <kbd>Esc</kbd>
+puts the matches away.
 
 <kbd>Ctrl+F</kbd> in the Settings window opens its search, and closes it
 again. <kbd>Esc</kbd> closes it too, wherever the focus is in the window,
-including after you have picked a result.
+including after you have picked a result. Closing the window ends the
+search.
 
 <kbd>Ctrl++</kbd> and <kbd>Ctrl+-</kbd> zoom the message in the reading pane
 in and out, with or without Reader View, and so does <kbd>Ctrl</kbd> with the

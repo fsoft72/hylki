@@ -19,6 +19,9 @@ use gtk::{glib, subclass::prelude::*};
 const SPACING: i32 = 6;
 const ANIM_MS: u32 = 180;
 
+/// A chip size (width, height) that several zones read and write.
+type SharedSize = Rc<Cell<(i32, i32)>>;
+
 /// One slot of the row: a child or the gap.
 struct Slot {
     child: Option<gtk::Widget>,
@@ -32,21 +35,21 @@ mod imp {
     use super::*;
 
     #[derive(Default)]
-    pub struct ChipFlow {
+    pub(crate) struct ChipFlow {
         /// Where each child currently sits (content coordinates), eased
         /// towards its slot.
-        pub pos: RefCell<HashMap<gtk::Widget, (f64, f64)>>,
+        pub(super) pos: RefCell<HashMap<gtk::Widget, (f64, f64)>>,
         /// The slot each child was last sent towards.
-        pub target: RefCell<HashMap<gtk::Widget, (i32, i32)>>,
-        pub anims: RefCell<HashMap<gtk::Widget, adw::TimedAnimation>>,
+        pub(super) target: RefCell<HashMap<gtk::Widget, (i32, i32)>>,
+        pub(super) anims: RefCell<HashMap<gtk::Widget, adw::TimedAnimation>>,
         /// The slot index a dragged chip would take (a gap opens there).
-        pub gap: Cell<Option<usize>>,
+        pub(super) gap: Cell<Option<usize>>,
         /// The largest chip seen by any zone (shared), to size an empty
         /// zone by.
-        pub chip_size: RefCell<Option<Rc<Cell<(i32, i32)>>>>,
+        pub(super) chip_size: RefCell<Option<SharedSize>>,
         /// The size of the chip being dragged right now (shared; zero when
         /// none): the gap opens at exactly that size.
-        pub drag_size: RefCell<Option<Rc<Cell<(i32, i32)>>>>,
+        pub(super) drag_size: RefCell<Option<SharedSize>>,
     }
 
     #[glib::object_subclass]
@@ -78,7 +81,12 @@ mod imp {
             let gap = obj.gap_size(&chips);
             if orientation == gtk::Orientation::Horizontal {
                 // Narrowest: one chip per row. Natural: the whole row.
-                let widest = chips.iter().map(|(_, w, _)| *w).max().unwrap_or(0).max(gap.0);
+                let widest = chips
+                    .iter()
+                    .map(|(_, w, _)| *w)
+                    .max()
+                    .unwrap_or(0)
+                    .max(gap.0);
                 let mut nat = chips.iter().map(|(_, w, _)| w + SPACING).sum::<i32>();
                 if self.gap.get().is_some() {
                     nat += gap.0 + SPACING;
@@ -98,7 +106,9 @@ mod imp {
             let slots = obj.slots(width, &chips);
             // Work out every move first, then start the animations with no
             // borrow held (their first tick may land before this returns).
-            let mut moves: Vec<(gtk::Widget, (f64, f64), (i32, i32))> = Vec::new();
+            // A child, where it is now and the slot it moves to.
+            type Move = (gtk::Widget, (f64, f64), (i32, i32));
+            let mut moves: Vec<Move> = Vec::new();
             {
                 let mut pos = self.pos.borrow_mut();
                 let mut target = self.target.borrow_mut();
@@ -129,14 +139,17 @@ mod imp {
                     continue;
                 };
                 let (x, y) = pos.get(child).copied().unwrap_or((s.x as f64, s.y as f64));
-                child.size_allocate(&gtk::Allocation::new(x.round() as i32, y.round() as i32, s.w, s.h), -1);
+                child.size_allocate(
+                    &gtk::Allocation::new(x.round() as i32, y.round() as i32, s.w, s.h),
+                    -1,
+                );
             }
         }
     }
 }
 
 glib::wrapper! {
-    pub struct ChipFlow(ObjectSubclass<imp::ChipFlow>)
+    pub(crate) struct ChipFlow(ObjectSubclass<imp::ChipFlow>)
         @extends gtk::Widget,
         @implements gtk::Accessible, gtk::Buildable, gtk::ConstraintTarget;
 }
@@ -148,14 +161,14 @@ impl Default for ChipFlow {
 }
 
 impl ChipFlow {
-    pub fn new(chip_size: Rc<Cell<(i32, i32)>>, drag_size: Rc<Cell<(i32, i32)>>) -> Self {
+    pub(crate) fn new(chip_size: SharedSize, drag_size: SharedSize) -> Self {
         let this = Self::default();
         *this.imp().chip_size.borrow_mut() = Some(chip_size);
         *this.imp().drag_size.borrow_mut() = Some(drag_size);
         this
     }
 
-    pub fn append(&self, child: &impl IsA<gtk::Widget>) {
+    pub(crate) fn append(&self, child: &impl IsA<gtk::Widget>) {
         child.set_parent(self);
         self.queue_resize();
     }
@@ -163,7 +176,7 @@ impl ChipFlow {
     /// Drop every chip (and the gap). Positions start afresh: the next
     /// chips appear in place rather than sliding from wherever the old
     /// ones were.
-    pub fn remove_all(&self) {
+    pub(crate) fn remove_all(&self) {
         let imp = self.imp();
         for (_, a) in imp.anims.borrow_mut().drain() {
             a.pause();
@@ -179,7 +192,7 @@ impl ChipFlow {
 
     /// Open the gap at `index` (None closes it). The chips slide to make
     /// or take the room.
-    pub fn set_gap(&self, index: Option<usize>) {
+    pub(super) fn set_gap(&self, index: Option<usize>) {
         let imp = self.imp();
         let index = index.map(|i| i.min(self.visible_children().len()));
         if imp.gap.get() != index {
@@ -192,7 +205,7 @@ impl ChipFlow {
     /// chips are heading (their slots with the current gap, not their
     /// mid-slide positions): every chip on a row above the point, or on
     /// its row with its middle left of it, comes before.
-    pub fn insertion_index(&self, x: f64, y: f64) -> usize {
+    pub(super) fn insertion_index(&self, x: f64, y: f64) -> usize {
         let chips = self.chip_sizes();
         let slots = self.slots(self.width().max(1), &chips);
         let mut index = 0;
@@ -249,13 +262,33 @@ impl ChipFlow {
     /// largest chip known (for an empty zone's height).
     fn gap_size(&self, chips: &[(gtk::Widget, i32, i32)]) -> (i32, i32) {
         let imp = self.imp();
-        let dragging = imp.drag_size.borrow().as_ref().map(|s| s.get()).unwrap_or((0, 0));
+        let dragging = imp
+            .drag_size
+            .borrow()
+            .as_ref()
+            .map(|s| s.get())
+            .unwrap_or((0, 0));
         if dragging.0 > 0 && dragging.1 > 0 {
             return dragging;
         }
-        let shared = imp.chip_size.borrow().as_ref().map(|s| s.get()).unwrap_or((0, 0));
-        let w = chips.iter().map(|(_, w, _)| *w).max().unwrap_or(0).max(shared.0);
-        let h = chips.iter().map(|(_, _, h)| *h).max().unwrap_or(0).max(shared.1);
+        let shared = imp
+            .chip_size
+            .borrow()
+            .as_ref()
+            .map(|s| s.get())
+            .unwrap_or((0, 0));
+        let w = chips
+            .iter()
+            .map(|(_, w, _)| *w)
+            .max()
+            .unwrap_or(0)
+            .max(shared.0);
+        let h = chips
+            .iter()
+            .map(|(_, _, h)| *h)
+            .max()
+            .unwrap_or(0)
+            .max(shared.1);
         (if w > 0 { w } else { 72 }, if h > 0 { h } else { 48 })
     }
 
@@ -272,9 +305,16 @@ impl ChipFlow {
 
     fn flow(&self, width: i32, chips: &[(gtk::Widget, i32, i32)]) -> (Vec<Slot>, i32) {
         let gap = self.gap_size(chips);
-        let row_h = chips.iter().map(|(_, _, h)| *h).max().unwrap_or(0).max(gap.1);
-        let mut entries: Vec<(Option<gtk::Widget>, i32, i32)> =
-            chips.iter().map(|(c, w, h)| (Some(c.clone()), *w, *h)).collect();
+        let row_h = chips
+            .iter()
+            .map(|(_, _, h)| *h)
+            .max()
+            .unwrap_or(0)
+            .max(gap.1);
+        let mut entries: Vec<(Option<gtk::Widget>, i32, i32)> = chips
+            .iter()
+            .map(|(c, w, h)| (Some(c.clone()), *w, *h))
+            .collect();
         if let Some(i) = self.imp().gap.get() {
             entries.insert(i.min(entries.len()), (None, gap.0, gap.1));
         }
@@ -286,7 +326,13 @@ impl ChipFlow {
                 y += row_h + SPACING;
             }
             // Chips sit centred in their row.
-            out.push(Slot { child, x, y: y + (row_h - h) / 2, w, h });
+            out.push(Slot {
+                child,
+                x,
+                y: y + (row_h - h) / 2,
+                w,
+                h,
+            });
             x += w + SPACING;
         }
         (out, y + row_h)
@@ -305,10 +351,10 @@ impl ChipFlow {
             let Some(flow) = weak.upgrade() else {
                 return;
             };
-            flow.imp()
-                .pos
-                .borrow_mut()
-                .insert(c.clone(), (from.0 + (tx - from.0) * v, from.1 + (ty - from.1) * v));
+            flow.imp().pos.borrow_mut().insert(
+                c.clone(),
+                (from.0 + (tx - from.0) * v, from.1 + (ty - from.1) * v),
+            );
             flow.queue_allocate();
         });
         let anim = adw::TimedAnimation::new(self, 0.0, 1.0, ANIM_MS, target);

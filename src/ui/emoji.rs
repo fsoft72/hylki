@@ -23,7 +23,7 @@ const KEY: &std::ffi::CStr = c"gtk-emoji-chooser";
 /// Set up the text fields of every window, those open now and those still
 /// to come. Not every window is the application's (Settings is not), so
 /// this goes by GTK's list of all of them.
-pub fn follow_all() {
+pub(crate) fn follow_all() {
     let windows = gtk::Window::toplevels();
     let each = |model: &gtk::gio::ListModel, from: u32, count: u32| {
         for i in from..from + count {
@@ -66,7 +66,8 @@ fn watch(text: &gtk::Text) {
     keys.set_propagation_phase(gtk::PropagationPhase::Capture);
     keys.connect_key_pressed(|k, keyval, _, state| {
         use gtk::gdk::{Key, ModifierType};
-        let mods = state & (ModifierType::CONTROL_MASK | ModifierType::SHIFT_MASK | ModifierType::ALT_MASK);
+        let mods = state
+            & (ModifierType::CONTROL_MASK | ModifierType::SHIFT_MASK | ModifierType::ALT_MASK);
         if mods == ModifierType::CONTROL_MASK && matches!(keyval, Key::period | Key::semicolon) {
             if let Some(text) = k.widget().and_downcast::<gtk::Text>() {
                 ready(&text);
@@ -95,7 +96,11 @@ fn takes_emoji(text: &gtk::Text) -> bool {
         && !text.input_hints().contains(InputHints::NO_EMOJI)
         && !matches!(
             text.input_purpose(),
-            InputPurpose::Number | InputPurpose::Digits | InputPurpose::Phone | InputPurpose::Pin | InputPurpose::Password
+            InputPurpose::Number
+                | InputPurpose::Digits
+                | InputPurpose::Phone
+                | InputPurpose::Pin
+                | InputPurpose::Password
         )
 }
 
@@ -122,7 +127,8 @@ fn stored(text: &gtk::Text) -> Option<gtk::EmojiChooser> {
     if ptr.is_null() {
         return None;
     }
-    let widget: gtk::Widget = unsafe { gtk::Widget::from_glib_none(ptr as *mut gtk::ffi::GtkWidget) };
+    let widget: gtk::Widget =
+        unsafe { gtk::Widget::from_glib_none(ptr as *mut gtk::ffi::GtkWidget) };
     widget.downcast().ok()
 }
 

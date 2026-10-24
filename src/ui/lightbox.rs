@@ -14,7 +14,7 @@ use relm4::prelude::*;
 use crate::i18n::{i18n, i18n_f};
 use crate::models::Attachment;
 
-pub struct Lightbox {
+pub(crate) struct Lightbox {
     items: Vec<Attachment>,
     pos: usize,
     texture: Option<gtk::gdk::Texture>,
@@ -33,15 +33,21 @@ pub struct Lightbox {
 }
 
 #[derive(Debug)]
-pub enum LightboxInput {
+pub(crate) enum LightboxInput {
     /// Show these previewable attachments, starting at `start`.
-    Show { items: Vec<Attachment>, start: usize },
+    Show {
+        items: Vec<Attachment>,
+        start: usize,
+    },
     Prev,
     Next,
     Close,
     /// Click on the document: toggle zoom 1x ↔ 3x, anchored at the clicked
     /// point (picture coordinates at the fitted size).
-    ZoomCycle { x: f64, y: f64 },
+    ZoomCycle {
+        x: f64,
+        y: f64,
+    },
     /// Escape: unwind zoom first; close only from normal view.
     Escape,
     /// Open the shown item in its default application.
@@ -53,7 +59,7 @@ pub enum LightboxInput {
     Rendered(u64),
 }
 
-#[relm4::component(pub)]
+#[relm4::component(pub(crate))]
 impl Component for Lightbox {
     type Init = ();
     type Input = LightboxInput;
@@ -245,7 +251,7 @@ impl Component for Lightbox {
             let s = sender.clone();
             click.connect_released(move |_, n, x, y| {
                 if n == 1 && moved.get() < 8.0 {
-                    s.input(LightboxInput::ZoomCycle { x, y });
+                    s.input_sender().emit(LightboxInput::ZoomCycle { x, y });
                 }
             });
             model.picture.add_controller(click);
@@ -288,36 +294,32 @@ impl Component for Lightbox {
                 if self.zoom != 1 {
                     self.set_zoom(1);
                 } else {
-                    sender.input(LightboxInput::Close);
+                    sender.input_sender().emit(LightboxInput::Close);
                 }
             }
             LightboxInput::OpenCurrent => {
                 if let Some(att) = self.items.get(self.pos) {
                     let window = root.root().and_downcast::<gtk::Window>();
-                    crate::ui::attachments_gallery::open_bytes(&att.name, &att.data, window.as_ref());
+                    crate::ui::attachment_io::open_bytes(&att.name, &att.data, window.as_ref());
                 }
             }
             LightboxInput::DownloadCurrent => {
                 if let Some(att) = self.items.get(self.pos).cloned() {
-                    let dialog = gtk::FileDialog::builder()
-                        .initial_name(&att.name)
-                        .title(&i18n("Save Attachment"))
-                        .build();
                     let window = root.root().and_downcast::<gtk::Window>();
-                    dialog.save(window.as_ref(), gtk::gio::Cancellable::NONE, move |res| {
-                        if let Ok(file) = res {
-                            if let Some(path) = file.path() {
-                                let _ = std::fs::write(path, &att.data);
-                            }
-                        }
-                    });
+                    // A failed write is dropped.
+                    crate::ui::attachment_io::save_attachment_as(
+                        &att.name,
+                        att.data,
+                        window.as_ref(),
+                        |_| {},
+                    );
                 }
             }
             LightboxInput::Rendered(key) => {
                 let still_current = self
                     .items
                     .get(self.pos)
-                    .is_some_and(|a| crate::ui::attachments_gallery::content_key(&a.data) == key);
+                    .is_some_and(|a| crate::ui::thumbnails::content_key(&a.data) == key);
                 if still_current {
                     self.refresh(&sender);
                 }
@@ -334,7 +336,9 @@ impl Lightbox {
         if self.keys_added {
             return;
         }
-        let Some(window) = root.root().and_downcast::<gtk::Window>() else { return };
+        let Some(window) = root.root().and_downcast::<gtk::Window>() else {
+            return;
+        };
         self.keys_added = true;
         let keys = gtk::EventControllerKey::new();
         keys.set_propagation_phase(gtk::PropagationPhase::Capture);
@@ -390,7 +394,11 @@ impl Lightbox {
     /// view stayed at the top-left of the grown, mostly-letterboxed box, the
     /// content apparently shoved off-screen.
     fn zoom_to_point(&mut self, x: f64, y: f64) {
-        let Some((tw, th)) = self.texture.as_ref().map(|t| (f64::from(t.width()), f64::from(t.height()))) else {
+        let Some((tw, th)) = self
+            .texture
+            .as_ref()
+            .map(|t| (f64::from(t.width()), f64::from(t.height())))
+        else {
             return;
         };
         if tw <= 0.0 || th <= 0.0 {
@@ -401,7 +409,10 @@ impl Lightbox {
             let s = (w / tw).min(h / th);
             (s, (w - tw * s) / 2.0, (h - th * s) / 2.0)
         };
-        let (s0, ox0, oy0) = fit(f64::from(self.picture.width()), f64::from(self.picture.height()));
+        let (s0, ox0, oy0) = fit(
+            f64::from(self.picture.width()),
+            f64::from(self.picture.height()),
+        );
         let u = ((x - ox0) / (tw * s0)).clamp(0.0, 1.0);
         let v = ((y - oy0) / (th * s0)).clamp(0.0, 1.0);
 
@@ -410,7 +421,8 @@ impl Lightbox {
         let vadj = self.scroller.vadjustment();
         let tries = Cell::new(0u8);
         self.picture.add_tick_callback(move |_, _| {
-            let laid_out = hadj.upper() > hadj.page_size() + 1.0 || vadj.upper() > vadj.page_size() + 1.0;
+            let laid_out =
+                hadj.upper() > hadj.page_size() + 1.0 || vadj.upper() > vadj.page_size() + 1.0;
             if laid_out {
                 let (s1, ox1, oy1) = fit(hadj.upper(), vadj.upper());
                 hadj.set_value(ox1 + u * tw * s1 - hadj.page_size() / 2.0);
@@ -443,22 +455,24 @@ impl Lightbox {
     /// spot; a PDF's page comes from the shared full-size cache or a worker
     /// render that circles back via [`LightboxInput::Rendered`].
     fn refresh(&mut self, sender: &ComponentSender<Self>) {
-        use crate::ui::attachments_gallery as gallery;
+        use crate::ui::thumbnails;
         self.texture = None;
-        let Some(att) = self.items.get(self.pos) else { return };
+        let Some(att) = self.items.get(self.pos) else {
+            return;
+        };
         if crate::models::is_image_name(&att.name) {
-            self.texture = gallery::texture_from(&att.data);
+            self.texture = thumbnails::texture_from(&att.data);
             return;
         }
         // A cache hit paints immediately (and, crucially, spawns nothing: a
         // hit that re-entered via Rendered would loop forever).
-        if let Some(tex) = gallery::cached_pdf_preview(&att.data) {
+        if let Some(tex) = thumbnails::cached_pdf_preview(&att.data) {
             self.texture = Some(tex);
             return;
         }
-        let key = gallery::content_key(&att.data);
+        let key = thumbnails::content_key(&att.data);
         let s = sender.input_sender().clone();
-        gallery::lightbox_pdf_texture(&att.data, move |_| {
+        thumbnails::lightbox_pdf_texture(&att.data, move |_| {
             let _ = s.send(LightboxInput::Rendered(key));
         });
     }

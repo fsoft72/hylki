@@ -5,7 +5,7 @@ The marks in this folder fill a sender's avatar in the message list when
 is one of those listed in `domains.txt`. They are shipped inside the app, so
 showing one makes no network request; the sender's own BIMI logo, when it
 publishes one, is preferred over them, and the site's own icon is the
-fallback when there is neither (see `src/logo.rs`).
+fallback when there is neither (see `src/services/logo.rs`).
 
 **They are not covered by Hylki's licence.** Each is a trademark of its
 owner, used only to identify mail from that sender, exactly as the mail

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Regenerate src/theme_palettes.rs from the T3 Code theme definitions.
+"""Regenerate src/desktop/theme_palettes.rs from the T3 Code theme definitions.
 
 Hylki's appearance themes (Settings -> Appearance -> Theme) are the palettes
 T3 Code ships, adapted to libadwaita's color roles and renamed for Hylki
@@ -101,8 +101,9 @@ OVERRIDES = {
     ("rose", "light"): {"accent": "#b75077", "sidebarBorder": "border"},
 }
 
-# The roles Hylki maps onto libadwaita colors (see src/theme.rs). Upstream
-# carries more (terminal, message actions); those have no Hylki counterpart.
+# The roles Hylki maps onto libadwaita colors (see src/desktop/theme.rs).
+# Upstream carries more (terminal, message actions); those have no Hylki
+# counterpart.
 ROLES = [
     "canvas", "chrome", "toolbar", "toolbarForeground", "toolbarBorder",
     "toolbarControl", "toolbarControlForeground", "toolbarControlHover",
@@ -218,7 +219,7 @@ def main() -> None:
     out.append("];")
     out.append("")
 
-    dest = Path(__file__).resolve().parent.parent / "src/theme_palettes.rs"
+    dest = Path(__file__).resolve().parent.parent / "src/desktop/theme_palettes.rs"
     dest.write_text("\n".join(out))
     print(f"wrote {dest} ({len(themes)} themes)")
 

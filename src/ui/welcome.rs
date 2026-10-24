@@ -11,83 +11,34 @@
 use adw::prelude::*;
 use relm4::prelude::*;
 
-use crate::config::AccountConfig;
 use crate::config::Protocol;
+use crate::config::{blank_account, AccountConfig};
+use crate::i18n::{i18n, i18n_f};
 use crate::ui::accounts::{Provider, PROVIDERS};
 use crate::worker::{self, ConnTest};
-use crate::i18n::{i18n, i18n_f};
 
-/// Wordmark art, embedded so the wizard needs nothing on disk. A 1024px
-/// PNG master rather than the SVG the website uses: neither librsvg nor
-/// gdk-pixbuf draws the mark's soft shadow the way a browser does, and a
-/// raster export of the same artwork is the one thing both agree on.
-const WORDMARK_PNG: &[u8] = include_bytes!("../../data/welcome/wordmark-black.png");
-/// The same wordmark with white lettering, for a dark ground.
-const WORDMARK_DARK_PNG: &[u8] = include_bytes!("../../data/welcome/wordmark-white.png");
+mod goa;
+mod manual;
+mod messages;
+mod pages;
+mod steps;
+mod wordmark;
 
-/// The settings chosen on the privacy + personalize pages, applied by the app
-/// through its normal Set* handlers when the wizard finishes.
-#[derive(Debug, Clone)]
-pub struct WelcomePrefs {
-    pub block_remote: bool,
-    pub gravatar: bool,
-    pub sender_logos: bool,
-    pub notification_content: bool,
-    pub preview_lines: u32,
-    pub avatars: bool,
-    pub threading: bool,
-    /// The app icon picked from the gallery (an `app_icon::catalog` id), or
-    /// empty when nothing was picked over an icon set outside Hylki.
-    pub app_icon: String,
-}
+use goa::rebuild_goa_rows;
+use manual::{form_has_input, wizard_providers};
+pub(crate) use messages::{WelcomeCmd, WelcomeInput, WelcomeOutput, WelcomePrefs};
+use pages::{
+    build_done_page, build_goa_page, build_hero_page, build_personalize_page, build_privacy_page,
+    build_wordmark, card, page, pill, scrolled, title, GoaPage, PersonalizePage, PrivacyPage,
+    WordmarkParts,
+};
+use wordmark::{bind_wordmark_to_position, HERO_SIZE, HERO_TOP};
+pub(crate) use wordmark::{
+    wordmark_height, wordmark_height_of, wordmark_picture, wordmark_picture_of, Wordmark,
+};
 
-#[derive(Debug)]
-pub enum WelcomeInput {
-    Next,
-    Back,
-    ProviderChanged,
-    TestAndAdd,
-    ImportGoa(usize),
-    RescanGoa,
-    OpenOnlineAccounts,
-    /// The page or the manual form changed: relabel the footer button.
-    RefreshFooter,
-    Finish,
-    /// The hero page's language drop-down moved to choice `n`.
-    LanguageChanged(u32),
-}
-
-#[derive(Debug)]
-pub enum WelcomeOutput {
-    /// A manual account passed its connection test, or a custom OAuth one
-    /// signed in: save + connect it.
-    AddAccount(Box<AccountConfig>),
-    /// A GNOME Online Accounts import was chosen.
-    ImportGoa(Box<AccountConfig>),
-    /// The chosen privacy/personalize settings (sent once, on finish).
-    Prefs(WelcomePrefs),
-    /// The wizard is done (window already closing).
-    Done,
-    /// A language was picked on the first page: its locale code, "" for
-    /// the system's. The app saves it and comes back in that language.
-    Language(String),
-}
-
-#[derive(Debug)]
-pub enum WelcomeCmd {
-    Tested { account: Box<AccountConfig>, result: ConnTest, seq: u32 },
-    /// The browser sign-in for a custom OAuth account ended: its refresh
-    /// token, or why not.
-    SignedIn {
-        account: Box<AccountConfig>,
-        /// The refresh token, and who signed in when the provider says.
-        result: Result<(String, Option<(String, String)>), String>,
-        seq: u32,
-    },
-}
-
-pub struct Welcome {
-    goa: Vec<crate::goa::GoaMailAccount>,
+pub(crate) struct Welcome {
+    goa: Vec<crate::services::goa::GoaMailAccount>,
     /// Emails added so far (either path), shown on the account page and used
     /// to relabel the final button.
     added: Vec<String>,
@@ -101,7 +52,7 @@ pub struct Welcome {
     manual_added: bool,
 }
 
-pub struct WelcomeWidgets {
+pub(crate) struct WelcomeWidgets {
     carousel: adw::Carousel,
     back_btn: gtk::Button,
     wordmark_frame: gtk::Box,
@@ -145,225 +96,9 @@ pub struct WelcomeWidgets {
     icon_choice: std::rc::Rc<std::cell::RefCell<String>>,
 }
 
-/// The providers the manual form offers: the shared table less Google and
-/// Microsoft, which come in through the Online Accounts page before it.
-fn wizard_providers() -> impl Iterator<Item = &'static Provider> {
-    PROVIDERS.iter().filter(|p| p.wizard_listed())
-}
-
-/// The manual form's provider at a drop-down index.
-fn wizard_provider(sel: u32) -> Option<&'static Provider> {
-    wizard_providers().nth(sel as usize)
-}
-
-/// The wordmark with the app icon beside it, for the About window and the
-/// wizard: "Hylki" set in Cantarell, dark or white, as an SVG on a 128x42
-/// box (the pixbuf loader tells the formats apart by their bytes). The
-/// wizard always takes the white one, on its blue ground.
-const ABOUT_WORDMARK_SVG: &[u8] = include_bytes!("../../data/about/wordmark-black.svg");
-const ABOUT_WORDMARK_DARK_SVG: &[u8] = include_bytes!("../../data/about/wordmark-white.svg");
-
-/// Which wordmark art a picture shows.
-#[derive(Clone, Copy)]
-pub(crate) enum Wordmark {
-    /// The script lettering alone (the carry-over notice).
-    Plain,
-    /// The Cantarell lettering with the app icon beside it, dark or white
-    /// by scheme (the About window).
-    WithIcon,
-    /// The same art, always with white lettering (the wizard's floating
-    /// wordmark, on the blue ground).
-    WithIconWhite,
-}
-
-impl Wordmark {
-    fn art(self, dark: bool) -> &'static [u8] {
-        match (self, dark) {
-            (Wordmark::Plain, false) => WORDMARK_PNG,
-            (Wordmark::Plain, true) => WORDMARK_DARK_PNG,
-            (Wordmark::WithIcon, false) => ABOUT_WORDMARK_SVG,
-            (Wordmark::WithIcon, true) | (Wordmark::WithIconWhite, _) => ABOUT_WORDMARK_DARK_SVG,
-        }
-    }
-
-    /// The art's aspect (height over width).
-    fn aspect(self) -> f64 {
-        match self {
-            Wordmark::Plain => 293.0 / 1024.0,
-            Wordmark::WithIcon | Wordmark::WithIconWhite => 42.0 / 128.0,
-        }
-    }
-}
-
-/// Render the script lettering at 2x for crisp HiDPI, displayed at
-/// `width` px.
-pub(crate) fn wordmark_picture(width: i32) -> gtk::Picture {
-    wordmark_picture_of(Wordmark::Plain, width)
-}
-
-/// Render the given wordmark art at 2x for crisp HiDPI, displayed at
-/// `width` px.
-pub(crate) fn wordmark_picture_of(art: Wordmark, width: i32) -> gtk::Picture {
-    let pic = gtk::Picture::new();
-    pic.set_can_shrink(true);
-    pic.set_content_fit(gtk::ContentFit::Contain);
-    // Black lettering on a light ground, white on a dark one; follows the
-    // style manager while the window is open.
-    let style = adw::StyleManager::default();
-    let apply = move |pic: &gtk::Picture, dark: bool| {
-        if let Some(tex) = wordmark_texture(art, width, dark) {
-            pic.set_paintable(Some(&tex));
-        }
-    };
-    apply(&pic, style.is_dark());
-    let weak = pic.downgrade();
-    style.connect_dark_notify(move |s| {
-        if let Some(pic) = weak.upgrade() {
-            apply(&pic, s.is_dark());
-        }
-    });
-    pic
-}
-
-/// The wordmark rendered at 2x `width` for crisp HiDPI.
-fn wordmark_texture(art: Wordmark, width: i32, dark: bool) -> Option<gtk::gdk::Texture> {
-    let loader = gtk::gdk_pixbuf::PixbufLoader::new();
-    loader.connect_size_prepared(move |l, w, h| {
-        let scale = (width * 2) as f64 / w.max(1) as f64;
-        l.set_size(width * 2, (h as f64 * scale) as i32);
-    });
-    loader.write(art.art(dark)).ok()?;
-    loader.close().ok()?;
-    loader.pixbuf().map(|pb| gtk::gdk::Texture::for_pixbuf(&pb))
-}
-
-/// Wrap a page so a tall one scrolls instead of forcing the window taller
-/// (the carousel's minimum height is its tallest page's).
-fn scrolled(inner: &gtk::Box) -> gtk::ScrolledWindow {
-    let sw = gtk::ScrolledWindow::new();
-    sw.set_policy(gtk::PolicyType::Never, gtk::PolicyType::Automatic);
-    // ScrolledWindow deliberately doesn't propagate its child's expand flags
-    // (it is the scrollable boundary), so without these the carousel sizes
-    // the page to its natural width and neighbours peek in at the edges.
-    sw.set_hexpand(true);
-    sw.set_vexpand(true);
-    sw.set_child(Some(inner));
-    sw
-}
-
-/// One wizard page: vertically centered content in consistent margins.
-fn page(content: &gtk::Box) -> gtk::Box {
-    let outer = gtk::Box::new(gtk::Orientation::Vertical, 0);
-    outer.set_valign(gtk::Align::Center);
-    outer.set_halign(gtk::Align::Center);
-    outer.set_margin_top(24);
-    outer.set_margin_bottom(24);
-    outer.set_margin_start(48);
-    outer.set_margin_end(48);
-    outer.set_hexpand(true);
-    outer.set_vexpand(true);
-    outer.append(content);
-    outer
-}
-
-fn title(text: &str) -> gtk::Label {
-    let l = gtk::Label::new(Some(text));
-    l.add_css_class("welcome-title");
-    l.set_halign(gtk::Align::Center);
-    l
-}
-
-fn tagline(text: &str) -> gtk::Label {
-    let l = gtk::Label::new(Some(text));
-    l.add_css_class("welcome-tagline");
-    l.set_halign(gtk::Align::Center);
-    l.set_justify(gtk::Justification::Center);
-    l.set_wrap(true);
-    l
-}
-
-fn card() -> gtk::ListBox {
-    let lb = gtk::ListBox::new();
-    lb.add_css_class("boxed-list");
-    lb.add_css_class("welcome-card");
-    lb.set_selection_mode(gtk::SelectionMode::None);
-    lb
-}
-
-fn pill(label: &str) -> gtk::Button {
-    let b = gtk::Button::with_label(label);
-    b.add_css_class("pill");
-    b.add_css_class("suggested-action");
-    b.add_css_class("welcome-pill");
-    b.set_halign(gtk::Align::Center);
-    b
-}
-
-/// Fade-and-rise entrance for the hero page, staggered per widget. Runs on the
-/// window's first map (animations on unmapped widgets skip to the end).
-fn entrance(widgets: &[gtk::Widget]) {
-    for (i, w) in widgets.iter().cloned().enumerate() {
-        w.set_opacity(0.0);
-        // The rise is relative: each widget ends back on its OWN margin, so
-        // layout spacing set at build time survives the animation.
-        let base = w.margin_top();
-        gtk::glib::timeout_add_local_once(
-            std::time::Duration::from_millis(120 + 140 * i as u64),
-            move || {
-                let target = adw::CallbackAnimationTarget::new({
-                    let w = w.clone();
-                    move |v| {
-                        w.set_opacity(v);
-                        w.set_margin_top(base + ((1.0 - v) * 24.0) as i32);
-                    }
-                });
-                let anim = adw::TimedAnimation::new(&w, 0.0, 1.0, 600, target);
-                anim.set_easing(adw::Easing::EaseOutCubic);
-                anim.play();
-            },
-        );
-    }
-}
-
 /// Extra space above the Online Accounts page's list (or its empty note)
 /// and its buttons.
 const GOA_GAP: i32 = 26;
-
-/// Hero and shrunk geometry for the floating wordmark.
-const HERO_TOP: i32 = 150;
-const HERO_SIZE: f64 = 240.0;
-const SMALL_TOP: f64 = 6.0;
-const SMALL_BOTTOM: f64 = 16.0;
-const SMALL_SIZE: f64 = 128.0;
-
-/// The script lettering's height for a given width.
-pub(crate) fn wordmark_height(width: f64) -> i32 {
-    wordmark_height_of(Wordmark::Plain, width)
-}
-
-/// A wordmark's height for a given width.
-pub(crate) fn wordmark_height_of(art: Wordmark, width: f64) -> i32 {
-    (width * art.aspect()) as i32
-}
-
-/// Tie the wordmark's size and lift to the carousel's live position: while
-/// the spring runs from the hero to page 2, the wordmark shrinks and rises in
-/// lockstep (a shared-element move — no second timeline to fall out of sync),
-/// and it parks small for every later page.
-fn bind_wordmark_to_position(carousel: &adw::Carousel, frame: &gtk::Box, holder: &gtk::Box) {
-    let frame = frame.clone();
-    let holder = holder.clone();
-    carousel.connect_position_notify(move |car| {
-        let p = car.position().clamp(0.0, 1.0);
-        let s = HERO_SIZE + (SMALL_SIZE - HERO_SIZE) * p;
-        frame.set_size_request(s as i32, wordmark_height_of(Wordmark::WithIconWhite, s));
-        holder
-            .set_margin_top((HERO_TOP as f64 + (SMALL_TOP - HERO_TOP as f64) * p) as i32);
-        // The small form also keeps 16px of air below itself; the hero's
-        // spacing is the tagline's own margin, so this fades in with p.
-        holder.set_margin_bottom((SMALL_BOTTOM * p) as i32);
-    });
-}
 
 impl Component for Welcome {
     type Init = ();
@@ -391,7 +126,7 @@ impl Component for Welcome {
             .into_iter()
             .map(|a| a.email.to_ascii_lowercase())
             .collect();
-        let mut goa = crate::goa::list_mail_accounts();
+        let mut goa = crate::services::goa::list_mail_accounts();
         goa.retain(|g| g.can_connect() && !existing.contains(&g.email.to_ascii_lowercase()));
         let model = Welcome {
             goa,
@@ -406,152 +141,17 @@ impl Component for Welcome {
         carousel.set_hexpand(true);
         carousel.set_vexpand(true);
 
-        // ---- The wordmark: lives ABOVE the carousel, on every page. It
-        // starts hero-sized and mid-window; Get Started shrinks it to 100px
-        // and floats it to the top (see WelcomeInput::Next), where it stays.
-        // The positioning margins live on the box and the size on the Clamp,
-        // so the entrance animation (which drives the clamp's own margin)
-        // never fights the choreography.
-        // Sizing a Picture directly is a trap twice over: width_request is a
-        // floor, and the texture's natural size wins over the request under
-        // centering. The reliable cap (see the palette's clip saga) is an
-        // Overlay whose MAIN child is an empty spacer — an empty box's
-        // natural size is exactly its size request, so the animation drives
-        // the spacer and the clipped Picture simply fills whatever the
-        // overlay was given.
-        let wordmark_pic = wordmark_picture_of(Wordmark::WithIconWhite, 300);
-        let wordmark_frame = gtk::Box::new(gtk::Orientation::Vertical, 0);
-        wordmark_frame.set_size_request(
-            HERO_SIZE as i32,
-            wordmark_height_of(Wordmark::WithIconWhite, HERO_SIZE),
-        );
-        let wordmark_overlay = gtk::Overlay::new();
-        wordmark_overlay.set_child(Some(&wordmark_frame));
-        wordmark_overlay.add_overlay(&wordmark_pic);
-        wordmark_overlay.set_clip_overlay(&wordmark_pic, true);
-        wordmark_overlay.set_halign(gtk::Align::Center);
-        let wordmark_box = gtk::Box::new(gtk::Orientation::Vertical, 0);
-        wordmark_box.set_halign(gtk::Align::Center);
-        wordmark_box.set_margin_top(HERO_TOP);
-        wordmark_box.append(&wordmark_overlay);
-
-        // ---- Page 1: hero (tagline + start; the wordmark floats above) ----
-        let hero = gtk::Box::new(gtk::Orientation::Vertical, 18);
-        hero.set_halign(gtk::Align::Center);
-        let tag = tagline(&i18n("A clean, fast home for your mail.\nLet's set things up — it takes about a minute."));
-        tag.set_margin_top(16);
-        // The interface language, first of all (#179): System, English and
-        // every shipped translation. A pick restarts Hylki into it, so the
-        // rest of the wizard reads in the chosen language.
-        let lang_row = gtk::Box::new(gtk::Orientation::Horizontal, 10);
-        lang_row.set_halign(gtk::Align::Center);
-        // 64px below the tagline: the hero's 18px spacing plus this.
-        lang_row.set_margin_top(46);
-        let lang_label = gtk::Label::new(Some(i18n("Language").as_str()));
-        lang_label.add_css_class("welcome-hint");
-        lang_row.append(&lang_label);
-        let choices = crate::ui::preferences::language_choices();
-        let choice_labels: Vec<&str> = choices.iter().map(|(l, _)| l.as_str()).collect();
-        let lang = gtk::DropDown::from_strings(&choice_labels);
-        lang.set_valign(gtk::Align::Center);
-        let current = crate::config::load_language();
-        lang.set_selected(choices.iter().position(|(_, c)| *c == current).unwrap_or(0) as u32);
-        {
-            let s = sender.clone();
-            lang.connect_selected_notify(move |d| s.input(WelcomeInput::LanguageChanged(d.selected())));
-        }
-        lang_row.append(&lang);
-        // Fair warning: a pick restarts the app.
-        let lang_note = gtk::Label::new(Some(
-            i18n("Choosing another language restarts Hylki: it closes for a moment and this wizard comes back in that language.").as_str(),
-        ));
-        lang_note.add_css_class("welcome-hint");
-        lang_note.add_css_class("caption");
-        lang_note.set_wrap(true);
-        lang_note.set_justify(gtk::Justification::Center);
-        lang_note.set_max_width_chars(46);
-        lang_note.set_margin_top(2);
-        let start = pill(&i18n("Get Started"));
-        start.set_margin_top(10);
-        {
-            let s = sender.clone();
-            start.connect_clicked(move |_| s.input(WelcomeInput::Next));
-        }
-        hero.append(&tag);
-        hero.append(&lang_row);
-        hero.append(&lang_note);
-        hero.append(&start);
-        let hero_page = page(&hero);
-        hero_page.set_valign(gtk::Align::Start);
-        hero_page.set_margin_top(6);
-        carousel.append(&scrolled(&hero_page));
-        entrance(&[
-            wordmark_overlay.clone().upcast(),
-            tag.clone().upcast(),
-            lang_row.clone().upcast(),
-            lang_note.clone().upcast(),
-            start.clone().upcast(),
-        ]);
-        // HYLKI_SHOWCASE_WIZARD_LANG=<n> picks choice n on the drop-down
-        // after 4 s, what a click there does (for testing the restart).
-        if let Some(n) = std::env::var("HYLKI_SHOWCASE_WIZARD_LANG").ok().and_then(|v| v.parse::<u32>().ok()) {
-            let lang = lang.clone();
-            gtk::glib::timeout_add_seconds_local_once(4, move || lang.set_selected(n));
-        }
-
-        // ---- Page 2: GNOME Online Accounts ----
-        // The accounts already signed in on this computer, Google and
-        // Microsoft among them (their only sign-in), one click each. Nothing
-        // here is required: the footer reads Skip until something is added.
-        let goa_pg = gtk::Box::new(gtk::Orientation::Vertical, 14);
-        let import = gtk::Image::from_icon_name("arrow-into-box-symbolic");
-        import.set_pixel_size(36);
-        import.add_css_class("welcome-check");
-        goa_pg.append(&import);
-        goa_pg.append(&title(&i18n("Import your online accounts")));
-        goa_pg.append(&tagline(&i18n(
-            "Mail accounts signed in under GNOME Settings → Online Accounts can be added here in one click. Google and Microsoft accounts are only supported through Online Accounts.",
-        )));
-        let goa_list = card();
-        goa_list.set_visible(!model.goa.is_empty());
-        // As far from the tagline as the buttons are from the list.
-        goa_list.set_margin_top(GOA_GAP);
-        goa_pg.append(&goa_list);
-        let goa_empty = tagline(&i18n("No mail accounts were found in Online Accounts."));
-        goa_empty.add_css_class("welcome-hint");
-        goa_empty.set_visible(model.goa.is_empty());
-        // The empty note sits as far from the tagline as the buttons sit
-        // from it: 47px each to the eye, page spacing and margin together.
-        goa_empty.set_margin_top(GOA_GAP);
-        goa_pg.append(&goa_empty);
-        // Hidden until an import reports, so an empty line never widens the
-        // gap above the buttons.
-        let goa_status = gtk::Label::new(None);
-        goa_status.add_css_class("welcome-hint");
-        goa_status.set_wrap(true);
-        goa_status.set_justify(gtk::Justification::Center);
-        goa_status.set_visible(false);
-        goa_pg.append(&goa_status);
-        let goa_links = gtk::Box::new(gtk::Orientation::Horizontal, 12);
-        goa_links.set_halign(gtk::Align::Center);
-        // 4px more: a button's edge has none of a text line's leading.
-        goa_links.set_margin_top(GOA_GAP + 4);
-        let open_goa = gtk::Button::with_label(&i18n("Open Online Accounts…"));
-        let rescan = gtk::Button::with_label(&i18n("Scan Again"));
-        for b in [&open_goa, &rescan] {
-            b.add_css_class("pill");
-            b.add_css_class("welcome-secondary");
-        }
-        {
-            let s = sender.clone();
-            open_goa.connect_clicked(move |_| s.input(WelcomeInput::OpenOnlineAccounts));
-            let s = sender.clone();
-            rescan.connect_clicked(move |_| s.input(WelcomeInput::RescanGoa));
-        }
-        goa_links.append(&open_goa);
-        goa_links.append(&rescan);
-        goa_pg.append(&goa_links);
-        carousel.append(&scrolled(&page(&goa_pg)));
+        let WordmarkParts {
+            frame: wordmark_frame,
+            overlay: wordmark_overlay,
+            holder: wordmark_box,
+        } = build_wordmark();
+        build_hero_page(&carousel, &sender, &wordmark_overlay);
+        let GoaPage {
+            list: goa_list,
+            empty: goa_empty,
+            status: goa_status,
+        } = build_goa_page(&carousel, &model, &sender);
 
         // ---- Page 3: an account by hand ----
         let acct = gtk::Box::new(gtk::Orientation::Vertical, 14);
@@ -566,11 +166,15 @@ impl Component for Welcome {
         // The providers' marks before their names, as in Settings.
         provider_row.set_factory(Some(&crate::ui::accounts::provider_factory()));
         // Default to the plain IMAP/POP3 entry.
-        let manual = wizard_providers().position(|p| p.wizard_is_manual()).unwrap_or(0);
+        let manual = wizard_providers()
+            .position(|p| p.wizard_is_manual())
+            .unwrap_or(0);
         provider_row.set_selected(manual as u32);
         {
             let s = sender.clone();
-            provider_row.connect_selected_notify(move |_| s.input(WelcomeInput::ProviderChanged));
+            provider_row.connect_selected_notify(move |_| {
+                s.input_sender().emit(WelcomeInput::ProviderChanged)
+            });
         }
         let name_row = adw::EntryRow::new();
         name_row.set_title(&i18n("Your name"));
@@ -639,7 +243,7 @@ impl Component for Welcome {
         add_btn.set_margin_top(4);
         {
             let s = sender.clone();
-            add_btn.connect_clicked(move |_| s.input(WelcomeInput::TestAndAdd));
+            add_btn.connect_clicked(move |_| s.input_sender().emit(WelcomeInput::TestAndAdd));
         }
         acct.append(&add_btn);
         // The result line sits under the button, account name and verdict
@@ -662,106 +266,19 @@ impl Component for Welcome {
         acct_page.set_halign(gtk::Align::Fill);
         carousel.append(&scrolled(&acct_page));
 
-        // ---- Page 4: privacy ----
-        let priv_pg = gtk::Box::new(gtk::Orientation::Vertical, 14);
-        priv_pg.append(&title(&i18n("Privacy, your way")));
-        priv_pg.append(&tagline(&i18n("Hylki sends no telemetry, ever. These control what leaves your machine while you read.")));
-        let priv_card = card();
-        let sw_remote = adw::SwitchRow::new();
-        sw_remote.set_title(&i18n("Block remote images"));
-        sw_remote.set_subtitle(&i18n("Stops senders tracking when and where you open mail"));
-        sw_remote.set_active(!crate::config::load_privacy().auto_remote_content);
-        let sw_gravatar = adw::SwitchRow::new();
-        sw_gravatar.set_title(&i18n("Fetch Gravatar portraits"));
-        sw_gravatar.set_subtitle(&i18n("Asks gravatar.com about each sender's address"));
-        sw_gravatar.set_active(crate::config::load_privacy().gravatar);
-        let sw_logos = adw::SwitchRow::new();
-        sw_logos.set_title(&i18n("Fetch sender logos"));
-        sw_logos.set_subtitle(&i18n("Looks up company icons for the message list"));
-        sw_logos.set_active(crate::config::load_privacy().sender_logos);
-        let sw_notif = adw::SwitchRow::new();
-        sw_notif.set_title(&i18n("Show message content in notifications"));
-        sw_notif.set_subtitle(&i18n("Off keeps senders and subjects off the lock screen"));
-        sw_notif.set_active(crate::config::load_privacy().notification_content);
-        priv_card.append(&sw_remote);
-        priv_card.append(&sw_gravatar);
-        priv_card.append(&sw_logos);
-        priv_card.append(&sw_notif);
-        priv_pg.append(&priv_card);
-        carousel.append(&scrolled(&page(&priv_pg)));
-
-        // ---- Page 5: personalize ----
-        let pers = gtk::Box::new(gtk::Orientation::Vertical, 14);
-        pers.append(&title(&i18n("Make it yours")));
-        pers.append(&tagline(&i18n("A few popular choices — everything can be changed later in Settings.")));
-        let pers_card = card();
-        let preview_row = adw::ComboRow::new();
-        preview_row.set_title(&i18n("Preview lines"));
-        preview_row.set_subtitle(&i18n("Message text shown under each subject"));
-        preview_row.set_model(Some(&gtk::StringList::new(&[i18n("None").as_str(), i18n("1 line").as_str(), i18n("2 lines").as_str()])));
-        preview_row.set_selected(crate::config::load_preview_lines().min(2));
-        let sw_avatars = adw::SwitchRow::new();
-        sw_avatars.set_title(&i18n("Sender avatars"));
-        sw_avatars.set_subtitle(&i18n("Colorful initials beside each message"));
-        sw_avatars.set_active(crate::config::load_privacy().avatars);
-        let sw_threading = adw::SwitchRow::new();
-        sw_threading.set_title(&i18n("Conversation view"));
-        sw_threading.set_subtitle(&i18n("Group messages into threads"));
-        sw_threading.set_active(crate::config::load_privacy().threading);
-        pers_card.append(&preview_row);
-        pers_card.append(&sw_avatars);
-        pers_card.append(&sw_threading);
-        pers.append(&pers_card);
-
-        // The app icon: the whole set as one sideways-scrolling row on its
-        // own card, the default ringed.
-        let icon_hdr = gtk::Label::new(Some(i18n("Pick your app icon").as_str()));
-        icon_hdr.add_css_class("welcome-section");
-        icon_hdr.set_halign(gtk::Align::Start);
-        icon_hdr.set_margin_top(6);
-        pers.append(&icon_hdr);
-        // With an icon set outside Hylki on the launcher (#252), nothing is
-        // preselected, and only an actual pick replaces it.
-        let icon_choice = std::rc::Rc::new(std::cell::RefCell::new(if crate::app_icon::custom_icon().is_some() {
-            String::new()
-        } else {
-            crate::config::load_app_icon().unwrap_or_else(|| crate::app_icon::DEFAULT_ID.to_string())
-        }));
-        let icon_card = card();
-        let icon_row = gtk::ListBoxRow::new();
-        icon_row.set_activatable(false);
-        icon_row.set_focusable(false);
-        let strip = {
-            let choice = icon_choice.clone();
-            crate::ui::icon_picker::strip(
-                &icon_choice.borrow(),
-                52,
-                std::rc::Rc::new(move |id: &str| *choice.borrow_mut() = id.to_string()),
-            )
-        };
-        strip.set_margin_top(8);
-        strip.set_margin_start(6);
-        strip.set_margin_end(6);
-        icon_row.set_child(Some(&strip));
-        icon_card.append(&icon_row);
-        pers.append(&icon_card);
-        carousel.append(&scrolled(&page(&pers)));
-
-        // ---- Page 6: done ----
-        let done = gtk::Box::new(gtk::Orientation::Vertical, 16);
-        let check = gtk::Image::from_icon_name("verified-checkmark-symbolic");
-        check.set_pixel_size(72);
-        check.add_css_class("welcome-check");
-        done.append(&check);
-        done.append(&title(&i18n("You're all set")));
-        let done_sub = tagline("");
-        done_sub.set_use_markup(true);
-        done_sub.set_markup(&i18n_f(
-            "Enjoy! If you encounter an issue or have a feature request,\nplease open an issue on our <a href=\"{url}\">Github</a>.",
-            &[("url", "https://github.com/hyprlab/hylki")],
-        ));
-        done.append(&done_sub);
-        carousel.append(&scrolled(&page(&done)));
+        let PrivacyPage {
+            remote: sw_remote,
+            gravatar: sw_gravatar,
+            logos: sw_logos,
+            notif: sw_notif,
+        } = build_privacy_page(&carousel);
+        let PersonalizePage {
+            preview_row,
+            avatars: sw_avatars,
+            threading: sw_threading,
+            icon_choice,
+        } = build_personalize_page(&carousel);
+        build_done_page(&carousel);
 
         // ---- Chrome: draggable top strip with Back button ----
         let tv = adw::ToolbarView::new();
@@ -773,7 +290,7 @@ impl Component for Welcome {
         back_btn.set_visible(false);
         {
             let s = sender.clone();
-            back_btn.connect_clicked(move |_| s.input(WelcomeInput::Back));
+            back_btn.connect_clicked(move |_| s.input_sender().emit(WelcomeInput::Back));
         }
         hb.pack_start(&back_btn);
         tv.add_top_bar(&hb);
@@ -789,7 +306,7 @@ impl Component for Welcome {
         footer_next.set_margin_bottom(8);
         {
             let s = sender.clone();
-            footer_next.connect_clicked(move |_| s.input(WelcomeInput::Next));
+            footer_next.connect_clicked(move |_| s.input_sender().emit(WelcomeInput::Next));
         }
         content.append(&footer_next);
         let dots = adw::CarouselIndicatorDots::new();
@@ -802,7 +319,7 @@ impl Component for Welcome {
             carousel.connect_position_notify(move |car| {
                 let r = car.position().round() as u32;
                 btn.set_visible(r >= 1);
-                s.input(WelcomeInput::RefreshFooter);
+                s.input_sender().emit(WelcomeInput::RefreshFooter);
             });
         }
         // Typing in the manual form turns its Skip into Continue.
@@ -819,7 +336,7 @@ impl Component for Welcome {
             oauth_scope_row.upcast_ref(),
         ] {
             let s = sender.clone();
-            entry.connect_changed(move |_| s.input(WelcomeInput::RefreshFooter));
+            entry.connect_changed(move |_| s.input_sender().emit(WelcomeInput::RefreshFooter));
         }
         tv.set_content(Some(&content));
         root.set_content(Some(&tv));
@@ -862,7 +379,11 @@ impl Component for Welcome {
             icon_choice,
         };
         rebuild_goa_rows(&widgets.goa_list, &model.goa, &sender);
-        bind_wordmark_to_position(&widgets.carousel, &widgets.wordmark_frame, &widgets.wordmark_box);
+        bind_wordmark_to_position(
+            &widgets.carousel,
+            &widgets.wordmark_frame,
+            &widgets.wordmark_box,
+        );
 
         // Screenshot hook, mirroring the main window's: HYLKI_SHOWCASE=path
         // captures the wizard after a beat; HYLKI_SHOWCASE_PAGE=N walks to
@@ -883,7 +404,7 @@ impl Component for Welcome {
                     let s = s.clone();
                     gtk::glib::timeout_add_local_once(
                         std::time::Duration::from_millis(700 * i as u64),
-                        move || s.input(WelcomeInput::Next),
+                        move || s.input_sender().emit(WelcomeInput::Next),
                     );
                 }
                 let win = win.clone();
@@ -891,7 +412,7 @@ impl Component for Welcome {
                 gtk::glib::timeout_add_local_once(
                     std::time::Duration::from_millis(2000 + 700 * n as u64),
                     move || {
-                        crate::app::showcase_capture(win.upcast_ref(), &path);
+                        crate::ui::showcase::showcase_capture(win.upcast_ref(), &path);
                     },
                 );
             });
@@ -907,204 +428,16 @@ impl Component for Welcome {
         root: &Self::Root,
     ) {
         match message {
-            WelcomeInput::LanguageChanged(i) => {
-                if let Some((_, code)) = crate::ui::preferences::language_choices().get(i as usize) {
-                    let _ = sender.output(WelcomeOutput::Language(code.clone()));
-                }
-            }
-            WelcomeInput::Next => {
-                // position() is fractional mid-scroll; round to the page the
-                // user sees as current, so rapid clicks don't repeat a page.
-                let pos = widgets.carousel.position().round() as u32;
-                if pos + 1 >= widgets.carousel.n_pages() {
-                    // The footer button on the last page is Finish.
-                    sender.input(WelcomeInput::Finish);
-                    return;
-                }
-                let next = widgets.carousel.nth_page(pos + 1);
-                widgets.carousel.scroll_to(&next, true);
-                widgets.back_btn.set_visible(true);
-            }
-            WelcomeInput::Back => {
-                let pos = widgets.carousel.position().round() as usize;
-                if pos > 0 {
-                    let prev = widgets.carousel.nth_page(pos as u32 - 1);
-                    widgets.carousel.scroll_to(&prev, true);
-                    widgets.back_btn.set_visible(pos > 1);
-                }
-            }
-            WelcomeInput::ProviderChanged => {
-                let sel = widgets.provider_row.selected();
-                let oauth = wizard_provider(sel).is_some_and(|p| p.wizard_is_oauth());
-                // Microsoft brings its own client and servers (#329): only
-                // the address is asked for, and even that is filled in by
-                // the sign-in.
-                let custom = wizard_provider(sel).is_some_and(|p| p.wizard_is_custom_oauth());
-                let builtin = wizard_provider(sel).is_some_and(|p| p.wizard_builtin_oauth().is_some());
-                // A newer choice supersedes a sign-in still waiting in the
-                // browser; its late result is ignored.
-                self.test_seq += 1;
-                widgets.test_spinner.stop();
-                widgets.test_spinner.set_visible(false);
-                widgets.add_btn.set_sensitive(true);
-                widgets.status_lbl.set_text("");
-                widgets.pass_row.set_visible(!oauth);
-                for row in [
-                    widgets.oauth_client_id_row.upcast_ref::<gtk::Widget>(),
-                    widgets.oauth_secret_row.upcast_ref(),
-                    widgets.oauth_auth_url_row.upcast_ref(),
-                    widgets.oauth_token_url_row.upcast_ref(),
-                    widgets.oauth_scope_row.upcast_ref(),
-                ] {
-                    row.set_visible(custom);
-                }
-                widgets.server_exp.set_visible(!builtin);
-                widgets
-                    .add_btn
-                    .set_label(&if oauth { i18n("Sign In & Add") } else { i18n("Test & Add") });
-                if let Some(p) = wizard_provider(sel) {
-                    let (ih, ip, sh, sp) = p.wizard_servers();
-                    let jmap = p.wizard_protocol() == Protocol::Jmap;
-                    if !ih.is_empty() {
-                        widgets.host_row.set_text(ih);
-                        widgets.port_row.set_text(&ip.to_string());
-                        widgets.smtp_row.set_text(sh);
-                        widgets.smtp_port_row.set_text(&sp.to_string());
-                        widgets.server_exp.set_expanded(false);
-                    } else {
-                        widgets.host_row.set_text("");
-                        widgets.smtp_row.set_text("");
-                        widgets.port_row.set_text(if jmap { "443" } else { "993" });
-                        widgets.server_exp.set_expanded(true);
-                    }
-                    // A JMAP server is one address, and it sends the mail
-                    // itself: no SMTP rows.
-                    widgets.host_row.set_title(&if jmap { i18n("Server (host name or URL)") } else { i18n("IMAP server") });
-                    widgets.port_row.set_title(&if jmap { i18n("Port") } else { i18n("IMAP port") });
-                    widgets.smtp_row.set_visible(!jmap);
-                    widgets.smtp_port_row.set_visible(!jmap);
-                    // Fastmail over JMAP takes an API token, not the password (#356).
-                    widgets
-                        .pass_row
-                        .set_title(&if p.wizard_token() { i18n("API Token") } else { i18n("Password") });
-                    let hint = p.wizard_hint();
-                    widgets.hint_lbl.set_visible(!hint.is_empty());
-                    widgets.hint_lbl.set_text(&i18n(hint));
-                }
-            }
-            WelcomeInput::TestAndAdd => {
-                let email = widgets.email_row.text().trim().to_string();
-                let password = widgets.pass_row.text().to_string();
-                // Derive missing servers from the address's domain — the common
-                // convention, and the expander is right there to correct it.
-                let provider = wizard_provider(widgets.provider_row.selected());
-                let oauth = provider.is_some_and(|p| p.wizard_is_oauth());
-                let protocol = provider.map(|p| p.wizard_protocol()).unwrap_or_default();
-                let domain = email.split('@').nth(1).unwrap_or("").to_string();
-                let mut host = widgets.host_row.text().trim().to_string();
-                // A JMAP server's address is the user's to give; imap.<domain>
-                // is the convention only for IMAP.
-                if host.is_empty() && !domain.is_empty() && protocol != Protocol::Jmap {
-                    host = format!("imap.{domain}");
-                    widgets.host_row.set_text(&host);
-                }
-                let mut smtp = widgets.smtp_row.text().trim().to_string();
-                if smtp.is_empty() && !domain.is_empty() && protocol != Protocol::Jmap {
-                    smtp = format!("smtp.{domain}");
-                    widgets.smtp_row.set_text(&smtp);
-                }
-                if oauth {
-                    self.sign_in_and_add(widgets, &sender, email, host, smtp);
-                    return;
-                }
-                if email.is_empty() || password.is_empty() || host.is_empty() {
-                    widgets.status_lbl.set_css_classes(&["welcome-hint", "error"]);
-                    widgets
-                        .status_lbl
-                        .set_text(&i18n("Enter your email address and password first."));
-                    return;
-                }
-                let account = AccountConfig {
-                    name: widgets.name_row.text().trim().to_string(),
-                    email: email.clone(),
-                    protocol,
-                    imap_host: host,
-                    imap_port: widgets.port_row.text().trim().parse().unwrap_or(if protocol == Protocol::Jmap { 443 } else { 993 }),
-                    smtp_host: smtp,
-                    smtp_port: widgets.smtp_port_row.text().trim().parse().unwrap_or(587),
-                    username: email,
-                    password,
-                    jmap_token: provider.is_some_and(|p| p.wizard_token()),
-                    jmap_generic: provider.is_some_and(|p| p.wizard_jmap_generic()),
-                    ..blank_account()
-                };
-                self.test_seq += 1;
-                let seq = self.test_seq;
-                widgets.test_spinner.set_visible(true);
-                widgets.test_spinner.start();
-                widgets.status_lbl.set_css_classes(&["welcome-hint"]);
-                widgets.status_lbl.set_text(&i18n("Checking the connection…"));
-                sender.oneshot_command(async move {
-                    let test = {
-                        let account = account.clone();
-                        tokio::task::spawn_blocking(move || worker::test_connection_blocking(account))
-                            .await
-                            .unwrap_or_else(|_| ConnTest {
-                                incoming: Err("test could not run".into()),
-                                smtp: Err("test could not run".into()),
-                            })
-                    };
-                    WelcomeCmd::Tested { account: Box::new(account), result: test, seq }
-                });
-            }
-            WelcomeInput::ImportGoa(index) => {
-                if let Some(g) = self.goa.get(index).cloned() {
-                    let (password, oauth) = if g.password_based {
-                        (crate::goa::mail_passwords(&g.id).0.unwrap_or_default(), false)
-                    } else {
-                        (String::new(), true)
-                    };
-                    let account = g.to_config(password, oauth);
-                    self.added.push(account.email.clone());
-                    self.goa.remove(index);
-                    widgets.goa_status.set_visible(true);
-                    widgets.goa_status.set_css_classes(&["welcome-hint", "success"]);
-                    widgets
-                        .goa_status
-                        .set_text(&i18n_f("✓ {email} — added", &[("email", &(account.email).to_string())]));
-                    let _ = sender.output(WelcomeOutput::ImportGoa(Box::new(account)));
-                    rebuild_goa_rows(&widgets.goa_list, &self.goa, &sender);
-                    widgets.goa_list.set_visible(!self.goa.is_empty());
-                    self.goa_imported = true;
-                    self.refresh_footer(widgets);
-                    widgets.acct_title.set_text(&i18n("Add another email account"));
-                }
-            }
-            WelcomeInput::RescanGoa => {
-                self.goa = crate::goa::list_mail_accounts();
-                self.goa.retain(|g| g.can_connect() && !self.added.contains(&g.email));
-                rebuild_goa_rows(&widgets.goa_list, &self.goa, &sender);
-                widgets.goa_list.set_visible(!self.goa.is_empty());
-                // Everything found was added already: say so, not "none found".
-                widgets.goa_empty.set_visible(self.goa.is_empty() && self.added.is_empty());
-            }
+            WelcomeInput::LanguageChanged(i) => self.on_language_changed(i, sender),
+            WelcomeInput::Next => self.on_next(widgets, sender),
+            WelcomeInput::Back => self.on_back(widgets),
+            WelcomeInput::ProviderChanged => self.on_provider_changed(widgets),
+            WelcomeInput::TestAndAdd => self.on_test_and_add(widgets, sender),
+            WelcomeInput::ImportGoa(index) => self.on_import_goa(index, widgets, sender),
+            WelcomeInput::RescanGoa => self.on_rescan_goa(widgets, sender),
             WelcomeInput::OpenOnlineAccounts => crate::ui::accounts::open_online_accounts(),
             WelcomeInput::RefreshFooter => self.refresh_footer(widgets),
-            WelcomeInput::Finish => {
-                let prefs = WelcomePrefs {
-                    block_remote: widgets.sw_remote.is_active(),
-                    gravatar: widgets.sw_gravatar.is_active(),
-                    sender_logos: widgets.sw_logos.is_active(),
-                    notification_content: widgets.sw_notif.is_active(),
-                    preview_lines: widgets.preview_row.selected(),
-                    avatars: widgets.sw_avatars.is_active(),
-                    threading: widgets.sw_threading.is_active(),
-                    app_icon: widgets.icon_choice.borrow().clone(),
-                };
-                let _ = sender.output(WelcomeOutput::Prefs(prefs));
-                let _ = sender.output(WelcomeOutput::Done);
-                root.close();
-            }
+            WelcomeInput::Finish => self.on_finish(widgets, sender, root),
         }
     }
 
@@ -1116,72 +449,16 @@ impl Component for Welcome {
         _root: &Self::Root,
     ) {
         match message {
-            WelcomeCmd::Tested { account, result, seq } => {
-                if seq != self.test_seq {
-                    // A newer test was started (the user corrected a field and
-                    // clicked again); this stale verdict no longer matters.
-                    return;
-                }
-                widgets.test_spinner.stop();
-                widgets.test_spinner.set_visible(false);
-                let email = account.email.clone();
-                match (&result.incoming, &result.smtp) {
-                    (Ok(_), Ok(_)) => {
-                        self.added.push(account.email.clone());
-                        widgets.status_lbl.set_css_classes(&["welcome-hint", "success"]);
-                        widgets.status_lbl.set_text(&i18n_f("✓ {email} — connected and added", &[("email", &(email).to_string())]));
-                        widgets.pass_row.set_text("");
-                        widgets.email_row.set_text("");
-                        let _ = sender.output(WelcomeOutput::AddAccount(account));
-                        self.manual_added = true;
-                        self.refresh_footer(widgets);
-                    }
-                    (Err(e), _) => {
-                        widgets.status_lbl.set_css_classes(&["welcome-hint", "error"]);
-                        widgets.status_lbl.set_text(&i18n_f("{email} — mail server: {e}", &[("email", &(email).to_string()), ("e", &(e).to_string())]));
-                    }
-                    (_, Err(e)) => {
-                        widgets.status_lbl.set_css_classes(&["welcome-hint", "error"]);
-                        widgets.status_lbl.set_text(&i18n_f("{email} — sending (SMTP): {e}", &[("email", &(email).to_string()), ("e", &(e).to_string())]));
-                    }
-                }
-            }
-            WelcomeCmd::SignedIn { mut account, result, seq } => {
-                if seq != self.test_seq {
-                    return;
-                }
-                widgets.test_spinner.stop();
-                widgets.test_spinner.set_visible(false);
-                widgets.add_btn.set_sensitive(true);
-                match result {
-                    Ok((refresh, who)) => {
-                        // Microsoft's account is named for the mailbox the
-                        // sign-in reached (#329).
-                        if let Some((name, address)) = who {
-                            if !address.is_empty() {
-                                account.email = address.clone();
-                                account.username = address;
-                            }
-                            if account.name.is_empty() {
-                                account.name = name;
-                            }
-                        }
-                        let email = account.email.clone();
-                        account.oauth_refresh = refresh;
-                        self.added.push(email.clone());
-                        widgets.status_lbl.set_css_classes(&["welcome-hint", "success"]);
-                        widgets.status_lbl.set_text(&i18n_f("✓ {email} — signed in and added", &[("email", &email)]));
-                        widgets.email_row.set_text("");
-                        let _ = sender.output(WelcomeOutput::AddAccount(account));
-                        self.manual_added = true;
-                        self.refresh_footer(widgets);
-                    }
-                    Err(e) => {
-                        widgets.status_lbl.set_css_classes(&["welcome-hint", "error"]);
-                        widgets.status_lbl.set_text(&i18n_f("Sign-in failed: {e}", &[("e", &e)]));
-                    }
-                }
-            }
+            WelcomeCmd::Tested {
+                account,
+                result,
+                seq,
+            } => self.on_tested(account, result, seq, widgets, sender),
+            WelcomeCmd::SignedIn {
+                account,
+                result,
+                seq,
+            } => self.on_signed_in(account, result, seq, widgets, sender),
         }
     }
 }
@@ -1204,180 +481,5 @@ impl Welcome {
             i18n("Continue")
         };
         widgets.footer_next.set_label(&label);
-    }
-
-    /// Custom OAuth: sign in through the browser with the form's client,
-    /// then add the account with the refresh token that comes back (the
-    /// connection test is skipped, as in Settings: it reads the token from
-    /// the keyring, where it lands only once the account is saved).
-    fn sign_in_and_add(
-        &mut self,
-        widgets: &WelcomeWidgets,
-        sender: &ComponentSender<Self>,
-        email: String,
-        host: String,
-        smtp: String,
-    ) {
-        let text = |row: &adw::EntryRow| row.text().trim().to_string();
-        let builtin = wizard_provider(widgets.provider_row.selected()).and_then(|p| p.wizard_builtin_oauth());
-        let protocol = if builtin.is_some() { Protocol::Graph } else { Protocol::Imap };
-        let settings = builtin.unwrap_or_else(|| crate::config::OAuthSettings {
-            auth_url: text(&widgets.oauth_auth_url_row),
-            token_url: text(&widgets.oauth_token_url_row),
-            client_id: text(&widgets.oauth_client_id_row),
-            client_secret: widgets.oauth_secret_row.text().to_string(),
-            scopes: text(&widgets.oauth_scope_row),
-            redirect_uri: String::new(),
-        });
-        // Microsoft needs nothing typed: the sign-in says who it is.
-        if protocol != Protocol::Graph
-            && (email.is_empty()
-                || host.is_empty()
-                || settings.client_id.is_empty()
-                || settings.auth_url.is_empty()
-                || settings.token_url.is_empty())
-        {
-            widgets.status_lbl.set_css_classes(&["welcome-hint", "error"]);
-            widgets.status_lbl.set_text(&i18n(
-                "Enter your email address, the client ID and both OAuth URLs first.",
-            ));
-            return;
-        }
-        let account = AccountConfig {
-            name: widgets.name_row.text().trim().to_string(),
-            email: email.clone(),
-            protocol,
-            imap_host: if protocol == Protocol::Graph { String::new() } else { host },
-            imap_port: widgets.port_row.text().trim().parse().unwrap_or(993),
-            smtp_host: if protocol == Protocol::Graph { String::new() } else { smtp },
-            smtp_port: widgets.smtp_port_row.text().trim().parse().unwrap_or(587),
-            username: email,
-            oauth: true,
-            oauth_settings: Some(settings.clone()),
-            ..blank_account()
-        };
-        self.test_seq += 1;
-        let seq = self.test_seq;
-        widgets.add_btn.set_sensitive(false);
-        widgets.test_spinner.set_visible(true);
-        widgets.test_spinner.start();
-        widgets.status_lbl.set_css_classes(&["welcome-hint"]);
-        widgets.status_lbl.set_text(&i18n("Opening browser… complete sign-in there."));
-        sender.oneshot_command(async move {
-            let result = tokio::task::spawn_blocking(move || {
-                let refresh = crate::oauth::run_flow(&settings)?.refresh_token;
-                if settings.token_url.contains("microsoftonline") {
-                    let (name, address, refresh) = crate::oauth::microsoft_whoami(&settings, &refresh, None)?;
-                    return Ok((refresh, Some((name, address))));
-                }
-                Ok((refresh, None))
-            })
-            .await
-            .unwrap_or_else(|_| Err("sign-in task failed".into()));
-            WelcomeCmd::SignedIn { account: Box::new(account), result, seq }
-        });
-    }
-}
-
-/// Whether the user typed anything into the manual form. Servers count only
-/// where they differ from what the chosen provider fills in, and the ports,
-/// always filled in, not at all.
-fn form_has_input(widgets: &WelcomeWidgets) -> bool {
-    let (preset_host, _, preset_smtp, _) = wizard_provider(widgets.provider_row.selected())
-        .map(|p| p.wizard_servers())
-        .unwrap_or_default();
-    let typed = |row: &adw::EntryRow| row.is_visible() && !row.text().trim().is_empty();
-    typed(&widgets.name_row)
-        || typed(&widgets.email_row)
-        || typed(widgets.pass_row.upcast_ref())
-        || typed(&widgets.oauth_client_id_row)
-        || typed(widgets.oauth_secret_row.upcast_ref())
-        || typed(&widgets.oauth_auth_url_row)
-        || typed(&widgets.oauth_token_url_row)
-        || typed(&widgets.oauth_scope_row)
-        || widgets.host_row.text().trim() != preset_host
-        || (widgets.smtp_row.is_visible() && widgets.smtp_row.text().trim() != preset_smtp)
-}
-
-fn rebuild_goa_rows(
-    list: &gtk::ListBox,
-    goa: &[crate::goa::GoaMailAccount],
-    sender: &ComponentSender<Welcome>,
-) {
-    while let Some(row) = list.first_child() {
-        list.remove(&row);
-    }
-    for (i, g) in goa.iter().enumerate() {
-        let row = adw::ActionRow::new();
-        row.set_title(&g.email);
-        row.set_subtitle(&g.provider);
-        row.add_prefix(&crate::brand::mark(
-            crate::ui::accounts::brand_for_goa(&g.provider),
-            24,
-            crate::brand::GENERIC_MAIL,
-        ));
-        let btn = gtk::Button::with_label(&i18n("Add"));
-        btn.add_css_class("suggested-action");
-        btn.set_valign(gtk::Align::Center);
-        let s = sender.clone();
-        btn.connect_clicked(move |_| s.input(WelcomeInput::ImportGoa(i)));
-        row.add_suffix(&btn);
-        list.append(&row);
-    }
-}
-
-/// A fully-defaulted account for the wizard's manual form to build on.
-pub(crate) fn blank_account() -> AccountConfig {
-    AccountConfig {
-        name: String::new(),
-        email: String::new(),
-        protocol: Default::default(),
-        imap_host: String::new(),
-        imap_port: 993,
-        smtp_host: String::new(),
-        smtp_port: 587,
-        username: String::new(),
-        password: String::new(),
-        smtp_separate: false,
-        jmap_token: false,
-        jmap_generic: false,
-        tls_accept_hostname_mismatch: false,
-        security: None,
-        smtp_username: String::new(),
-        smtp_password: String::new(),
-        color: None,
-        emoji: None,
-        avatar: None,
-        gravatar: false,
-        signature: None,
-        signature_html: false,
-        signatures: Vec::new(),
-        default_signature: None,
-        label: None,
-        aliases: Vec::new(),
-        enabled: true,
-        goa_id: None,
-        goa_mail_disabled: false,
-        goa_enabled_before_mail_disabled: true,
-        oauth: false,
-        oauth_settings: None,
-        oauth_refresh: String::new(),
-        push: None,
-        folder_roles: Default::default(),
-        hidden_folders: Vec::new(),
-        folders_seeded: false,
-        sent_copy_path: None,
-        server_saves_sent: false,
-        reply_copies: Default::default(),
-        empty_junk_days: 0,
-        empty_trash_days: 0,
-        clean_lists_days: 0,
-        pgp_key: None,
-        in_unified: true,
-        folder_sort: None,
-        sign_by_default: false,
-        graph_directory: false,
-        graph_directory_only: false,
-        graph_label_names: false,
     }
 }

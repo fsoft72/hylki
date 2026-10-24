@@ -1,0 +1,6 @@
+contacts_footer_default_applied: default true, empty file false
+contacts_placement: default "footer", empty file "all_inboxes"
+date_groups_default_applied: default true, empty file false
+favorites_placement: default "above_accounts", empty file "all_inboxes"
+filtered_placement: default "above_accounts", empty file "all_inboxes"
+tags_placement: default "above_accounts", empty file "all_inboxes"

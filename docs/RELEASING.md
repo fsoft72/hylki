@@ -11,31 +11,32 @@ window shows. It is a list to scan, not prose to read:
 ```
 ## What's new in 1.42.0
 
-New features:
+### New features:
 
 - Recipients from LDAP directories - (#307)
 - Replies and forwards quote the message as it looks - (#295)
 - Drag files onto the window - (#293)
 - New mail notification sound - (#292)
 
-Fixes:
+### Fixes:
 
 - messages stuck on "Loading…" - (#296)
 - plain-text messages arriving empty - (#297)
 - a search of all folders mixing conversations - (#317)
 
-Translations:
+### Translations:
 
 - Polish by @TomaszBojanowski
 - Greek by @yioannides
 ```
 
-- Three groups, in that order: `New features:`, `Fixes:`, `Translations:`.
+- Three groups, in that order, each an H3 heading: `### New features:`,
+  `### Fixes:`, `### Translations:`.
   Leave out a group the release has nothing for.
 - One line per item: name the thing, then ` - (#issue)` where there is one.
   A feature starts with a capital; a fix is the problem it fixes, in lower
   case. How it works and why belong in [CHANGELOG.md](../CHANGELOG.md).
-- No bold, no headings inside the section, no paragraphs.
+- No bold, no other headings inside the section, no paragraphs.
 - No "What's changed" list: at the rate this repository commits, GitHub's
   generated list is the compare view again, only longer.
 

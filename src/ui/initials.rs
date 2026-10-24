@@ -40,20 +40,24 @@ const PALETTE: [(&str, &str, &str); 14] = [
 /// The palette entry `adw::Avatar` gives `text`: GLib's `g_str_hash`
 /// (djb2) modulo the palette, as libadwaita does it.
 fn palette_index(text: &str) -> usize {
-    let hash = text
-        .bytes()
-        .fold(5381u32, |h, b| h.wrapping_mul(33).wrapping_add(u32::from(b)));
+    let hash = text.bytes().fold(5381u32, |h, b| {
+        h.wrapping_mul(33).wrapping_add(u32::from(b))
+    });
     (hash % PALETTE.len() as u32) as usize
 }
 
 /// The initials `adw::Avatar` would show for `text`: the first letter of
 /// the first word and of the last, uppercased; nothing for an empty name.
-pub fn initials_of(text: &str) -> String {
+fn initials_of(text: &str) -> String {
     let upper = text.trim().to_uppercase();
-    let mut words = upper.split_whitespace().filter(|w| w.chars().any(char::is_alphanumeric));
-    let Some(first) = words.next() else { return String::new() };
+    let mut words = upper
+        .split_whitespace()
+        .filter(|w| w.chars().any(char::is_alphanumeric));
+    let Some(first) = words.next() else {
+        return String::new();
+    };
     let mut out: String = first.chars().take(1).collect();
-    if let Some(last) = words.last() {
+    if let Some(last) = words.next_back() {
         out.extend(last.chars().take(1));
     }
     out
@@ -69,15 +73,15 @@ mod imp {
     use super::*;
 
     #[derive(Default)]
-    pub struct InitialsPaintable {
-        pub initials: RefCell<String>,
+    pub(crate) struct InitialsPaintable {
+        pub(super) initials: RefCell<String>,
         /// The ground: a gradient top and bottom, or nothing (the widget
         /// beneath paints its own).
-        pub ground: RefCell<Option<(gdk::RGBA, gdk::RGBA)>>,
-        pub fg: RefCell<Option<gdk::RGBA>>,
+        pub(super) ground: RefCell<Option<(gdk::RGBA, gdk::RGBA)>>,
+        pub(super) fg: RefCell<Option<gdk::RGBA>>,
         /// Text height as a share of the shorter side; 0 = by the count
         /// of letters, as the avatar sizes its label.
-        pub scale: Cell<f64>,
+        pub(super) scale: Cell<f64>,
     }
 
     #[glib::object_subclass]
@@ -95,14 +99,19 @@ mod imp {
         }
 
         fn snapshot(&self, snapshot: &gdk::Snapshot, width: f64, height: f64) {
-            let Some(snapshot) = snapshot.downcast_ref::<gtk::Snapshot>() else { return };
+            let Some(snapshot) = snapshot.downcast_ref::<gtk::Snapshot>() else {
+                return;
+            };
             // The circle's ground: the avatar clips this to its disc.
             if let Some((top, bottom)) = *self.ground.borrow() {
                 snapshot.append_linear_gradient(
                     &graphene::Rect::new(0.0, 0.0, width as f32, height as f32),
                     &graphene::Point::new(0.0, 0.0),
                     &graphene::Point::new(0.0, height as f32),
-                    &[gsk::ColorStop::new(0.0, top), gsk::ColorStop::new(1.0, bottom)],
+                    &[
+                        gsk::ColorStop::new(0.0, top),
+                        gsk::ColorStop::new(1.0, bottom),
+                    ],
                 );
             }
 
@@ -144,7 +153,7 @@ mod imp {
 }
 
 glib::wrapper! {
-    pub struct InitialsPaintable(ObjectSubclass<imp::InitialsPaintable>)
+    pub(crate) struct InitialsPaintable(ObjectSubclass<imp::InitialsPaintable>)
         @implements gdk::Paintable;
 }
 
@@ -152,7 +161,7 @@ impl InitialsPaintable {
     /// The circle for `name` (a sender's display name): its initials in the
     /// color libadwaita would give that name. `None` when there is no
     /// letter to show, so the avatar falls back to its silhouette.
-    pub fn for_name(name: &str) -> Option<Self> {
+    pub(super) fn for_name(name: &str) -> Option<Self> {
         let initials = initials_of(name);
         if initials.is_empty() {
             return None;
@@ -169,7 +178,7 @@ impl InitialsPaintable {
     /// `text` alone (initials, or an emoji) in `fg`, over nothing: for a
     /// circle that paints its own color. `scale` is the text height as a
     /// share of the circle.
-    pub fn glyph(text: &str, fg: gdk::RGBA, scale: f64) -> Self {
+    pub(crate) fn glyph(text: &str, fg: gdk::RGBA, scale: f64) -> Self {
         let this: Self = glib::Object::new();
         this.imp().initials.replace(text.to_string());
         this.imp().fg.replace(Some(fg));
@@ -178,7 +187,7 @@ impl InitialsPaintable {
     }
 
     /// `text` in `fg` on a flat `bg`.
-    pub fn solid(text: &str, bg: gdk::RGBA, fg: gdk::RGBA, scale: f64) -> Self {
+    pub(crate) fn solid(text: &str, bg: gdk::RGBA, fg: gdk::RGBA, scale: f64) -> Self {
         let this = Self::glyph(text, fg, scale);
         this.imp().ground.replace(Some((bg, bg)));
         this
@@ -189,7 +198,7 @@ impl InitialsPaintable {
 /// on `bg_hex` (the circle's own ground, painted by its CSS), exactly
 /// `size` square — sized outright rather than expanding, since an expand
 /// flag would climb into the row and stretch it.
-pub fn glyph_picture(text: &str, bg_hex: &str, scale: f64, size: i32) -> gtk::Picture {
+pub(super) fn glyph_picture(text: &str, bg_hex: &str, scale: f64, size: i32) -> gtk::Picture {
     let fg = gdk::RGBA::parse(crate::color::readable_text(bg_hex)).unwrap_or(gdk::RGBA::WHITE);
     let picture = gtk::Picture::for_paintable(&InitialsPaintable::glyph(text, fg, scale));
     picture.set_content_fit(gtk::ContentFit::Fill);
@@ -210,7 +219,7 @@ thread_local! {
 
 /// The texture behind an account's avatar picture, by path and modification
 /// time: the sidebar rebuilds often and must not read the file each time.
-pub fn avatar_texture(path: &std::path::Path) -> Option<gdk::Texture> {
+pub(super) fn avatar_texture(path: &std::path::Path) -> Option<gdk::Texture> {
     let mtime = std::fs::metadata(path).and_then(|m| m.modified()).ok();
     let key = (path.to_path_buf(), mtime);
     AVATAR_TEXTURES.with(|c| {
@@ -228,7 +237,7 @@ pub fn avatar_texture(path: &std::path::Path) -> Option<gdk::Texture> {
 /// image at a fixed pixel size, not a picture: a picture's natural size is
 /// the texture's, and the disc (a box, whose size request is only a floor)
 /// would grow to it.
-pub fn avatar_picture(path: &std::path::Path, size: i32) -> gtk::Image {
+pub(super) fn avatar_picture(path: &std::path::Path, size: i32) -> gtk::Image {
     match avatar_texture(path) {
         Some(texture) => picture_from_texture(&texture, size),
         None => {
@@ -241,7 +250,7 @@ pub fn avatar_picture(path: &std::path::Path, size: i32) -> gtk::Image {
 
 /// The same, for a picture already in hand rather than on disk — an
 /// account's Gravatar (#189), fetched and decoded elsewhere.
-pub fn picture_from_texture(texture: &gdk::Texture, size: i32) -> gtk::Image {
+pub(super) fn picture_from_texture(texture: &gdk::Texture, size: i32) -> gtk::Image {
     let image = gtk::Image::from_paintable(Some(texture));
     image.set_pixel_size(size);
     image.set_halign(gtk::Align::Center);
@@ -263,7 +272,7 @@ thread_local! {
 /// 256px square, a conversation embeds one copy per card of yours, and none
 /// of that detail survives a 26px circle. Read through gdk-pixbuf rather than
 /// the window's renderer, so the document builder still needs no display.
-pub fn picture_data_uri(path: &std::path::Path, size: i32) -> Option<String> {
+pub(super) fn picture_data_uri(path: &std::path::Path, size: i32) -> Option<String> {
     // Twice the CSS size is what a HiDPI screen wants; a 300% screen would
     // want three, which is not worth the bytes on every other screen.
     let px = (size * 2).max(1);
@@ -291,10 +300,15 @@ thread_local! {
 /// The session's circle caches, for the memory section of an export: account
 /// pictures as textures and their pixel bytes, then the rendered `data:` URIs
 /// (account pictures and initials circles together) and their bytes.
-pub fn cache_stats() -> (usize, u64, usize, usize) {
+pub(crate) fn cache_stats() -> (usize, u64, usize, usize) {
     let (pictures, picture_bytes) = AVATAR_TEXTURES.with(|c| {
         let c = c.borrow();
-        (c.len(), c.values().map(crate::memory_report::texture_bytes).sum())
+        (
+            c.len(),
+            c.values()
+                .map(crate::desktop::memory_report::texture_bytes)
+                .sum(),
+        )
     });
     let (uris, uri_bytes) = PICTURE_URIS.with(|c| {
         let c = c.borrow();
@@ -311,7 +325,7 @@ pub fn cache_stats() -> (usize, u64, usize, usize) {
 /// pixels — rendered at the screen's scale, so it is as crisp as the
 /// document's own text. Drawn through the window's renderer; `None` before
 /// a window exists.
-pub fn png_data_uri(text: &str, bg: gdk::RGBA, size: i32) -> Option<String> {
+pub(super) fn png_data_uri(text: &str, bg: gdk::RGBA, size: i32) -> Option<String> {
     let key = (text.to_string(), bg.to_string(), size);
     if let Some(hit) = PNG_CACHE.with(|c| c.borrow().get(&key).cloned()) {
         return Some(hit);
@@ -322,7 +336,9 @@ pub fn png_data_uri(text: &str, bg: gdk::RGBA, size: i32) -> Option<String> {
     if !gtk::is_initialized_main_thread() {
         return None;
     }
-    let window = gtk::Window::list_toplevels().into_iter().find_map(|w| w.downcast::<gtk::Window>().ok())?;
+    let window = gtk::Window::list_toplevels()
+        .into_iter()
+        .find_map(|w| w.downcast::<gtk::Window>().ok())?;
     let renderer = window.renderer()?;
     let scale = window.scale_factor().max(1);
     let px = size * scale;
@@ -330,8 +346,14 @@ pub fn png_data_uri(text: &str, bg: gdk::RGBA, size: i32) -> Option<String> {
     let snapshot = gtk::Snapshot::new();
     paintable.snapshot(&snapshot, f64::from(px), f64::from(px));
     let node = snapshot.to_node()?;
-    let texture = renderer.render_texture(&node, Some(&graphene::Rect::new(0.0, 0.0, px as f32, px as f32)));
-    let uri = format!("data:image/png;base64,{}", glib::base64_encode(&texture.save_to_png_bytes()));
+    let texture = renderer.render_texture(
+        &node,
+        Some(&graphene::Rect::new(0.0, 0.0, px as f32, px as f32)),
+    );
+    let uri = format!(
+        "data:image/png;base64,{}",
+        glib::base64_encode(&texture.save_to_png_bytes())
+    );
     PNG_CACHE.with(|c| {
         c.borrow_mut().insert(key, uri.clone());
     });
@@ -340,7 +362,7 @@ pub fn png_data_uri(text: &str, bg: gdk::RGBA, size: i32) -> Option<String> {
 
 /// `hsl()` as CSS means it (hue in degrees, the rest as fractions), for the
 /// reader's per-sender tints.
-pub fn hsl(h: f64, s: f64, l: f64) -> gdk::RGBA {
+pub(super) fn hsl(h: f64, s: f64, l: f64) -> gdk::RGBA {
     let c = (1.0 - (2.0 * l - 1.0).abs()) * s;
     let hp = (h.rem_euclid(360.0)) / 60.0;
     let x = c * (1.0 - (hp % 2.0 - 1.0).abs());

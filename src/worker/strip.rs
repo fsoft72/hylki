@@ -8,11 +8,17 @@
 
 use mail_parser::{MessageParser, MessagePart, MimeHeaders};
 
+use crate::cache::Cache;
+use crate::encoding::{base64_encode, base64_lines};
+use crate::worker::render::attachments::{attachment_parts, extract_attachments, guess_mime};
+use crate::worker::WorkerEvent;
+
 /// Whether a part is the note left where an attachment was removed.
 pub(super) fn is_placeholder(part: &MessagePart<'_>) -> bool {
     part.content_type().is_some_and(|c| {
         c.ctype().eq_ignore_ascii_case("text")
-            && c.subtype().is_some_and(|s| s.eq_ignore_ascii_case("x-moz-deleted"))
+            && c.subtype()
+                .is_some_and(|s| s.eq_ignore_ascii_case("x-moz-deleted"))
     })
 }
 
@@ -33,7 +39,9 @@ impl StripError {
     pub(super) fn text(&self) -> String {
         use crate::i18n::i18n;
         match self {
-            StripError::NotFound => i18n("The attachment is no longer in the message on the server"),
+            StripError::NotFound => {
+                i18n("The attachment is no longer in the message on the server")
+            }
             StripError::Protected => {
                 i18n("The message is signed or encrypted, and removing a file would break it")
             }
@@ -53,11 +61,13 @@ pub(super) fn without_attachment(
     size: u64,
     date: &str,
 ) -> Result<Vec<u8>, StripError> {
-    if crate::pgp::detect(raw).is_some() {
+    if crate::mail::pgp::detect(raw).is_some() {
         return Err(StripError::Protected);
     }
-    let parsed = MessageParser::default().parse(raw).ok_or(StripError::NotFound)?;
-    let (id, _) = super::attachment_parts(&parsed, raw)
+    let parsed = MessageParser::default()
+        .parse(raw)
+        .ok_or(StripError::NotFound)?;
+    let (id, _) = attachment_parts(&parsed, raw)
         .into_iter()
         .filter(|(_, a)| a.name == name)
         .min_by_key(|(_, a)| (a.data.len() as u64).abs_diff(size))
@@ -73,15 +83,23 @@ pub(super) fn without_attachment(
             && p.content_type().is_some_and(|c| {
                 let sub = c.subtype().unwrap_or_default();
                 (c.ctype().eq_ignore_ascii_case("multipart")
-                    && (sub.eq_ignore_ascii_case("signed") || sub.eq_ignore_ascii_case("encrypted")))
-                    || (c.ctype().eq_ignore_ascii_case("application") && sub.eq_ignore_ascii_case("pkcs7-mime"))
+                    && (sub.eq_ignore_ascii_case("signed")
+                        || sub.eq_ignore_ascii_case("encrypted")))
+                    || (c.ctype().eq_ignore_ascii_case("application")
+                        && sub.eq_ignore_ascii_case("pkcs7-mime"))
             })
     });
     if protected {
         return Err(StripError::Protected);
     }
-    let headers = raw.get(start..part.offset_body).ok_or(StripError::NotFound)?;
-    let eol: &[u8] = if raw.windows(2).any(|w| w == b"\r\n") { b"\r\n" } else { b"\n" };
+    let headers = raw
+        .get(start..part.offset_body)
+        .ok_or(StripError::NotFound)?;
+    let eol = if raw.windows(2).any(|w| w == b"\r\n") {
+        "\r\n"
+    } else {
+        "\n"
+    };
     let mut out = Vec::with_capacity(raw.len() - (end - start) + 512);
     out.extend_from_slice(&raw[..start]);
     out.extend_from_slice(&placeholder(name, headers, date, eol));
@@ -91,44 +109,47 @@ pub(super) fn without_attachment(
 
 /// The part that takes an attachment's place: Thunderbird's shape, with the
 /// original part headers kept in the text as it keeps them.
-fn placeholder(name: &str, original_headers: &[u8], date: &str, eol: &[u8]) -> Vec<u8> {
+fn placeholder(name: &str, original_headers: &[u8], date: &str, eol: &str) -> Vec<u8> {
     let label = header_param(&format!("Deleted: {name}"));
     let note = crate::i18n::i18n(
         "You deleted an attachment from this message. The original MIME headers for the attachment were:",
     );
     let mut body = note.into_bytes();
-    body.extend_from_slice(eol);
+    body.extend_from_slice(eol.as_bytes());
     // The original headers, less the blank line that ended them, in this
     // message's line endings.
     let text = String::from_utf8_lossy(original_headers);
     for line in text.trim_end_matches(['\r', '\n']).lines() {
         body.extend_from_slice(line.trim_end_matches('\r').as_bytes());
-        body.extend_from_slice(eol);
+        body.extend_from_slice(eol.as_bytes());
     }
     let ascii = body.is_ascii();
     let mut out = Vec::new();
     let mut line = |s: &str| {
         out.extend_from_slice(s.as_bytes());
-        out.extend_from_slice(eol);
+        out.extend_from_slice(eol.as_bytes());
     };
-    line(&format!("Content-Type: text/x-moz-deleted; charset=UTF-8; name={label}"));
-    line(if ascii { "Content-Transfer-Encoding: 7bit" } else { "Content-Transfer-Encoding: base64" });
+    line(&format!(
+        "Content-Type: text/x-moz-deleted; charset=UTF-8; name={label}"
+    ));
+    line(if ascii {
+        "Content-Transfer-Encoding: 7bit"
+    } else {
+        "Content-Transfer-Encoding: base64"
+    });
     line(&format!("Content-Disposition: inline; filename={label}"));
-    line(&format!("X-Mozilla-Altered: AttachmentDeleted; date=\"{date}\""));
+    line(&format!(
+        "X-Mozilla-Altered: AttachmentDeleted; date=\"{date}\""
+    ));
     line("");
     if ascii {
         out.extend_from_slice(&body);
     } else {
-        use base64::Engine;
-        let encoded = base64::engine::general_purpose::STANDARD.encode(&body);
-        for chunk in encoded.as_bytes().chunks(76) {
-            out.extend_from_slice(chunk);
-            out.extend_from_slice(eol);
-        }
+        out.extend_from_slice(base64_lines(&body, eol).as_bytes());
     }
     // The boundary that follows belongs on a line of its own; the part
     // replaced ended just before the line break that precedes it.
-    if out.ends_with(eol) {
+    if out.ends_with(eol.as_bytes()) {
         out.truncate(out.len() - eol.len());
     }
     out
@@ -140,14 +161,59 @@ fn header_param(value: &str) -> String {
     if value.is_ascii() && !value.contains(['"', '\\', '\r', '\n']) {
         return format!("\"{value}\"");
     }
-    use base64::Engine;
     let clean: String = value.chars().filter(|c| !c.is_control()).collect();
-    format!("\"=?UTF-8?B?{}?=\"", base64::engine::general_purpose::STANDARD.encode(clean.as_bytes()))
+    format!("\"=?UTF-8?B?{}?=\"", base64_encode(clean.as_bytes()))
 }
 
 /// Now, as Thunderbird dates the note: `Thu Sep 25 10:00:00 2026`.
 pub(super) fn note_date() -> String {
-    chrono::Local::now().format("%a %b %e %H:%M:%S %Y").to_string()
+    chrono::Local::now()
+        .format("%a %b %e %H:%M:%S %Y")
+        .to_string()
+}
+
+/// Put what a message holds after an attachment was removed (#289) into
+/// the cache: the files, the paperclip, and the gallery's index of them.
+pub(in crate::worker) fn cache_rewritten(
+    c: &Cache,
+    account_id: u32,
+    path: &str,
+    uid: u32,
+    raw: &[u8],
+) {
+    let items = extract_attachments(raw);
+    c.save_attachments(account_id, path, uid, &items);
+    c.mark_attachments_checked(account_id, path, uid);
+    c.set_has_attachment(account_id, path, uid, !items.is_empty());
+    let metas: Vec<crate::models::AttachmentMeta> = items
+        .iter()
+        .enumerate()
+        .map(|(i, a)| crate::models::AttachmentMeta {
+            idx: i as u32,
+            name: a.name.clone(),
+            mime: guess_mime(&a.name),
+            size: a.data.len() as u64,
+            section: String::new(),
+        })
+        .collect();
+    c.save_attachment_meta(account_id, path, uid, &metas);
+}
+
+/// An attachment removal that did not happen (#289): the error, and word
+/// to the views showing the file as being deleted that it is not.
+pub(in crate::worker) fn strip_refused(
+    emit: &impl Fn(WorkerEvent),
+    text: String,
+    message_id: u32,
+    name: String,
+    size: u64,
+) {
+    emit(WorkerEvent::error(text));
+    emit(WorkerEvent::AttachmentNotDeleted {
+        message_id,
+        name,
+        size,
+    });
 }
 
 /// A message with a body and two files, for the tests here and the live
@@ -182,18 +248,32 @@ a,b\r\n\
 mod tests {
     use super::*;
 
+    use crate::worker::render::attachments::extract_attachments;
+
     fn names(raw: &[u8]) -> Vec<String> {
-        super::super::extract_attachments(raw).into_iter().map(|a| a.name).collect()
+        extract_attachments(raw)
+            .into_iter()
+            .map(|a| a.name)
+            .collect()
     }
 
     #[test]
     fn removes_only_the_named_part() {
-        let out = without_attachment(MIXED.as_bytes(), "report.pdf", 18, "Thu Sep 25 10:00:00 2026").unwrap();
+        let out = without_attachment(
+            MIXED.as_bytes(),
+            "report.pdf",
+            18,
+            "Thu Sep 25 10:00:00 2026",
+        )
+        .unwrap();
         let text = String::from_utf8(out.clone()).unwrap();
         assert_eq!(names(&out), vec!["data.csv"]);
         assert!(!text.contains("JVBERi0x"));
-        assert!(text.contains("Content-Type: text/x-moz-deleted; charset=UTF-8; name=\"Deleted: report.pdf\"\r\n"));
-        assert!(text.contains("X-Mozilla-Altered: AttachmentDeleted; date=\"Thu Sep 25 10:00:00 2026\""));
+        assert!(text.contains(
+            "Content-Type: text/x-moz-deleted; charset=UTF-8; name=\"Deleted: report.pdf\"\r\n"
+        ));
+        assert!(text
+            .contains("X-Mozilla-Altered: AttachmentDeleted; date=\"Thu Sep 25 10:00:00 2026\""));
         // Everything around the part is untouched.
         let head = MIXED.find("--XX\r\nContent-Type: application/pdf").unwrap();
         assert!(text.starts_with(&MIXED[..head]));
@@ -201,7 +281,10 @@ mod tests {
         assert!(text.ends_with(&format!("\r\n{}", &MIXED[tail..])));
         // The body still reads the same.
         let parsed = MessageParser::default().parse(&out).unwrap();
-        assert_eq!(parsed.body_text(0).as_deref().map(str::trim), Some("Here is the report."));
+        assert_eq!(
+            parsed.body_text(0).as_deref().map(str::trim),
+            Some("Here is the report.")
+        );
         assert_eq!(parsed.body_text(1), None);
         // The note is not drawn into the reader either.
         assert!(!super::super::extract_body(&out).contains("You deleted"));
@@ -213,7 +296,10 @@ mod tests {
         let twice = without_attachment(&once, "data.csv", 8, "d").unwrap();
         assert!(names(&twice).is_empty());
         let parsed = MessageParser::default().parse(&twice).unwrap();
-        assert_eq!(parsed.body_text(0).as_deref().map(str::trim), Some("Here is the report."));
+        assert_eq!(
+            parsed.body_text(0).as_deref().map(str::trim),
+            Some("Here is the report.")
+        );
     }
 
     #[test]
@@ -226,14 +312,22 @@ mod tests {
 
     #[test]
     fn unknown_name_is_not_found() {
-        assert_eq!(without_attachment(MIXED.as_bytes(), "nope.pdf", 1, "d"), Err(StripError::NotFound));
+        assert_eq!(
+            without_attachment(MIXED.as_bytes(), "nope.pdf", 1, "d"),
+            Err(StripError::NotFound)
+        );
     }
 
     #[test]
     fn refuses_signed_mail() {
-        let signed = MIXED
-            .replace("multipart/mixed; boundary=\"XX\"", "multipart/signed; protocol=\"application/pgp-signature\"; boundary=\"XX\"");
-        assert_eq!(without_attachment(signed.as_bytes(), "data.csv", 8, "d"), Err(StripError::Protected));
+        let signed = MIXED.replace(
+            "multipart/mixed; boundary=\"XX\"",
+            "multipart/signed; protocol=\"application/pgp-signature\"; boundary=\"XX\"",
+        );
+        assert_eq!(
+            without_attachment(signed.as_bytes(), "data.csv", 8, "d"),
+            Err(StripError::Protected)
+        );
     }
 
     #[test]
@@ -244,7 +338,10 @@ Content-Disposition: attachment; filename=\"x.pdf\"\r\n\
 Content-Transfer-Encoding: base64\r\n\
 \r\n\
 JVBERi0xLjQK\r\n";
-        assert_eq!(without_attachment(single.as_bytes(), "x.pdf", 9, "d"), Err(StripError::WholeMessage));
+        assert_eq!(
+            without_attachment(single.as_bytes(), "x.pdf", 9, "d"),
+            Err(StripError::WholeMessage)
+        );
     }
 
     #[test]

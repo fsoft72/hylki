@@ -3,10 +3,10 @@
 # Regenerate the symbolic-icon set embedded in the Hylki binary.
 #
 # Hylki draws every icon from this bundle, never from the user's icon theme,
-# so it looks the same on every desktop (register_icons in src/app.rs). The
-# embedded GResource (see build.rs + src/main.rs register_resources) sits
-# under the app's resource path, which GTK searches as part of hicolor, ahead
-# of GTK's and libadwaita's own built-in copies.
+# so it looks the same on every desktop (register_icons in
+# src/desktop/icon_theme.rs). The embedded GResource (see build.rs + src/main.rs
+# register_resources) sits under the app's resource path, which GTK searches
+# as part of hicolor, ahead of GTK's and libadwaita's own built-in copies.
 #
 # Run this after adding/removing an icon reference in the source, and after
 # the build machine's GTK, libadwaita or Adwaita icons change. It:

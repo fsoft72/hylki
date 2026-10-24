@@ -2,8 +2,8 @@
 """Regenerate the app icons from their sources in data/icons/src.
 
 Every gallery entry is a 512² PNG in data/icons/alt/<id>.png, embedded into
-the binary by src/app_icon.rs. `default.svg` (and its `default.Devel.svg`
-twin for the beta) becomes the hicolor icon each build installs under its
+the binary by src/desktop/app_icon.rs. `default.svg` (and its
+`default.Devel.svg` twin for the beta) becomes the hicolor icon each build installs under its
 app ID (512 and 256 PNG, plus the SVG itself as the scalable icon), and
 refreshes data/repo/logo.png (the README artwork).
 

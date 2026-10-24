@@ -1,6 +1,7 @@
-//! A reusable modal that browses GNOME Contacts to *pick* one — used by the
+//! A reusable modal that browses the contacts to *pick* one — used by the
 //! composer's address-book button. (General browsing lives in the in-app
-//! contacts view, `ui/contacts_page.rs`, shown in the main content area.)
+//! contacts view, `ui/contacts_page.rs`, shown in the main content area,
+//! which the modal's header button opens.)
 
 use adw::prelude::*;
 
@@ -8,16 +9,21 @@ use crate::contacts::Contact;
 use crate::i18n::i18n;
 
 /// Present the contacts browser as a modal of `parent`. `on_choose` runs with
-/// the chosen contact when a row is activated (the window then closes).
-pub fn present(parent: &impl IsA<gtk::Window>, on_choose: impl Fn(Contact) + 'static) {
+/// the chosen contact when a row is activated, `on_show_all` when the header
+/// button asks for Hylki's Contacts view (the window closes either way).
+pub(super) fn present(
+    parent: &impl IsA<gtk::Window>,
+    on_choose: impl Fn(Contact) + 'static,
+    on_show_all: impl Fn() + 'static,
+) {
     let on_choose = std::rc::Rc::new(on_choose);
     let mut contacts = crate::contacts::read_contacts();
-    contacts.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
+    contacts.sort_by_key(|c| c.name.to_lowercase());
 
     let win = adw::Window::builder()
         .transient_for(parent)
         .modal(true)
-        .title(&i18n("Contacts"))
+        .title(i18n("Contacts"))
         .default_width(420)
         .default_height(560)
         .build();
@@ -25,8 +31,14 @@ pub fn present(parent: &impl IsA<gtk::Window>, on_choose: impl Fn(Contact) + 'st
     let toolbar = adw::ToolbarView::new();
     let header = adw::HeaderBar::new();
     let open_btn = gtk::Button::from_icon_name("x-office-address-book-symbolic");
-    open_btn.set_tooltip_text(Some(i18n("Open in GNOME Contacts").as_str()));
-    open_btn.connect_clicked(|_| launch_gnome_contacts());
+    open_btn.set_tooltip_text(Some(i18n("Open Contacts").as_str()));
+    {
+        let w = win.clone();
+        open_btn.connect_clicked(move |_| {
+            w.close();
+            on_show_all();
+        });
+    }
     header.pack_end(&open_btn);
     toolbar.add_top_bar(&header);
 
@@ -47,8 +59,8 @@ pub fn present(parent: &impl IsA<gtk::Window>, on_choose: impl Fn(Contact) + 'st
     if contacts.is_empty() {
         let empty = adw::StatusPage::builder()
             .icon_name("x-office-address-book-symbolic")
-            .title(&i18n("No Contacts"))
-            .description(&i18n("Add contacts in GNOME Contacts to see them here."))
+            .title(i18n("No Contacts"))
+            .description(i18n("Add contacts in the Contacts view to see them here."))
             .build();
         scroller.set_child(Some(&empty));
     } else {
@@ -110,12 +122,15 @@ pub fn present(parent: &impl IsA<gtk::Window>, on_choose: impl Fn(Contact) + 'st
 /// Open GNOME Contacts showing one contact. Best effort: outside a sandbox
 /// `gnome-contacts -i <uid>` selects the individual; the Flatpak D-Bus path
 /// can only raise the app.
-pub fn launch_gnome_contacts_for(uid: &str) {
-    if crate::platform::is_flatpak() || uid.is_empty() {
+pub(super) fn launch_gnome_contacts_for(uid: &str) {
+    if crate::desktop::platform::is_flatpak() || uid.is_empty() {
         launch_gnome_contacts();
         return;
     }
-    let uid: String = uid.chars().filter(|c| !c.is_whitespace() && *c != '\'').collect();
+    let uid: String = uid
+        .chars()
+        .filter(|c| !c.is_whitespace() && *c != '\'')
+        .collect();
     if let Ok(app) = gtk::gio::AppInfo::create_from_commandline(
         format!("gnome-contacts -i '{uid}'"),
         Some(i18n("Contacts").as_str()),
@@ -126,11 +141,11 @@ pub fn launch_gnome_contacts_for(uid: &str) {
 }
 
 /// Launch the GNOME Contacts application via the desktop session.
-pub fn launch_gnome_contacts() {
+pub(crate) fn launch_gnome_contacts() {
     // Inside a Flatpak sandbox `gnome-contacts` isn't on the path, so a plain
     // exec fails. Reach the host app by D-Bus-activating it (it's a
     // DBusActivatable GApplication).
-    if crate::platform::is_flatpak() {
+    if crate::desktop::platform::is_flatpak() {
         if let Err(e) = activate_host_contacts() {
             // No `flatpak-spawn --host` fallback: reaching it needs
             // --talk-name=org.freedesktop.Flatpak, which is a general-purpose

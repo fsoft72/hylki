@@ -53,6 +53,32 @@ edit it (set `enabled=0` to stop updates from it).
 The RPM targets current Fedora releases (44+) on x86_64 only. On ARM, or on
 anything older, use the Flatpak or [build from source](BUILDING.md).
 
+## Debian and Ubuntu
+
+Add the signed apt repository on hylki.hyprlab.co and install from it. Hylki
+then updates with the rest of the system, through GNOME Software or
+`apt upgrade`:
+
+```sh
+sudo curl -fsSLo /etc/apt/sources.list.d/hylki.sources https://hylki.hyprlab.co/deb/hylki.sources
+sudo apt update
+sudo apt install hylki
+```
+
+The `.sources` file carries the repository's signing key, the same key as the
+dnf repository's, so there is no key to import separately.
+
+The `.deb` is also attached to each
+[release](https://github.com/hyprlab/hylki/releases/latest); install it with
+`sudo apt install ./hylki_*_amd64.deb`, which fetches its dependencies. The
+package adds the repository itself, as the RPM does: the same
+`/etc/apt/sources.list.d/hylki.sources`, kept if you edit it (add a line
+`Enabled: no` to stop updates from it).
+
+The package needs libadwaita 1.7: Debian 13 (trixie) and later, or Ubuntu
+25.10 and later, on x86_64 only. Ubuntu 24.04 LTS and the distributions built
+on it, such as Linux Mint 22, have an older libadwaita; use the Flatpak there.
+
 ## Gentoo
 
 A community-maintained ebuild lives in
@@ -88,15 +114,32 @@ version by itself, so run `sudo dnf distro-sync hylki` to return to the
 newest stable. With an RPM older than 1.43.0, add the beta repository with
 `sudo curl -fsSLo /etc/yum.repos.d/hylki-beta.repo https://hylki.hyprlab.co/rpm/hylki-beta.repo`.
 
+On Debian and Ubuntu, betas come from the apt repository's beta suite in the
+same way. Every Debian package carries it, switched off; turn it on once:
+
+```sh
+sudo sed -i 's/^Enabled: no/Enabled: yes/' /etc/apt/sources.list.d/hylki-beta.sources
+sudo apt update && sudo apt install hylki
+```
+
+To leave the betas, set `Enabled: no` again, then run
+`sudo apt install hylki/stable` to return to the newest stable; apt asks
+before it moves to an older version.
+
 ## Other distributions
 
-Arch, Debian/Ubuntu and Snap packages were discontinued after 1.7.0. Use the
-Flatpak (it works on every distribution) or [build from source](BUILDING.md).
+Arch and Snap packages were discontinued after 1.7.0. Use the Flatpak (it
+works on every distribution) or [build from source](BUILDING.md).
 
 ## Runtime requirements
 
 A Secret Service provider (e.g. gnome-keyring, preinstalled on GNOME) is needed
-for password storage. Everything else the Flatpak carries; a source or RPM
-install also wants `gnupg2` for [OpenPGP](DOCUMENTATION.md#openpgp-encrypted-and-signed-mail)
-and `nautilus-python` for the
+for password storage. Address books other than Hylki's own (GNOME Contacts,
+[CardDAV accounts](DOCUMENTATION.md#carddav-accounts) and LDAP directories)
+are kept by Evolution Data Server, which GNOME installs; on other desktops
+install the `evolution-data-server` package. The Flatpak uses the system's,
+so it is needed there too. Everything else the Flatpak carries; a source, RPM
+or Debian install also wants `gnupg2` (`gnupg` on Debian) for
+[OpenPGP](DOCUMENTATION.md#openpgp-encrypted-and-signed-mail) and
+`nautilus-python` (`python3-nautilus`) for the
 [Files entry](DOCUMENTATION.md#send-with-hylki-from-gnome-files).

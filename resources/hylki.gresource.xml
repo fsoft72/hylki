@@ -41,6 +41,7 @@
     <file>icons/scalable/actions/cloud-symbolic.svg</file>
     <file>icons/scalable/actions/code-symbolic.svg</file>
     <file>icons/scalable/actions/color-select-symbolic.svg</file>
+    <file>icons/scalable/actions/computer-symbolic.svg</file>
     <file>icons/scalable/actions/contact-new-symbolic.svg</file>
     <file>icons/scalable/actions/dialog-error-symbolic.svg</file>
     <file>icons/scalable/actions/dialog-information-symbolic.svg</file>
@@ -177,6 +178,7 @@
     <file>icons/scalable/actions/switch-on-symbolic.svg</file>
     <file>icons/scalable/actions/system-run-symbolic.svg</file>
     <file>icons/scalable/actions/system-search-symbolic.svg</file>
+    <file>icons/scalable/actions/system-users-symbolic.svg</file>
     <file>icons/scalable/actions/tag-outline-symbolic.svg</file>
     <file>icons/scalable/actions/tag-symbolic.svg</file>
     <file>icons/scalable/actions/text-x-generic-symbolic.svg</file>

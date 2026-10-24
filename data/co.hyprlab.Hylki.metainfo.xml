@@ -74,6 +74,21 @@
   <content_rating type="oars-1.1"/>
 
   <releases>
+    <release version="1.45.2" date="2026-10-23">
+      <description>
+        <p>A folder the server will not open no longer keeps the CPU busy.</p>
+      </description>
+    </release>
+    <release version="1.45.1" date="2026-10-22">
+      <description>
+        <p>A folder with a backslash in its name opens, typing in the search field no longer holds up the window, Ctrl+, opens Settings and Ctrl+W closes every Hylki window. German and Catalan are complete.</p>
+      </description>
+    </release>
+    <release version="1.45.0" date="2026-10-22">
+      <description>
+        <p>A Debian package with its own apt repository, CardDAV accounts, contact groups, Contacts as a full address book in the sidebar, Undo Send, recipient pills that move between To, Cc and Bcc, Thunderbird's composer keys, subjects hidden in encrypted mail, and replied and forwarded arrows in the message list. Greek and Spanish are complete.</p>
+      </description>
+    </release>
     <release version="1.44.0" date="2026-10-15">
       <description>
         <p>Gmail keyboard shortcuts, a command palette, smart folders, several signatures per account, a Hylki address book, LDAP and Microsoft 365 directories as recipients, Gmail labels as colored pills, search results that name their folder, one sort and filter button, a list grouped by date, and more formatting in the composer. Italian is new; French and Spanish are complete.</p>

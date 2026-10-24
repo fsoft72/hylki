@@ -26,8 +26,12 @@ msgstr ""
 "Content-Transfer-Encoding: 8bit\n"
 "Plural-Forms: nplurals=2; plural=(n != 1);\n"
 HDR
+# Every source file, not only src/main.rs: xtr looks for a child module beside
+# its parent file before looking in the parent's folder, so a child named like
+# one of its parent's siblings (app/contacts.rs beside src/contacts.rs) would be
+# read from the wrong file and its strings lost. main.rs first keeps the order.
 xtr -k i18n -k ni18n:1,2 -k i18n_f -k ni18n_f:1,2 -k i18n_noop \
-    -o "$tmp/src.pot" src/main.rs
+    -o "$tmp/src.pot" src/main.rs $(find src -name '*.rs' | sort)
 xgettext --from-code=UTF-8 --language=Desktop \
     -k --keyword=Name --keyword=GenericName --keyword=Comment --keyword=Keywords \
     -o "$tmp/desktop.pot" data/co.hyprlab.Hylki.desktop

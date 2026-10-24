@@ -33,8 +33,8 @@ Nothing here is meant to restrict what you may say about your own research.
 ## Supported versions
 
 Fixes go into the next release from `main`. Older versions are not patched
-separately. Hylki ships as a Flatpak, an RPM and an Arch package, and all three
-track releases.
+separately. Hylki ships as a Flatpak, an RPM and a Debian package, and all
+three track releases.
 
 ## Scope
 
