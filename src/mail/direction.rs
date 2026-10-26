@@ -67,6 +67,10 @@ const CONTAINERS: &[&str] = &["blockquote", "dl", "menu", "ol", "table", "ul"];
 const OTHER_BLOCKS: &[&str] = &[
     "colgroup", "fieldset", "form", "hr", "tbody", "tfoot", "thead", "tr",
 ];
+/// Paragraphs that hold only inline content. A `<div>` written inside one
+/// would be moved out of it when the recipient parses the message, taking
+/// the paragraph's end with it, so a line there goes in a block `<span>`.
+const INLINE_ONLY: &[&str] = &["h1", "h2", "h3", "h4", "h5", "h6", "p", "pre", "summary"];
 /// Elements whose content is not text that is read.
 const UNREAD: &[&str] = &[
     "bdi", "math", "script", "style", "svg", "template", "textarea",
@@ -173,7 +177,8 @@ fn walk(node: &Handle, inherited: Dir) {
         if UNREAD.contains(&name.as_str()) {
             continue;
         }
-        let dir = match dir_attr(child).as_deref() {
+        let authored = dir_attr(child);
+        let dir = match authored.as_deref() {
             Some("rtl") => Dir::Rtl,
             Some("ltr") => Dir::Ltr,
             Some(_) => first_strong(child, false).unwrap_or(inherited),
@@ -194,7 +199,10 @@ fn walk(node: &Handle, inherited: Dir) {
                 }
             }
         };
-        if dir_attr(child).is_none() && PARAGRAPHS.contains(&name.as_str()) {
+        // A block given its `dir` just now still has its lines split: an
+        // English paragraph under a Hebrew message keeps a Hebrew line
+        // typed after Shift+Return right to left.
+        if authored.is_none() && PARAGRAPHS.contains(&name.as_str()) {
             split_lines(child, dir);
         }
         walk(child, dir);
@@ -209,6 +217,7 @@ fn walk(node: &Handle, inherited: Dir) {
 /// wrapped line goes, as the `<div>` ends the line itself; text typed
 /// straight into the body is handled the same way.
 fn split_lines(parent: &Handle, dir: Dir) {
+    let inline_only = name_of(parent).is_some_and(|n| INLINE_ONLY.contains(&n.as_str()));
     let kids: Vec<Handle> = parent.children.borrow().clone();
     let mut out: Vec<Handle> = Vec::with_capacity(kids.len());
     let mut line: Vec<Handle> = Vec::new();
@@ -217,7 +226,13 @@ fn split_lines(parent: &Handle, dir: Dir) {
             line, true,
         ) {
             Some(d) if d != dir => {
-                let holder = new_div();
+                let holder = if inline_only {
+                    let span = new_element(html5ever::local_name!("span"));
+                    set_attr(&span, html5ever::local_name!("style"), "display:block");
+                    span
+                } else {
+                    new_element(html5ever::local_name!("div"))
+                };
                 set_dir(&holder, d);
                 holder.parent.set(Some(std::rc::Rc::downgrade(parent)));
                 for n in line.iter() {
@@ -245,9 +260,9 @@ fn split_lines(parent: &Handle, dir: Dir) {
     *parent.children.borrow_mut() = out;
 }
 
-fn new_div() -> Handle {
+fn new_element(name: html5ever::LocalName) -> Handle {
     Node::new(NodeData::Element {
-        name: html5ever::QualName::new(None, html5ever::ns!(html), html5ever::local_name!("div")),
+        name: html5ever::QualName::new(None, html5ever::ns!(html), name),
         attrs: std::cell::RefCell::new(Vec::new()),
         template_contents: std::cell::RefCell::new(None),
         mathml_annotation_xml_integration_point: false,
@@ -255,10 +270,14 @@ fn new_div() -> Handle {
 }
 
 fn set_dir(node: &Handle, dir: Dir) {
+    set_attr(node, html5ever::local_name!("dir"), dir.attr());
+}
+
+fn set_attr(node: &Handle, name: html5ever::LocalName, value: &str) {
     if let NodeData::Element { attrs, .. } = &node.data {
         attrs.borrow_mut().push(html5ever::Attribute {
-            name: html5ever::QualName::new(None, html5ever::ns!(), html5ever::local_name!("dir")),
-            value: dir.attr().into(),
+            name: html5ever::QualName::new(None, html5ever::ns!(), name),
+            value: value.into(),
         });
     }
 }
@@ -408,6 +427,20 @@ mod tests {
         assert_eq!(
             stamp("<p>שלום<br><br>2024<br>עולם</p>"),
             "<div dir=\"rtl\"><p>שלום<br><br>2024<br>עולם</p></div>"
+        );
+    }
+
+    #[test]
+    fn a_line_under_a_paragraph_of_the_other_direction() {
+        // #524: Return starts a paragraph, Shift+Return a line in it.
+        assert_eq!(
+            stamp("<p>שלום!</p><p>Hello.<br>שלום.</p>"),
+            "<div dir=\"rtl\"><p>שלום!</p><p dir=\"ltr\">Hello.<br>\
+             <span style=\"display:block\" dir=\"rtl\">שלום.</span></p></div>"
+        );
+        assert_eq!(
+            stamp("<div>Hi</div><div>שלום<br>Bye</div>"),
+            "<div>Hi</div><div dir=\"rtl\">שלום<br><div dir=\"ltr\">Bye</div></div>"
         );
     }
 

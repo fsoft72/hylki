@@ -2,6 +2,18 @@
 
 ## Unreleased
 
+- **Fixed: right-to-left text in the composer, follow-up** (#524, reported
+  by bjesus). A right-to-left line written with Shift+Return in a paragraph
+  that runs the other way was sent left to right; it now goes out with its
+  own direction. At the end of an English paragraph under a Hebrew one the
+  caret was drawn at the left edge; it is now drawn after the last word.
+  A line after a line break inside a paragraph still draws it at the line's
+  start when the two run different ways. Starting a paragraph after the
+  first line of a message makes that line a paragraph too, so it is
+  spaced the way the recipient sees it. Switching a message to HTML writes
+  each line's direction into the source, so the HTML preview shows the
+  same direction as the composer.
+
 - **Fixed: a pale account color left the reader's account chip hard to
   read** (#530, reported by samuel-edlmeier). The chip's text keeps the
   account color but is darkened on a light theme, or lightened on a dark

@@ -250,9 +250,13 @@ impl Compose {
             ComposeFormat::Markdown => self
                 .editor
                 .set_source(SourceKind::Markdown, &markdown_body(&html)),
-            ComposeFormat::Html => self
-                .editor
-                .set_source(SourceKind::Html, &crate::mail::markdown::pretty_html(&html)),
+            // The editor laid each line out by its own text; the source
+            // says so in `dir`s, as the sent message would (#524), since
+            // hand-written HTML goes out as it is written.
+            ComposeFormat::Html => self.editor.set_source(
+                SourceKind::Html,
+                &crate::mail::markdown::pretty_html(&crate::mail::direction::stamp(&html)),
+            ),
             ComposeFormat::Rich | ComposeFormat::Plain => self.editor.set_html(&html),
         }
         self.editor.grab_focus();
