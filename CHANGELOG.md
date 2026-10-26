@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- **Changed: Undo Send shows a progress bar.** The toast that waits out the
+  Undo Send delay now carries a bar that fills as the time runs out, so it
+  is clear how long Undo stays on offer before the message really goes.
+
 - **Fixed: right-to-left text in the composer, follow-up** (#524, reported
   by bjesus). A right-to-left line written with Shift+Return in a paragraph
   that runs the other way was sent left to right; it now goes out with its

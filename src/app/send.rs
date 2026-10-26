@@ -3,6 +3,7 @@
 
 use std::collections::HashSet;
 
+use gtk::prelude::{BoxExt, WidgetExt, WidgetExtManual};
 use relm4::prelude::*;
 
 use crate::i18n::i18n;
@@ -110,6 +111,7 @@ impl AppModel {
         toast.set_title(&o.sending_title());
         if delay > 0 {
             toast.set_button_label(Some(&i18n("Undo")));
+            toast.set_custom_title(Some(&undo_countdown(&o.sending_title(), delay)));
             let s = sender.clone();
             toast.connect_button_clicked(move |_| s.input(AppMsg::UndoSend(ticket)));
             // The timer is never cancelled: Undo or Send now take the
@@ -471,4 +473,31 @@ impl AppModel {
             self.queue_send(origin, out, sent_path, &sender);
         }
     }
+}
+
+/// The toast's title while the Undo Send delay runs: the message's line over
+/// a progress bar that fills as the real send draws near.
+fn undo_countdown(title: &str, delay_secs: u32) -> gtk::Box {
+    let label = gtk::Label::builder()
+        .label(title)
+        .xalign(0.0)
+        .ellipsize(gtk::pango::EllipsizeMode::End)
+        .build();
+    let bar = gtk::ProgressBar::new();
+    bar.add_css_class("undo-send-progress");
+    let content = gtk::Box::new(gtk::Orientation::Vertical, 6);
+    content.append(&label);
+    content.append(&bar);
+    let total = std::time::Duration::from_secs(delay_secs.into());
+    let started = std::time::Instant::now();
+    bar.add_tick_callback(move |bar, _| {
+        let fraction = (started.elapsed().as_secs_f64() / total.as_secs_f64()).min(1.0);
+        bar.set_fraction(fraction);
+        if fraction < 1.0 {
+            gtk::glib::ControlFlow::Continue
+        } else {
+            gtk::glib::ControlFlow::Break
+        }
+    });
+    content
 }

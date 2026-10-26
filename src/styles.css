@@ -2513,3 +2513,9 @@ textview.console-view text selection {
   margin-top: 6px;
   font-weight: normal;
 }
+
+/* Undo Send countdown (#434): a slim bar that fills until the real send. */
+progressbar.undo-send-progress trough,
+progressbar.undo-send-progress progress {
+  min-height: 4px;
+}
