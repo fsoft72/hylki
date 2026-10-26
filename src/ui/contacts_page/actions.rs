@@ -539,20 +539,15 @@ impl ContactsPage {
         }
     }
 
-    /// Someone already in Contacts is not listed again. One found in two
-    /// directories stays in both, for when one of them is picked; the list
-    /// of every book shows the first only.
-    pub(super) fn drop_known_hits(&mut self) {
-        let known: std::collections::HashSet<String> = self
-            .contacts
-            .iter()
-            .flat_map(|c| c.emails.iter().map(|e| e.value.to_lowercase()))
-            .collect();
-        self.directory_hits.retain(|c| {
-            !c.emails
-                .iter()
-                .any(|e| known.contains(&e.value.to_lowercase()))
-        });
+    /// Whether one of `c`'s addresses is already a contact's, in any book.
+    pub(super) fn in_contacts(&self, c: &ContactDetails) -> bool {
+        self.contacts.iter().any(|k| {
+            k.emails.iter().any(|e| {
+                c.emails
+                    .iter()
+                    .any(|h| h.value.eq_ignore_ascii_case(&e.value))
+            })
+        })
     }
 
     /// Fill the filter popover's books from those known: the writable ones

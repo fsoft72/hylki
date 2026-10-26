@@ -29,7 +29,7 @@ use super::list_header::ListHeaderWidgets;
 use super::msg::AppMsg;
 use super::popout::PopOut;
 use super::reader_toolbar::ReaderToolbarWidgets;
-use super::send_morph::{MorphPending, Provisional};
+use super::send_morph::{MorphPending, Provisional, SentFile};
 use super::tags::TagScan;
 use super::transfer::{Transfer, TransferTally};
 use super::types::{FolderMessages, SelectedFolder, UnifiedView};
@@ -87,6 +87,9 @@ pub(crate) struct AppModel {
     /// The cards standing in for replies sent from here until their copies
     /// are read back from Sent, by (account, id).
     pub(super) provisionals: HashMap<(u32, u32), Provisional>,
+    /// The files each reply sent from here went with, by its card, which
+    /// lists them until its copy's own attachments are read back.
+    pub(super) sent_files: HashMap<(u32, u32), Vec<SentFile>>,
     /// Superseded inline composers still finishing a save-if-dirty before closing.
     pub(super) draining_composers: Vec<(u32, Controller<Compose>)>,
     /// SlideDown revealer under the reader toolbar that hosts the inline pane.
@@ -162,6 +165,11 @@ pub(crate) struct AppModel {
     /// The reader header's right-hand actions are collapsed into the overflow menu
     /// (pane squeezed under READER_ACTIONS_BREAKPOINT).
     pub(super) reader_actions_collapsed: bool,
+    /// The pane is too narrow for the left group beside the overflow button
+    /// and the window controls at full size: the buttons draw narrower.
+    pub(super) reader_compact: bool,
+    /// The right group stays in the ⋯ menu at every width.
+    pub(super) toolbar_fold_right: bool,
     /// The collapsed header's ⋯ button — the anchor its menu pops from.
     pub(super) reader_overflow_btn: gtk::Button,
     /// The reader header's layout: which buttons, which side, what order
@@ -172,6 +180,8 @@ pub(crate) struct AppModel {
     pub(super) reader_toolbar_widgets: std::cell::OnceCell<ReaderToolbarWidgets>,
     /// The toolbar's tag button (#71) — the anchor its menu pops from.
     pub(super) reader_tag_btn: gtk::Button,
+    /// The toolbar's Snooze button (#527), the anchor its menu pops from.
+    pub(super) reader_snooze_btn: gtk::Button,
     /// The reader toolbar's Move To… button (#164): the folder picker
     /// anchors to it.
     pub(super) reader_move_btn: gtk::Button,
@@ -455,6 +465,8 @@ pub(crate) struct AppModel {
     pub(super) run_in_background: std::rc::Rc<std::cell::Cell<bool>>,
     /// Whether Hylki starts at login (background running only).
     pub(super) autostart: bool,
+    /// The window opens fullscreen (#511).
+    pub(super) start_fullscreen: bool,
     /// Tray icon (issue #116): the setting, the icon choice, and the running
     /// item while the setting is on.
     pub(super) tray_enabled: bool,
@@ -527,6 +539,8 @@ pub(crate) struct AppModel {
     pub(super) always_show_recipients: bool,
     /// The OpenPGP chip says its verdict in words (#300).
     pub(super) pgp_labels: bool,
+    /// The reader's find bar opens under the message (#392).
+    pub(super) reader_find_bottom: bool,
     /// Whether the sidebar offers the unified "All Inboxes" section at all.
     pub(super) show_unified_pref: bool,
     /// Whether the collapsed "All Inboxes" row wears its total-unread chip.
@@ -632,6 +646,19 @@ pub(crate) struct AppModel {
     /// (the message still showed up in the last sync). A sync racing the
     /// server-side move must neither re-request the move nor re-notify.
     pub(super) filter_moved: std::collections::HashMap<(u32, u32), std::collections::HashSet<u32>>,
+    /// The messages filters have forwarded, so none goes out twice.
+    pub(super) forwarded_log: config::ForwardedLog,
+    /// Forwards waiting for the body or the files of their message.
+    pub(super) auto_forwards: Vec<super::filter_forward::AutoForward>,
+    /// Keys of the forwards under way (waiting or sent, not yet answered).
+    pub(super) auto_forward_inflight: std::collections::HashSet<String>,
+    /// Send ticket to the forward a filter sent under it.
+    pub(super) auto_forward_tickets:
+        std::collections::HashMap<u64, super::filter_forward::SentForward>,
+    /// Folders other than an Inbox that the filters run over on their next
+    /// load, (account, folder): where a forward a manual run started has
+    /// just gone, so the rest of its rule can follow.
+    pub(super) filter_followups: std::collections::HashSet<(u32, u32)>,
     /// Per (account, folder): the body-search hits of the last sync (#191),
     /// uid → lowercased alternatives the server found in the message. What
     /// [`apply_filters`] consults for "Message body" conditions.
@@ -719,6 +746,8 @@ pub(crate) struct AppModel {
     pub(super) signature_position: config::SignaturePosition,
     /// A `-- ` line goes above the signature in new messages.
     pub(super) signature_dashes: bool,
+    /// The line above a reply's quote, "" for the default (#528).
+    pub(super) reply_header: String,
     /// Undo Send delay in seconds, 0 for off (#434).
     pub(super) undo_send_secs: u32,
     pub(super) spellcheck: bool,
@@ -766,6 +795,14 @@ pub(crate) struct AppModel {
     pub(super) showing_outbox: bool,
     /// Messages waiting to be sent, per account, as last reported by its worker.
     pub(super) outbox_by_account: HashMap<u32, Vec<crate::models::OutboxItem>>,
+    /// Snoozed mail (#527), as snoozed.toml keeps it.
+    pub(super) snoozed: Vec<config::Snooze>,
+    /// Snoozed mail a worker has been asked to bring back, by (account
+    /// address, Message-ID), with when to ask again if no answer comes.
+    pub(super) snooze_waking: HashMap<(String, String), std::time::Instant>,
+    /// The time a Snooze of the list's selection is for, while the list
+    /// resolves which messages that is.
+    pub(super) snooze_until: Option<i64>,
     /// The sending identities a JMAP server keeps, per account (#346):
     /// offered as From addresses beside the account's own aliases.
     pub(super) server_identities: HashMap<u32, Vec<(String, String)>>,

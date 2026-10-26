@@ -242,8 +242,13 @@ impl AppModel {
             PrefOutput::SetSingleKey(on) => {
                 if self.single_key.get() != on {
                     self.single_key.set(on);
+                    crate::ui::keymap::set_key_mode(on, self.gmail_keys.get());
                     self.save_settings();
                 }
+            }
+
+            PrefOutput::SetStartFullscreen(on) => {
+                pref!(self.start_fullscreen = on);
             }
 
             PrefOutput::SetKeepDownloads(days) => {
@@ -257,6 +262,7 @@ impl AppModel {
             PrefOutput::SetGmailKeys(on) => {
                 if self.gmail_keys.get() != on {
                     self.gmail_keys.set(on);
+                    crate::ui::keymap::set_key_mode(self.single_key.get(), on);
                     self.message_list.emit(MessageListInput::SetGmailKeys(on));
                     self.save_settings();
                 }

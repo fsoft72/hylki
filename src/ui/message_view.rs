@@ -7,6 +7,7 @@
 //! Link clicks open in the browser.
 
 mod bridge;
+mod card_drag;
 mod cards;
 mod chrome;
 mod component;
@@ -151,6 +152,8 @@ pub(crate) struct MessageView {
     remote_allowed: bool,
     /// Owning account's display name (header chip).
     account_name: Option<String>,
+    /// The owning account's color, which the header chip is painted in.
+    account_color: Option<String>,
     /// The header chip's per-account colors.
     chip_rules: ClassRules,
     /// Paints the reader's spinner and its inter-document cover in the *message*
@@ -227,6 +230,17 @@ pub(crate) struct MessageView {
     under_split: bool,
     find_matches: Option<(u32, u32)>,
     find_entry: Option<gtk::SearchEntry>,
+    /// Where the keyboard was when find opened, to hand it back on close:
+    /// left to GTK, it fell to the message list, where the next Ctrl+F
+    /// searched the list instead of the message (#392).
+    find_return: Option<gtk::glib::WeakRef<gtk::Widget>>,
+    /// The find bar opens under the message instead of above it (#392), and
+    /// the bar and the alert it follows when it is at the top.
+    find_bottom: bool,
+    find_bar: Option<(gtk::Revealer, gtk::Widget)>,
+    /// The primary button's press over the reader: a click that selects a
+    /// card, or a drag that carries one to a folder.
+    pointer: card_drag::Pointer,
     /// The page shown while a message loads, and whether it is holding the
     /// keyboard for the web view meanwhile (#392). A web view whose document
     /// is being replaced drops the keys it is given, so a shortcut pressed

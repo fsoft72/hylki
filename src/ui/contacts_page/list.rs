@@ -45,7 +45,7 @@ impl ContactsPage {
         let grouped = self.grouped_addresses();
         let people = self.listed_people(&grouped);
         self.show_count(widgets, &people);
-        let lines = self.directory_lines(&grouped, people.is_empty());
+        let lines = self.directory_lines(&grouped, &people);
         let missing = self.fill_store(&people, lines);
 
         // Several selected together stay so while two of them are listed.
@@ -146,7 +146,7 @@ impl ContactsPage {
     fn directory_lines(
         &self,
         grouped: &std::collections::HashSet<String>,
-        no_people: bool,
+        people: &[usize],
     ) -> Vec<Line> {
         let mut lines: Vec<Line> = Vec::new();
         // Directories are searched with every book, or alone; a group has
@@ -161,7 +161,15 @@ impl ContactsPage {
             ContactScope::Account(key) => self.book_key(uid) == *key,
             _ => true,
         };
-        let mut listed = std::collections::HashSet::new();
+        // Someone the list already shows as a contact is not listed again,
+        // nor one found in two directories. Only those shown count: with a
+        // directory picked, a person kept in another book is still listed
+        // from the directory, or that view would lose them (#307).
+        let mut listed: std::collections::HashSet<String> = people
+            .iter()
+            .flat_map(|&i| self.contacts[i].emails.iter())
+            .map(|e| e.value.to_lowercase())
+            .collect();
         let mut hits = Vec::new();
         for (i, c) in self.directory_hits.iter().enumerate() {
             if groups || !in_filter(&c.book_uid) || !self.passes_filters(c, grouped) {
@@ -207,7 +215,7 @@ impl ContactsPage {
             ContactScope::Book(b) => self.directories.iter().any(|(d, _)| d == b),
             _ => false,
         };
-        if directory_picked && !groups && no_people && lines.is_empty() {
+        if directory_picked && !groups && people.is_empty() && lines.is_empty() {
             let text = if self.query.trim().chars().count() < crate::contacts::directory::MIN_QUERY
             {
                 i18n("Type three letters or more to search the directory.")
@@ -383,13 +391,15 @@ impl ContactsPage {
                 .icon("mail-message-new-symbolic"),
             );
         }
-        let sa = s.clone();
-        entries.push(
-            MenuEntry::new(i18n("Add to Contacts"), move || {
-                let _ = sa.send(ContactsPageInput::AddDirectoryHit(idx));
-            })
-            .icon("contact-new-symbolic"),
-        );
+        if !self.in_contacts(c) {
+            let sa = s.clone();
+            entries.push(
+                MenuEntry::new(i18n("Add to Contacts"), move || {
+                    let _ = sa.send(ContactsPageInput::AddDirectoryHit(idx));
+                })
+                .icon("contact-new-symbolic"),
+            );
+        }
         vec![entries]
     }
 

@@ -37,6 +37,8 @@ pub(crate) struct PrefInit {
     pub(crate) always_show_recipients: bool,
     /// The OpenPGP chip says its verdict in words (#300).
     pub(crate) pgp_labels: bool,
+    /// The reader's find bar opens under the message (#392).
+    pub(crate) reader_find_bottom: bool,
     /// Lone messages render as inset cards, like conversation messages.
     pub(crate) single_message_card: bool,
     /// The Light / Dark Mode switch is shown in the reader header (PR #386).
@@ -122,6 +124,8 @@ pub(crate) struct PrefInit {
     /// Where the signature sits in a reply or forward (#237).
     pub(crate) signature_position: crate::config::SignaturePosition,
     pub(crate) signature_dashes: bool,
+    /// The line above a reply's quote, "" for the default (#528).
+    pub(crate) reply_header: String,
     /// Undo Send delay in seconds, 0 for off (#434).
     pub(crate) undo_send_secs: u32,
     pub(crate) app_theme: AppTheme,
@@ -156,6 +160,7 @@ pub(crate) struct PrefInit {
     pub(crate) rail_fold: crate::config::RailFold,
     /// The reader header's buttons, per side and in order.
     pub(crate) reader_toolbar: ReaderToolbar,
+    pub(crate) toolbar_fold_right: bool,
     /// Focus Mode: the master switch and the parts it strips.
     pub(crate) focus: crate::config::FocusMode,
     pub(crate) preview_lines: u32,
@@ -174,6 +179,7 @@ pub(crate) struct PrefInit {
     pub(crate) keep_downloads_days: u32,
     pub(crate) run_in_background: bool,
     pub(crate) autostart: bool,
+    pub(crate) start_fullscreen: bool,
     pub(crate) tray: bool,
     pub(crate) tray_icon: TrayIcon,
     pub(crate) tray_mail: bool,
@@ -414,6 +420,7 @@ pub(crate) enum PrefOutput {
     SetFoldMessages(crate::config::FoldMessages),
     SetAlwaysShowRecipients(bool),
     SetPgpLabels(bool),
+    SetReaderFindBottom(bool),
     SetSingleMessageCard(bool),
     SetReaderSwitch(bool),
     SetThemeSwitch(bool),
@@ -483,6 +490,7 @@ pub(crate) enum PrefOutput {
     SetRailDots(bool),
     SetSeenCounts(bool),
     SetReaderToolbar(ReaderToolbar),
+    SetToolbarFoldRight(bool),
     SetFocusMode(crate::config::FocusMode),
     SetRailFold(crate::config::RailFold),
     SetAppTheme(AppTheme),
@@ -513,6 +521,7 @@ pub(crate) enum PrefOutput {
     /// Every column back to its own width (#334).
     ResetColumnWidths,
     SetSingleKey(bool),
+    SetStartFullscreen(bool),
     SetGmailKeys(bool),
     /// How many days downloaded mail is kept; 0 keeps it (#394).
     SetKeepDownloads(u32),
@@ -536,6 +545,7 @@ pub(crate) enum PrefOutput {
     SetReplyPosition(crate::config::ReplyPosition),
     SetSignaturePosition(crate::config::SignaturePosition),
     SetSignatureDashes(bool),
+    SetReplyHeader(String),
     SetUndoSend(u32),
     Closed,
 }

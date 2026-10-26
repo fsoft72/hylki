@@ -330,6 +330,7 @@ mod reader_preemption_tests {
             path: "INBOX".into(),
             remaining: Some(vec![3, 2, 1]),
             gallery: false,
+            failures: 0,
         };
         let mut queue = std::collections::VecDeque::from([job.clone()]);
         // Cancellation before the future's first poll leaves the job queued.

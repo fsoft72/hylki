@@ -1,6 +1,6 @@
 //! Moving and copying mail between accounts.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use relm4::prelude::*;
 
@@ -424,6 +424,7 @@ impl AppModel {
         } else {
             foreign.len()
         };
+        let moving: HashSet<(u32, u32)> = items.iter().map(|&(a, _, _, i)| (a, i)).collect();
         for (aid, fid, uid, id) in items {
             // Prefer the cached message: it knows its own source folder (in the
             // unified inbox that isn't the folder the row was listed under) and
@@ -437,15 +438,20 @@ impl AppModel {
             if src == dest {
                 continue; // already in that folder
             }
-            if let Some(m) = &cached {
-                self.discard_message_local(m);
+            // A card dragged out of the open conversation leaves it, and
+            // the conversation's row stays for the rest.
+            let row_goes = match &cached {
+                Some(m) => self.discard_moved(m, &moving),
+                None => true,
+            };
+            if row_goes {
+                removed_ids.push(id);
             }
             let slot = groups.entry(src).or_default();
             slot.0.push(uid);
             // A row with no cached message is moved, but not recorded: there
             // is nothing to find it by, and nothing to put back on the list.
             slot.1.extend(cached);
-            removed_ids.push(id);
         }
         if foreign > 0 {
             self.notice_error(if foreign == 1 {
@@ -457,7 +463,7 @@ impl AppModel {
                 )
             });
         }
-        if removed_ids.is_empty() {
+        if groups.is_empty() {
             return;
         }
         self.bulk_pending += groups.len();

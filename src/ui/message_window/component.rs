@@ -73,6 +73,7 @@ impl Component for MessageWindow {
         view.emit(MessageViewInput::SetReaderSwitchShown(init.reader_switch));
         view.emit(MessageViewInput::SetThemeSwitchShown(init.theme_switch));
         view.emit(MessageViewInput::SetPgpLabels(init.pgp_labels));
+        view.emit(MessageViewInput::SetFindBottom(init.find_bottom));
         view.emit(MessageViewInput::SetReaderDefault(init.reader_default));
         view.emit(MessageViewInput::SetTags(init.tags.clone()));
         view.emit(MessageViewInput::SetAttachmentDrawer(init.drawer_enabled));
@@ -117,7 +118,9 @@ impl Component for MessageWindow {
             toolbar: init.toolbar,
             in_junk: init.in_junk,
             restorable: init.restorable,
+            snooze: init.snooze,
             collapsed: false,
+            fold_right: init.toolbar_fold_right,
             window: root.clone(),
             content: gtk::Overlay::new(),
             bar: Toolbar {
@@ -229,6 +232,9 @@ impl Component for MessageWindow {
             MessageWindowInput::SetPgpLabels(on) => {
                 self.view.emit(MessageViewInput::SetPgpLabels(on))
             }
+            MessageWindowInput::SetFindBottom(on) => {
+                self.view.emit(MessageViewInput::SetFindBottom(on))
+            }
             MessageWindowInput::SetSenderCheck(check) => self.on_set_sender_check(check, root),
             MessageWindowInput::SetBody {
                 account_id,
@@ -265,6 +271,10 @@ impl Component for MessageWindow {
                     self.relayout_toolbar();
                     self.sync_toolbar();
                 }
+            }
+            MessageWindowInput::SetToolbarFold(on) => {
+                self.fold_right = on;
+                self.sync_toolbar();
             }
             MessageWindowInput::SetAttachmentDrawer(on) => {
                 self.drawer_enabled = on;
@@ -332,6 +342,7 @@ impl Component for MessageWindow {
             }
             MessageWindowInput::Key(action) => self.run_key(action, &sender, root),
             MessageWindowInput::TagMenu => self.show_tag_menu(&sender),
+            MessageWindowInput::SnoozeMenu => self.show_snooze_menu(&sender),
             MessageWindowInput::OverflowMenu => self.show_overflow_menu(&sender),
             MessageWindowInput::AllowSender(addr) => {
                 let _ = sender.output(MessageWindowOutput::AllowSender(addr));

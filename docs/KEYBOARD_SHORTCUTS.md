@@ -1,12 +1,18 @@
 # Keyboard shortcuts
 
 Hylki can be driven from the keyboard without holding a modifier, in the style
-of Gmail and Geary. The scheme is **off by default** (a stray keystroke
-shouldn't archive mail), so switch it on first in **Settings → System →
-Single-key shortcuts**.
+of Gmail and Geary. The scheme is on for a new install, and **Settings →
+System → Single-key shortcuts** switches it off. An install that had it off
+keeps it off until it is switched on there.
 
 Press **Ctrl+?** (or F1, or *Main Menu → Keyboard Shortcuts*) at any time for
 this list in the app; the same key closes it again.
+
+The reader toolbar's ⋯ menu and a message's right-click menus, in the list
+and in the reader, show the key beside each entry that has one: the single
+key while single-key shortcuts are on (Gmail's with Gmail keys), otherwise
+the Ctrl key where there is one. With single keys on, each of the first nine
+tags in a Tags menu shows its number.
 
 | Move around | | Act on a message | |
 | --- | --- | --- | --- |
@@ -22,6 +28,7 @@ this list in the app; the same key closes it again.
 | | | <kbd>1</kbd> … <kbd>9</kbd> | Add or remove a tag (the first nine, in Settings order) |
 | | | <kbd>0</kbd> | Remove every tag |
 | | | <kbd>D</kbd> | Delete permanently, without going to Trash |
+| | | <kbd>z</kbd> | Snooze |
 
 <kbd>w</kbd> and <kbd>b</kbd> step through the cards of the conversation you
 are reading, opening a folded one; outside a conversation they move along the
@@ -54,6 +61,7 @@ followed by another goes somewhere.
 | <kbd>Shift+N</kbd> | Check for new mail | <kbd>*</kbd> <kbd>r</kbd> / <kbd>*</kbd> <kbd>u</kbd> | Select the read or the unread conversations |
 | <kbd>?</kbd> | This list | <kbd>*</kbd> <kbd>s</kbd> / <kbd>*</kbd> <kbd>t</kbd> | Select the starred or the unstarred conversations |
 | | | <kbd>v</kbd> | Move to a folder |
+| | | <kbd>b</kbd> | Snooze |
 | | | <kbd>l</kbd> | Tags |
 | | | <kbd>z</kbd> | Undo |
 | | | <kbd>Shift+R</kbd> <kbd>Shift+A</kbd> <kbd>Shift+F</kbd> | Reply, reply to all or forward in a window |
@@ -167,7 +175,7 @@ These work with or without single-key shortcuts too:
 | <kbd>Delete</kbd> | Delete the selected messages, or the message you are reading, in the main window or its own |
 | <kbd>Backspace</kbd> | Delete the selected messages, with the list focused |
 | <kbd>Shift+Delete</kbd> | Delete the selected messages permanently, without going to Trash, after asking |
-| <kbd>Ctrl+F</kbd> | Search the message list |
+| <kbd>Ctrl+F</kbd> | Search the message list, or find in the message when it has the focus |
 | <kbd>Ctrl+P</kbd> | Print the message you are reading |
 | <kbd>Ctrl+Shift+P</kbd> | Preview it as a PDF first |
 | <kbd>Ctrl+Z</kbd> | Undo the last action (a move, a delete, a star) |
@@ -175,6 +183,7 @@ These work with or without single-key shortcuts too:
 | <kbd>Ctrl+Shift+S</kbd> | Reveal the status bar (also: long-press Refresh) |
 | <kbd>Ctrl+Shift+A</kbd> | Show or hide the accounts in the sidebar |
 | <kbd>Ctrl+Shift+C</kbd> | Console mode, when it is enabled in Settings |
+| <kbd>F11</kbd> | Fullscreen on or off |
 | <kbd>Ctrl+,</kbd> | Open Settings |
 | <kbd>Ctrl+W</kbd> | Close the window; mail keeps syncing in the background. In Settings, a message window or a composer window, closes that window |
 | <kbd>Ctrl+Q</kbd> | Quit Hylki |

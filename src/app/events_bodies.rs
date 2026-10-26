@@ -31,6 +31,9 @@ impl AppModel {
                 if let Some(k) = key {
                     self.sender_cache.insert(k, check.clone());
                 }
+                // A filter's forward of a message with no preview waits for
+                // this to know it is not encrypted.
+                self.resume_auto_forwards(account_id, message_id, key, false);
                 let is_target = |m: &Message| is_event_target(m, key, account_id, message_id);
                 // Only the message actually on screen; a verdict that arrives
                 // from a background prefetch must not relabel a different one.
@@ -138,6 +141,7 @@ impl AppModel {
                 let key = self.event_key(account_id, &path, message_id);
                 let is_target = |m: &Message| is_event_target(m, key, account_id, message_id);
                 self.set_has_attachment(key, false);
+                self.resume_auto_forwards(account_id, message_id, key, true);
                 if let Some(c) = self.current.as_mut() {
                     if is_target(c) {
                         c.has_attachment = false;
@@ -220,6 +224,7 @@ impl AppModel {
         if let Some(k) = key {
             self.attachment_cache.insert(k, items.clone());
         }
+        self.resume_auto_forwards(account_id, message_id, key, false);
         let is_target = |m: &Message| is_event_target(m, key, account_id, message_id);
         // A file the gallery asked for: hand the bytes straight over so
         // the thumbnail and the preview fill in without a reload, which
@@ -301,6 +306,7 @@ impl AppModel {
         if let Some(k) = key {
             self.body_cache.insert(k, body.clone());
         }
+        self.resume_auto_forwards(account_id, message_id, key, false);
         if self.hand_body_to_waiter(account_id, message_id, &body, &sender) {
             return;
         }
@@ -363,7 +369,7 @@ impl AppModel {
                 m.body = body.to_string();
                 self.open_reply(
                     m.account_id,
-                    self.reply_context(&m, reply_prefill(&m)),
+                    self.reply_context(&m, reply_prefill(&m, &self.reply_header)),
                     (m.account_id, m.id),
                     sender,
                 );

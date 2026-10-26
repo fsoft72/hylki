@@ -329,6 +329,7 @@ impl AppModel {
             AppMsg::UndoSend(ticket) => self.undo_send(ticket, &sender),
 
             AppMsg::SendDone { ticket, sent } => {
+                self.finish_auto_forward(ticket, sent);
                 // A failure has said so already, in the status bar, and the
                 // message is in the Outbox or back in a composer. Its
                 // original is answered once it goes, not before (#454).
@@ -380,6 +381,9 @@ impl AppModel {
                 account_id,
                 message,
             } => {
+                if self.take_refused_auto_forward(account_id, &message) {
+                    return;
+                }
                 self.drop_provisional(&message.in_reply_to);
                 self.compose_unsent(account_id, *message, &sender);
             }

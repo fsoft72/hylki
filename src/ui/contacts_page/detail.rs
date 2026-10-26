@@ -421,7 +421,8 @@ impl ContactsPage {
             return;
         }
 
-        identity_header(detail, sender, c, hit);
+        // Someone already kept as a contact is not offered again.
+        identity_header(detail, sender, c, hit.filter(|_| !self.in_contacts(c)));
         field_groups(detail, sender, c, hit);
     }
 

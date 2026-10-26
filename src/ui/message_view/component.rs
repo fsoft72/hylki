@@ -71,6 +71,7 @@ impl Component for MessageView {
                     },
                 },
 
+                #[name = "remote_alert"]
                 gtk::Revealer {
                     set_transition_type: gtk::RevealerTransitionType::SlideDown,
                     #[watch]
@@ -110,13 +111,21 @@ impl Component for MessageView {
 
                 // In-message find (#103): WebKit's FindController does the
                 // matching and highlighting; this bar just drives it.
+                #[name = "find_bar"]
                 gtk::Revealer {
-                    set_transition_type: gtk::RevealerTransitionType::SlideDown,
+                    #[watch]
+                    set_transition_type: if model.find_bottom {
+                        gtk::RevealerTransitionType::SlideUp
+                    } else {
+                        gtk::RevealerTransitionType::SlideDown
+                    },
                     #[watch]
                     set_reveal_child: model.find_open,
 
                     gtk::Box {
                         add_css_class: "reader-find",
+                        #[watch]
+                        set_class_active: ("bottom", model.find_bottom),
                         set_spacing: 6,
 
                         #[name = "find_entry"]
@@ -184,7 +193,7 @@ impl Component for MessageView {
                         "under-bar",
                         model.spoof_alert_shown()
                             || (model.blocked && model.show_banner)
-                            || model.find_open,
+                            || (model.find_open && !model.find_bottom),
                     ),
                     // Under the split reply there is no list row to line up
                     // with either, only the composer's grab strip: 14px more
@@ -390,6 +399,10 @@ impl Component for MessageView {
         let header_tags = gtk::Box::new(gtk::Orientation::Horizontal, 4);
         let widgets = view_output!();
         model.find_entry = Some(widgets.find_entry.clone());
+        model.find_bar = Some((
+            widgets.find_bar.clone(),
+            widgets.remote_alert.clone().upcast(),
+        ));
         model.loading_page = Some(widgets.loading_page.clone());
         model.account_chip = Some(widgets.account_chip.clone());
         model.cover = Some(widgets.body_stack.clone());
@@ -625,6 +638,8 @@ impl Component for MessageView {
             MessageViewInput::SetReadMark(policy) => self.on_set_read_mark(policy),
             MessageViewInput::OpenFind => self.on_open_find(&sender),
             MessageViewInput::CloseFind => self.on_close_find(),
+            MessageViewInput::SetFindBottom(on) => self.on_set_find_bottom(on),
+            MessageViewInput::DragCard(key) => self.on_drag_card(key),
             MessageViewInput::FindChanged(text) => self.on_find_changed(text),
             MessageViewInput::FindNext => self.eval_find("hylkiFindStep(1)"),
             MessageViewInput::FindPrev => self.eval_find("hylkiFindStep(-1)"),

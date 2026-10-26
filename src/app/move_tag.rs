@@ -33,6 +33,9 @@ impl AppModel {
             }
 
             AppMsg::MoveToInbox => {
+                if self.bulk_on_cards(BulkAction::MoveToInbox, &sender) {
+                    return;
+                }
                 if self.many_selected() {
                     self.message_list
                         .emit(MessageListInput::Bulk(BulkAction::MoveToInbox));

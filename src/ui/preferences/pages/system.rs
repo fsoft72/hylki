@@ -15,6 +15,7 @@ pub(in crate::ui::preferences) struct SystemPage {
     pub(in crate::ui::preferences) renderer_row: adw::ComboRow,
     pub(in crate::ui::preferences) background_row: adw::SwitchRow,
     pub(in crate::ui::preferences) autostart_row: adw::SwitchRow,
+    pub(in crate::ui::preferences) fullscreen_row: adw::SwitchRow,
     pub(in crate::ui::preferences) tray_row: adw::SwitchRow,
     pub(in crate::ui::preferences) tray_icon_row: adw::ComboRow,
     pub(in crate::ui::preferences) tray_mail_row: adw::SwitchRow,
@@ -76,6 +77,15 @@ impl SystemPage {
                         set_subtitle: &i18n("Starts hidden."),
                         connect_active_notify[sender] => move |row| {
                             let _ = sender.output(PrefOutput::SetAutostart(row.is_active()));
+                        },
+                    },
+
+                    #[name = "fullscreen_row"]
+                    adw::SwitchRow {
+                        set_title: &i18n("Start fullscreen"),
+                        set_subtitle: &i18n("F11 switches fullscreen on and off."),
+                        connect_active_notify[sender] => move |row| {
+                            let _ = sender.output(PrefOutput::SetStartFullscreen(row.is_active()));
                         },
                     },
 
@@ -312,6 +322,7 @@ impl SystemPage {
             renderer_row,
             background_row,
             autostart_row,
+            fullscreen_row,
             tray_row,
             tray_icon_row,
             tray_mail_row,

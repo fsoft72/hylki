@@ -235,6 +235,7 @@ pub(super) fn build_main_menu(
         // Focus Mode: the distraction-free layout (also Ctrl+Shift+F
         // and Settings → Appearance, where its parts are chosen).
         sidebar.append(Some(i18n("Focus Mode").as_str()), Some("app.focus-mode"));
+        sidebar.append(Some(i18n("Fullscreen").as_str()), Some("win.fullscreen"));
         menu.append_section(None, &sidebar);
 
         let printing = gtk::gio::Menu::new();

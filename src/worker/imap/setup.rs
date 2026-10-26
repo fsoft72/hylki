@@ -128,6 +128,7 @@ impl<E: Emit> ImapWorker<E> {
                     gallery: gallery_folder(f.kind),
                     path: f.path,
                     remaining: None,
+                    failures: 0,
                 });
             }
         }

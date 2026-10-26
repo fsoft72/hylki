@@ -106,6 +106,23 @@ impl AppModel {
                 }
             }
 
+            PrefOutput::SetToolbarFoldRight(on) => {
+                if pref!(self.toolbar_fold_right = on) {
+                    // Shown again, the right group needs the fold point
+                    // measured afresh.
+                    self.refresh_reader_breakpoint();
+                    self.popouts_emit(|| MessageWindowInput::SetToolbarFold(on));
+                    if !self
+                        .reader_compose
+                        .as_ref()
+                        .is_some_and(|r| r.window.is_none())
+                    {
+                        self.reader_overflow_btn
+                            .set_visible(self.reader_overflow_wanted());
+                    }
+                }
+            }
+
             PrefOutput::SetShowRemoteBanner(on) => {
                 if pref!(self.show_remote_banner = on) {
                     self.message_view.emit(MessageViewInput::SetBannerShown(on));
@@ -234,6 +251,12 @@ impl AppModel {
                 if pref!(self.pgp_labels = on) {
                     self.message_view.emit(MessageViewInput::SetPgpLabels(on));
                     self.popouts_emit(|| MessageWindowInput::SetPgpLabels(on));
+                }
+            }
+            PrefOutput::SetReaderFindBottom(on) => {
+                if pref!(self.reader_find_bottom = on) {
+                    self.message_view.emit(MessageViewInput::SetFindBottom(on));
+                    self.popouts_emit(|| MessageWindowInput::SetFindBottom(on));
                 }
             }
             PrefOutput::SetSingleMessageCard(on) => {

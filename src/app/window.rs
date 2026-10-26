@@ -10,15 +10,19 @@ use super::accounts::finish_keyring_writes;
 use super::model::AppModel;
 use super::msg::AppMsg;
 use super::{
-    AboutAction, AccountsAction, AppModelWidgets, ConsoleAction, FindAction, PreferencesAction,
-    PrintAction, PrintPreviewAction, RedoAction, ShortcutsAction, StatusBarAction, UndoAction,
-    WindowActionGroup,
+    AboutAction, AccountsAction, AppModelWidgets, ConsoleAction, FindAction, FullscreenAction,
+    PreferencesAction, PrintAction, PrintPreviewAction, RedoAction, ShortcutsAction,
+    StatusBarAction, UndoAction, WindowActionGroup,
 };
 
 /// Saves the window's size and maximized state. Only the geometry: on
 /// Wayland the compositor owns placement and the monitor. A maximized
-/// window keeps the size saved before it was maximized.
+/// window keeps the size saved before it was maximized, and a fullscreen
+/// one leaves the saved state alone: its size is the monitor's.
 pub(super) fn save_window_geometry(w: &adw::ApplicationWindow) {
+    if w.is_fullscreen() {
+        return;
+    }
     let maximized = w.is_maximized();
     let (width, height) = if maximized {
         let (sw, sh, _) = crate::config::load_window_state();
@@ -54,6 +58,9 @@ impl AppModel {
         root.set_default_size(win_w, win_h);
         if win_max {
             root.maximize();
+        }
+        if self.start_fullscreen {
+            root.fullscreen();
         }
         // Below this width the expanded sidebar and a full-width Actions
         // Palette can't both fit (280 sidebar + 324 list + 492 reader), so the
@@ -252,6 +259,27 @@ pub(super) fn install_window_actions(
     group.add_action(RelmAction::<StatusBarAction>::new_stateless(move |_| {
         status_sender.input(AppMsg::ToggleNotifications);
     }));
+    // A window action, so F11 in a message's own window leaves the main
+    // window as it is. The state follows the window rather than the
+    // other way round: the compositor can leave fullscreen on its own.
+    let fullscreen = {
+        let window = root.clone();
+        RelmAction::<FullscreenAction>::new_stateful(&root.is_fullscreen(), move |_, on| {
+            *on = !window.is_fullscreen();
+            if *on {
+                window.fullscreen();
+            } else {
+                window.unfullscreen();
+            }
+        })
+    };
+    {
+        let action = fullscreen.gio_action().clone();
+        root.connect_fullscreened_notify(move |w| {
+            action.set_state(&w.is_fullscreen().to_variant());
+        });
+    }
+    group.add_action(fullscreen);
     group.register_for_widget(root);
 
     // A real accelerator rather than a key handler: GTK matches these before
@@ -264,6 +292,7 @@ pub(super) fn install_window_actions(
         .set_accelerators_for_action::<PrintPreviewAction>(&["<Ctrl><Shift>p"]);
     relm4::main_application().set_accelerators_for_action::<StatusBarAction>(&["<Ctrl><Shift>s"]);
     relm4::main_application().set_accelerators_for_action::<FindAction>(&["<Ctrl>f"]);
+    relm4::main_application().set_accelerators_for_action::<FullscreenAction>(&["F11"]);
     // On the menu's action, so the menu shows the keys beside Settings
     // (#513).
     relm4::main_application().set_accelerators_for_action::<AccountsAction>(&["<Ctrl>comma"]);

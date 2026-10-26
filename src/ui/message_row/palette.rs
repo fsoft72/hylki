@@ -2,11 +2,12 @@
 
 use super::headings::tag_menu_entries;
 use super::row::{PaletteButtons, Row};
-use super::shared::{RowLook, DRAG_CARD_WIDTH, DRAG_STACK, DRAG_STACK_STEP};
+use super::shared::RowLook;
 use super::{RowAction, RowData};
 use crate::i18n::i18n;
 use crate::models::Message;
 use crate::ui::context_menu::show_context_menu;
+use crate::ui::drag_card::{self, DRAG_STACK};
 use crate::ui::message_list::MessageListInput;
 use adw::prelude::*;
 use gtk::glib;
@@ -364,31 +365,17 @@ impl Row {
         let look = shared.look.borrow().clone();
         let me = (data.msg.account_id, data.msg.id);
         let selected = shared.selected_rows();
-        if selected.len() < 2 || !selected.iter().any(|r| (r.msg.account_id, r.msg.id) == me) {
-            let card = self.message_card(&data, &look, self.w.avatar.custom_image());
-            return Some(card.upcast());
-        }
         let front = self.message_card(&data, &look, self.w.avatar.custom_image());
-        let count = gtk::Label::new(Some(&selected.len().to_string()));
-        count.add_css_class("message-drag-count");
-        count.set_valign(gtk::Align::Center);
-        front.append(&count);
+        if selected.len() < 2 || !selected.iter().any(|r| (r.msg.account_id, r.msg.id) == me) {
+            return Some(front.upcast());
+        }
         let behind: Vec<_> = selected
             .iter()
             .filter(|r| (r.msg.account_id, r.msg.id) != me)
             .take(DRAG_STACK - 1)
             .map(|r| self.message_card(r, &look, None))
             .collect();
-        // One width for every card, so the edges behind run parallel.
-        let stack = gtk::Fixed::new();
-        for (depth, card) in behind.iter().enumerate().rev() {
-            card.set_size_request(DRAG_CARD_WIDTH, -1);
-            let at = ((depth + 1) as i32 * DRAG_STACK_STEP) as f64;
-            stack.put(card, at, at);
-        }
-        front.set_size_request(DRAG_CARD_WIDTH, -1);
-        stack.put(&front, 0.0, 0.0);
-        Some(stack.upcast())
+        Some(drag_card::stack(front, behind, selected.len()))
     }
 
     /// One message as a drag card: its circle, the subject over who it is
@@ -399,41 +386,9 @@ impl Row {
         look: &RowLook,
         image: Option<gtk::gdk::Paintable>,
     ) -> gtk::Box {
-        let card = gtk::Box::new(gtk::Orientation::Horizontal, 12);
-        card.add_css_class("message-drag-card");
         let name = self.face_name(data, look);
         let email = self.face_email(data, look);
-        let avatar = adw::Avatar::new(34, Some(&name), true);
-        avatar.set_custom_image(image.as_ref());
-        avatar.set_valign(gtk::Align::Center);
-        card.append(&avatar);
-        let text = gtk::Box::new(gtk::Orientation::Vertical, 3);
-        text.set_valign(gtk::Align::Center);
-        text.set_hexpand(true);
-        let subject = if data.msg.subject.trim().is_empty() {
-            i18n("(no subject)")
-        } else {
-            data.msg.subject.clone()
-        };
-        let title = gtk::Label::new(Some(&subject));
-        title.set_xalign(0.0);
-        title.set_ellipsize(gtk::pango::EllipsizeMode::End);
-        title.set_max_width_chars(40);
-        let who = match (name.trim(), email.trim()) {
-            (n, e) if n.is_empty() || n.eq_ignore_ascii_case(e) => e.to_string(),
-            (n, "") => n.to_string(),
-            (n, e) => format!("{n} <{e}>"),
-        };
-        let subtitle = gtk::Label::new(Some(&who));
-        subtitle.add_css_class("dim-label");
-        subtitle.add_css_class("caption");
-        subtitle.set_xalign(0.0);
-        subtitle.set_ellipsize(gtk::pango::EllipsizeMode::End);
-        subtitle.set_max_width_chars(40);
-        text.append(&title);
-        text.append(&subtitle);
-        card.append(&text);
-        card
+        drag_card::card(&data.msg.subject, &name, &email, image.as_ref())
     }
 
     pub(super) fn drag_payload(&self) -> Option<gtk::gdk::ContentProvider> {
@@ -455,10 +410,6 @@ impl Row {
             .into_iter()
             .flat_map(|k| threads.get(&(k.0, k.3)).cloned().unwrap_or_else(|| vec![k]))
             .collect();
-        let mut payload = String::from("vireo-move");
-        for (a, f, u, i) in items {
-            payload.push_str(&format!("\t{a}\t{f}\t{u}\t{i}"));
-        }
-        Some(gtk::gdk::ContentProvider::for_value(&payload.to_value()))
+        Some(drag_card::move_payload(&items))
     }
 }

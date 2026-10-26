@@ -84,6 +84,7 @@ impl AppModel {
             show_accounts_action,
             focus_action,
         } = main_menu;
+        crate::ui::keymap::set_key_mode(prefs.single_key_shortcuts, prefs.gmail_keys);
         let launcher_badge = prefs.launcher_badge();
         let remember_sidebar = prefs.remember_sidebar;
         let remember_rail = prefs.remember_rail;
@@ -114,6 +115,7 @@ impl AppModel {
             morph_pending: None,
             self_sender: sender.input_sender().clone(),
             provisionals: HashMap::new(),
+            sent_files: HashMap::new(),
             draining_composers: Vec::new(),
             reader_split_top: {
                 let r = gtk::Revealer::new();
@@ -176,6 +178,7 @@ impl AppModel {
             lightbox,
             attachments_loading: false,
             reader_actions_collapsed: false,
+            reader_compact: false,
             reader_toolbar: config::load_reader_toolbar(),
             reader_toolbar_widgets: std::cell::OnceCell::new(),
             reader_overflow_btn: {
@@ -188,6 +191,12 @@ impl AppModel {
             reader_tag_btn: {
                 let b = gtk::Button::from_icon_name("tag-outline-symbolic");
                 b.set_tooltip_text(Some(i18n("Tags").as_str()));
+                b.add_css_class("flat");
+                b
+            },
+            reader_snooze_btn: {
+                let b = gtk::Button::from_icon_name("alarm-symbolic");
+                b.set_tooltip_text(Some(i18n("Snooze").as_str()));
                 b.add_css_class("flat");
                 b
             },
@@ -352,11 +361,13 @@ impl AppModel {
             contacts_search_open: prefs.contacts_search_open,
             list_search_bottom: prefs.list_search_bottom,
             list_bulk_bar_bottom: prefs.list_bulk_bar_bottom,
+            toolbar_fold_right: prefs.toolbar_fold_right,
             list_column_widths: config::load_list_column_widths(),
             list_wide: config::load_list_pane_width() >= LIST_WIDE_ON,
             shortcuts_win: None,
             run_in_background: std::rc::Rc::new(std::cell::Cell::new(prefs.run_in_background)),
             autostart: config::load_autostart(),
+            start_fullscreen: prefs.start_fullscreen,
             tray_enabled: prefs.tray,
             tray_icon: prefs.tray_icon,
             tray_mail: prefs.tray_mail,
@@ -384,6 +395,7 @@ impl AppModel {
             fold_messages: prefs.fold_messages,
             always_show_recipients: prefs.always_show_recipients,
             pgp_labels: prefs.pgp_labels,
+            reader_find_bottom: prefs.reader_find_bottom,
             show_unified_pref: prefs.show_unified,
             unified_chips: config::load_unified_chips(),
             section_style: prefs.section_style,
@@ -461,6 +473,11 @@ impl AppModel {
             },
             filter_run: None,
             filter_moved: Default::default(),
+            forwarded_log: config::ForwardedLog::load(),
+            auto_forwards: Vec::new(),
+            auto_forward_inflight: Default::default(),
+            auto_forward_tickets: Default::default(),
+            filter_followups: Default::default(),
             body_hits: Default::default(),
             single_message_card: prefs.single_message_card,
             reader_mode: prefs.reader_mode,
@@ -499,6 +516,7 @@ impl AppModel {
             reply_position: prefs.reply_position,
             signature_position: prefs.signature_position,
             signature_dashes: prefs.signature_dashes,
+            reply_header: prefs.reply_header,
             undo_send_secs: prefs.undo_send_secs,
             spellcheck: prefs.spellcheck,
             spellcheck_langs: prefs.spellcheck_langs,
@@ -525,6 +543,9 @@ impl AppModel {
             showing_contacts: false,
             showing_outbox: false,
             outbox_by_account: HashMap::new(),
+            snoozed: super::snooze::load_snoozed(),
+            snooze_waking: HashMap::new(),
+            snooze_until: None,
             server_identities: HashMap::new(),
             unified_emit_queued: std::cell::Cell::new(false),
             unified_dirty: std::cell::Cell::new(false),

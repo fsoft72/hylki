@@ -127,6 +127,10 @@ pub(super) fn rule(field: FilterField, matcher: FilterMatch, value: &str) -> Fil
         dest_path: "Archive".into(),
         tag: String::new(),
         count_unread: true,
+        forward_to: Vec::new(),
+        forward_since: 0,
+        mark_read: false,
+        delete: false,
     }
 }
 
@@ -763,4 +767,106 @@ fn filter_rules_roundtrip_through_toml() {
     .unwrap();
     let back: FiltersFile = toml::from_str(&text).unwrap();
     assert_eq!(back.rules, rules);
+}
+
+#[test]
+fn new_action_keys_round_trip() {
+    let mut r = rule(FilterField::Subject, FilterMatch::Contains, "invoice");
+    r.dest_path = String::new();
+    r.forward_to = vec!["admin@corp.example".into(), "books@corp.example".into()];
+    r.forward_since = 1_700_000_000;
+    r.mark_read = true;
+    r.delete = true;
+    let file = FiltersFile {
+        rules: vec![r.clone()],
+    };
+    let text = toml::to_string_pretty(&file).unwrap();
+    let back: FiltersFile = toml::from_str(&text).unwrap();
+    assert_eq!(back.rules, vec![r]);
+}
+
+#[test]
+fn move_only_rule_writes_no_new_keys() {
+    let r = rule(FilterField::Subject, FilterMatch::Contains, "invoice");
+    let text = toml::to_string_pretty(&FiltersFile { rules: vec![r] }).unwrap();
+    for key in ["forward_to", "forward_since", "mark_read", "delete"] {
+        assert!(!text.contains(key), "{key} leaked into {text}");
+    }
+}
+
+#[test]
+fn old_file_loads_with_actions_off() {
+    let old: FiltersFile = toml::from_str(
+        "[[rules]]\naccount_email = \"a@b.c\"\nfield = \"subject\"\nmatcher = \"contains\"\nvalue = \"x\"\ndest_path = \"Lists\"\n",
+    )
+    .unwrap();
+    let r = &old.rules[0];
+    assert!(r.forward_to.is_empty() && r.forward_since == 0);
+    assert!(!r.mark_read && !r.delete);
+    assert_eq!(r.dest_path, "Lists");
+}
+
+#[test]
+fn delete_with_a_destination_loses_the_delete() {
+    let both: FiltersFile = toml::from_str(
+        "[[rules]]\naccount_email = \"a@b.c\"\nfield = \"subject\"\nmatcher = \"contains\"\nvalue = \"x\"\ndest_path = \"Lists\"\ndelete = true\n",
+    )
+    .unwrap();
+    assert!(!both.rules[0].delete);
+    assert_eq!(both.rules[0].dest_path, "Lists");
+}
+
+#[test]
+fn parse_forward_addresses_normalises() {
+    assert_eq!(
+        parse_forward_addresses(" A@x.org, b@y.org ,a@X.org,").unwrap(),
+        vec!["a@x.org".to_string(), "b@y.org".to_string()]
+    );
+    assert!(parse_forward_addresses("").unwrap().is_empty());
+}
+
+#[test]
+fn parse_forward_addresses_rejects_bad() {
+    assert_eq!(parse_forward_addresses("nobody").unwrap_err(), "nobody");
+    assert_eq!(
+        parse_forward_addresses("a@x.org, bad address@y").unwrap_err(),
+        "bad address@y"
+    );
+    assert!(parse_forward_addresses("@x.org").is_err());
+    assert!(parse_forward_addresses("a@").is_err());
+}
+
+#[test]
+fn has_action_counts_every_kind() {
+    let mut r = rule(FilterField::Subject, FilterMatch::Contains, "x");
+    r.dest_path = String::new();
+    assert!(!r.has_action());
+    let mut t = r.clone();
+    t.tag = "$label1".into();
+    assert!(t.has_action());
+    let mut f = r.clone();
+    f.forward_to = vec!["a@x.org".into()];
+    assert!(f.has_action());
+    let mut m = r.clone();
+    m.mark_read = true;
+    assert!(m.has_action());
+    let mut d = r.clone();
+    d.delete = true;
+    assert!(d.has_action());
+}
+
+#[test]
+fn forward_start_resets_when_the_destinations_change() {
+    let old = vec!["a@x.org".to_string()];
+    // No forward before: starts now.
+    assert_eq!(forward_start(None, &old, 500), 500);
+    // Same destinations in another order or case keep the old start.
+    let same = vec!["A@x.org".to_string()];
+    assert_eq!(forward_start(Some((100, &old)), &same, 500), 100);
+    // A new address starts again from now, so old mail is not sent on.
+    let more = vec!["a@x.org".to_string(), "b@x.org".to_string()];
+    assert_eq!(forward_start(Some((100, &old)), &more, 500), 500);
+    // An unset start counts as none; no destinations means no start.
+    assert_eq!(forward_start(Some((0, &old)), &old, 500), 500);
+    assert_eq!(forward_start(Some((100, &old)), &[], 500), 0);
 }

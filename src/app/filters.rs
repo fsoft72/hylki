@@ -5,6 +5,7 @@ use crate::config;
 use crate::models::{FolderKind, Message};
 use crate::worker::MailRequest;
 
+use super::filter_actions::{plan_actions, ForwardJob, PlanContext};
 use super::filter_run::FolderTally;
 use super::model::AppModel;
 use super::msg::AppMsg;
@@ -120,7 +121,9 @@ impl AppModel {
             .filter_run
             .as_ref()
             .is_some_and(|r| r.folders.contains_key(&(account_id, folder_id)));
-        let (kept, filed, pass) = self.filter_pass(account_id, folder_id, messages, manual);
+        let followup = self.filter_followups.remove(&(account_id, folder_id));
+        let (kept, filed, pass) =
+            self.filter_pass(account_id, folder_id, messages, manual || followup);
         if manual {
             self.filter_run_folder_pass(account_id, folder_id, pass);
         }
@@ -210,6 +213,7 @@ impl AppModel {
         let Some(email) = self.filtered_account(account_id, folder_id, manual) else {
             return (messages, Vec::new(), FolderTally::default());
         };
+        self.purge_stale_auto_forwards();
         let rules: Vec<&config::FilterRule> = self
             .filters
             .iter()
@@ -221,6 +225,25 @@ impl AppModel {
         let checked = messages.len();
         let mut matched = 0usize;
         let mut tagged = 0usize;
+        let mut read = 0usize;
+        let mut deleted = 0usize;
+        // Forwards to start once the loop is done with its borrows of the
+        // rules: a forward is asynchronous (see `start_auto_forward`).
+        let mut to_forward: Vec<(Message, ForwardJob)> = Vec::new();
+        let own_addrs = self.own_identities(account_id);
+        let now = crate::datefmt::now();
+        let outbox = self.outbox_by_account.get(&account_id);
+        let in_outbox = |m: &Message| {
+            !m.message_id.is_empty()
+                && outbox.is_some_and(|items| {
+                    items.iter().any(|i| {
+                        i.forwards
+                            .trim()
+                            .trim_matches(['<', '>'])
+                            .eq_ignore_ascii_case(&m.message_id)
+                    })
+                })
+        };
         // How many messages each rule matched, said in the log at the end of
         // a manual run: the one place a rule that matches nothing can be
         // told apart from one whose matches needed nothing done (#201).
@@ -267,15 +290,73 @@ impl AppModel {
             if let Some(src) = &src {
                 tagged += self.tag_by_rules(account_id, src, &mut m, &matching);
             }
-            let hit = matching.iter().copied().find(|r| {
-                !r.dest_path.is_empty()
-                    // A destination that vanished from the server keeps the
-                    // mail in the inbox rather than erroring it into limbo.
-                    && known(&r.dest_path)
-                    && src.as_deref() != Some(r.dest_path.as_str())
-            });
-            match (hit, &src) {
-                (Some(rule), Some(src)) => {
+            // A destination that vanished from the server keeps the mail in
+            // the inbox rather than erroring it into limbo.
+            let matching_rules: Vec<&config::FilterRule> = matching.iter().map(|r| **r).collect();
+            let cx = PlanContext {
+                src_path: src.as_deref(),
+                own: &own_addrs,
+                log: &self.forwarded_log,
+                dest_ok: &known,
+                in_outbox: &in_outbox,
+                now,
+            };
+            let plan = plan_actions(&matching_rules, &m, &cx);
+            // A forward not yet on its way holds the message where it is:
+            // nothing else a rule does to it may run before the forward is
+            // recorded, or a failed forward would lose the mail.
+            if plan.held {
+                tracing::info!(
+                    "filter: {} held: encrypted, or its forward is in the Outbox",
+                    m.from_addr
+                );
+                kept.push(m);
+                continue;
+            }
+            if !plan.forwards.is_empty() {
+                for job in plan.forwards {
+                    if !self.auto_forward_inflight.contains(&job.key) {
+                        to_forward.push((m.clone(), job));
+                    }
+                }
+                kept.push(m);
+                continue;
+            }
+            let Some(src) = &src else {
+                kept.push(m);
+                continue;
+            };
+            if plan.mark_read && !pending.contains(&m.uid) {
+                self.send_to(
+                    account_id,
+                    MailRequest::SetSeen {
+                        path: src.clone(),
+                        uid: m.uid,
+                        seen: true,
+                    },
+                );
+                m.unread = false;
+                read += 1;
+            }
+            if plan.delete {
+                still_pending.insert(m.uid);
+                // Requested on an earlier sync that raced the server.
+                if pending.contains(&m.uid) {
+                    continue;
+                }
+                tracing::info!("filter: {} deleted", m.from_addr);
+                self.send_to(
+                    account_id,
+                    MailRequest::PurgeMessages {
+                        path: src.clone(),
+                        uids: vec![m.uid],
+                    },
+                );
+                deleted += 1;
+                continue;
+            }
+            match plan.move_to {
+                Some(dest) => {
                     still_pending.insert(m.uid);
                     if pending.contains(&m.uid) {
                         // The move was already requested on an earlier sync;
@@ -284,10 +365,10 @@ impl AppModel {
                         // would repeat the toast.
                         continue;
                     }
-                    self.request_filter_move(account_id, src, &m, rule);
-                    filed.push((m, rule.dest_path.clone()));
+                    self.request_filter_move(account_id, src, &m, &dest, &matching_rules);
+                    filed.push((m, dest));
                 }
-                _ => kept.push(m),
+                None => kept.push(m),
             }
         }
         // UIDs absent from this sync have completed their move server-side;
@@ -299,11 +380,24 @@ impl AppModel {
         if manual {
             log_rule_counts(&rules, &per_rule, checked, src.as_deref());
         }
+        // The worker answers each purge with a `BulkComplete`, which would
+        // otherwise end the count of somebody else's bulk action early.
+        if deleted > 0 {
+            self.bulk_pending += deleted;
+            self.update_busy_indicator();
+        }
+        let forwarded = to_forward.len();
+        for (m, job) in to_forward {
+            self.start_auto_forward(m, job);
+        }
         let pass = FolderTally {
             checked,
             matched,
             tagged,
             filed: filed.len(),
+            forwarded,
+            read,
+            deleted,
         };
         (kept, filed, pass)
     }
@@ -320,26 +414,28 @@ impl AppModel {
         self.email_of(account_id)
     }
 
-    /// Ask the server to move `m` from `src` to where `rule` files it.
+    /// Ask the server to move `m` from `src` to `dest`, where the first of
+    /// the `matching` rules with that destination files it.
     fn request_filter_move(
         &self,
         account_id: u32,
         src: &str,
         m: &Message,
-        rule: &config::FilterRule,
+        dest: &str,
+        matching: &[&config::FilterRule],
     ) {
-        tracing::info!(
-            "filter: {} → {} [{}]",
-            m.from_addr,
-            rule.dest_path,
-            rule.label(),
-        );
+        let label = matching
+            .iter()
+            .find(|r| r.dest_path == dest)
+            .map(|r| r.label())
+            .unwrap_or_default();
+        tracing::info!("filter: {} → {dest} [{label}]", m.from_addr);
         self.send_to(
             account_id,
             MailRequest::MoveMessage {
                 path: src.to_string(),
                 uid: m.uid,
-                dest: rule.dest_path.clone(),
+                dest: dest.to_string(),
             },
         );
     }

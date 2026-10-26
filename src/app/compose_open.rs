@@ -244,7 +244,7 @@ impl AppModel {
     /// Asks for what a copy of `m` (a forward, an edit as new) still
     /// lacks: its body first, then its attachments. True when a request
     /// went out; the caller holds `m` until the answer re-enters.
-    fn fetch_for_copy(&self, m: &Message) -> bool {
+    pub(super) fn fetch_for_copy(&self, m: &Message) -> bool {
         if m.body.is_empty() {
             if let Some(path) = self.resolve_folder_path(m) {
                 self.send_to(
@@ -427,7 +427,7 @@ impl AppModel {
                 if let Some(m) = self.compose_target() {
                     self.open_reply(
                         m.account_id,
-                        self.reply_context(&m, reply_prefill(&m)),
+                        self.reply_context(&m, reply_prefill(&m, &self.reply_header)),
                         (m.account_id, m.id),
                         &sender,
                     );
@@ -439,7 +439,7 @@ impl AppModel {
                     let own = self.own_identities(m.account_id);
                     self.open_reply(
                         m.account_id,
-                        self.reply_context(&m, reply_all_prefill(&m, &own)),
+                        self.reply_context(&m, reply_all_prefill(&m, &own, &self.reply_header)),
                         (m.account_id, m.id),
                         &sender,
                     );
@@ -466,9 +466,13 @@ impl AppModel {
                 WindowCompose::Reply | WindowCompose::ReplyAll => {
                     if let Some(m) = self.compose_target() {
                         let prefill = if what == WindowCompose::Reply {
-                            reply_prefill(&m)
+                            reply_prefill(&m, &self.reply_header)
                         } else {
-                            reply_all_prefill(&m, &self.own_identities(m.account_id))
+                            reply_all_prefill(
+                                &m,
+                                &self.own_identities(m.account_id),
+                                &self.reply_header,
+                            )
                         };
                         self.open_compose(m.account_id, self.reply_context(&m, prefill), &sender);
                     }

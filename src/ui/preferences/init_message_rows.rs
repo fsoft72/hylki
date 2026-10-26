@@ -49,6 +49,13 @@ impl Preferences {
             .always_show_recipients_row
             .set_active(init.always_show_recipients);
         widgets.reading.pgp_labels_row.set_active(init.pgp_labels);
+        let find_place = &widgets.reading.find_place_row;
+        find_place.set_model(Some(&gtk::StringList::new(&[
+            &i18n("Top of the message"),
+            &i18n("Bottom of the message"),
+        ])));
+        find_place.set_selected(u32::from(init.reader_find_bottom));
+        no_truncate(find_place);
         widgets
             .reading
             .print_page_numbers_row
@@ -77,6 +84,10 @@ impl Preferences {
             .appearance
             .desktop_icons_row
             .set_active(init.desktop_icons);
+        widgets
+            .appearance
+            .toolbar_fold_row
+            .set_active(init.toolbar_fold_right);
         widgets
             .reading
             .reader_default_row
@@ -363,6 +374,7 @@ impl Preferences {
             .composing
             .signature_dashes_row
             .set_active(init.signature_dashes);
+        widgets.composing.set_reply_header(&init.reply_header);
         let undo_labels: Vec<String> = crate::config::UNDO_SEND_CHOICES
             .iter()
             .map(|&secs| match secs {

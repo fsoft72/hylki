@@ -457,6 +457,10 @@ impl Preferences {
             .background_row
             .set_active(init.run_in_background);
         widgets.system.autostart_row.set_active(init.autostart);
+        widgets
+            .system
+            .fullscreen_row
+            .set_active(init.start_fullscreen);
         // Starting at login only means anything if Hylki stays running.
         widgets
             .system

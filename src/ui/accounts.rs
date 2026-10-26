@@ -17,6 +17,8 @@ use crate::ui::sender_row::{SenderRow, SenderRowOutput};
 use crate::worker::{self, ConnTest};
 
 mod account_list;
+mod action_editor;
+mod address_suggest;
 mod aliases;
 mod condition_editor;
 mod editor;

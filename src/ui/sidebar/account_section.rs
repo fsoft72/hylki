@@ -222,25 +222,50 @@ impl Sidebar {
                 let _ = s.send(SidebarInput::ToggleCollapseLocal(id));
             });
         } else {
-            // As the unified rows: the chevron's own button opens or
-            // folds the account, and so does a double click anywhere
-            // else on the header; a plain click there does nothing.
+            // As the unified rows: the chevron opens or folds the account,
+            // and so does a double click anywhere else on the header; a
+            // plain click there does nothing. The chevron's button sits
+            // inside the header's, and a GtkButton takes its click in the
+            // capture phase, so the header would claim the release before
+            // the chevron saw it: the chevron's press is claimed here
+            // instead, and its release folds the account.
             let press = gtk::GestureClick::new();
             press.set_button(gtk::gdk::BUTTON_PRIMARY);
             press.set_propagation_phase(gtk::PropagationPhase::Capture);
-            let s = sender.input_sender().clone();
+            let on_chevron = move |head: &gtk::Button, chev: &gtk::Button, x, y| {
+                head.pick(x, y, gtk::PickFlags::DEFAULT)
+                    .is_some_and(|w| w == *chev || w.is_ancestor(chev))
+            };
+            // Whether the press now held down began on the chevron.
+            let armed = std::rc::Rc::new(std::cell::Cell::new(false));
             let (head, chev) = (header.downgrade(), chev_btn.downgrade());
-            press.connect_pressed(move |_, presses, x, y| {
+            let s = sender.input_sender().clone();
+            let a = armed.clone();
+            press.connect_pressed(move |g, presses, x, y| {
                 let (Some(head), Some(chev)) = (head.upgrade(), chev.upgrade()) else {
                     return;
                 };
-                let on_chevron = head
-                    .pick(x, y, gtk::PickFlags::DEFAULT)
-                    .is_some_and(|w| w == chev || w.is_ancestor(&chev));
-                if presses == 2 && !on_chevron {
+                a.set(on_chevron(&head, &chev, x, y));
+                if a.get() {
+                    g.set_state(gtk::EventSequenceState::Claimed);
+                } else if presses == 2 {
                     let _ = s.send(SidebarInput::ToggleCollapseLocal(id));
                 }
             });
+            let (head, chev) = (header.downgrade(), chev_btn.downgrade());
+            let s = sender.input_sender().clone();
+            let a = armed.clone();
+            press.connect_released(move |_, _, x, y| {
+                let (Some(head), Some(chev)) = (head.upgrade(), chev.upgrade()) else {
+                    return;
+                };
+                // Pressed and released on the chevron: a click, as the
+                // button itself would count it.
+                if a.replace(false) && on_chevron(&head, &chev, x, y) {
+                    let _ = s.send(SidebarInput::ToggleCollapseLocal(id));
+                }
+            });
+            press.connect_cancel(move |_, _| armed.set(false));
             header.add_controller(press);
         }
         attach_account_menu(&header, section, sender);

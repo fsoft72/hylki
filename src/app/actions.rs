@@ -46,6 +46,9 @@ impl AppModel {
             }
 
             AppMsg::Archive => {
+                if self.bulk_on_cards(BulkAction::Archive, &sender) {
+                    return;
+                }
                 if self.many_selected() {
                     self.message_list
                         .emit(MessageListInput::Bulk(BulkAction::Archive));
@@ -69,6 +72,9 @@ impl AppModel {
                 // whole selection, exactly as the bulk bar's Delete would. One
                 // row checked with Gmail's x is a lone row, whose conversation
                 // asks first as an open one does (#392).
+                if self.bulk_on_cards(BulkAction::Delete, &sender) {
+                    return;
+                }
                 if self.many_selected() {
                     self.message_list.emit(if self.list_selection.len() == 1 {
                         MessageListInput::ResolveDelete
@@ -104,6 +110,9 @@ impl AppModel {
                 // The list resolves its rows as it does for Delete, a
                 // conversation's row bringing all of it, and hands them back
                 // as a bulk action that asks first.
+                if self.bulk_on_cards(BulkAction::DeleteForever, &sender) {
+                    return;
+                }
                 if self.many_selected()
                     || (!self.selection_from_cards
                         && self.list_selection.len() == 1
@@ -173,6 +182,9 @@ impl AppModel {
             AppMsg::MarkSpam => {
                 // In Junk the same button, shortcut and menu entry mean the
                 // reverse (#168); for a selection the list makes that swap.
+                if self.bulk_on_cards(BulkAction::Spam, &sender) {
+                    return;
+                }
                 if self.many_selected() {
                     self.message_list
                         .emit(MessageListInput::Bulk(BulkAction::Spam));
@@ -237,7 +249,7 @@ impl AppModel {
             RowAction::Reply => {
                 self.open_reply(
                     m.account_id,
-                    self.reply_context(&m, reply_prefill(&m)),
+                    self.reply_context(&m, reply_prefill(&m, &self.reply_header)),
                     (m.account_id, m.id),
                     &sender,
                 );
@@ -246,7 +258,7 @@ impl AppModel {
                 let own = self.own_identities(m.account_id);
                 self.open_reply(
                     m.account_id,
-                    self.reply_context(&m, reply_all_prefill(&m, &own)),
+                    self.reply_context(&m, reply_all_prefill(&m, &own, &self.reply_header)),
                     (m.account_id, m.id),
                     &sender,
                 );
@@ -313,7 +325,7 @@ impl AppModel {
                 let m = self.with_cached_body(m);
                 self.open_compose(
                     m.account_id,
-                    self.reply_context(&m, reply_prefill(&m)),
+                    self.reply_context(&m, reply_prefill(&m, &self.reply_header)),
                     &sender,
                 );
             }
@@ -323,7 +335,7 @@ impl AppModel {
                 let own = self.own_identities(m.account_id);
                 self.open_compose(
                     m.account_id,
-                    self.reply_context(&m, reply_all_prefill(&m, &own)),
+                    self.reply_context(&m, reply_all_prefill(&m, &own, &self.reply_header)),
                     &sender,
                 );
             }
@@ -362,6 +374,18 @@ impl AppModel {
                 self.show_add_contact_dialog(&m.from_name, &m.from_addr, &sender);
             }
             RowAction::CreateFilter => self.create_filter_from(&m, &sender),
+            // A conversation's row snoozes the conversation, as far as it
+            // is in this folder: a reply in Sent stays where it is.
+            RowAction::Snooze(choice) => {
+                let mut messages: Vec<Message> = conversation
+                    .into_iter()
+                    .filter(|c| c.account_id == m.account_id && c.folder_id == m.folder_id)
+                    .collect();
+                if !messages.iter().any(|c| c.id == m.id) {
+                    messages.push(m);
+                }
+                self.snooze_choice(messages, choice, &sender);
+            }
         }
     }
 
@@ -412,6 +436,31 @@ impl AppModel {
         );
     }
 
+    /// Several cards of the open conversation picked in the reader: the
+    /// action is theirs alone. The list's row they share stands for the
+    /// whole conversation, so handing it the action deleted all of it.
+    pub(super) fn bulk_on_cards(
+        &mut self,
+        action: BulkAction,
+        sender: &ComponentSender<Self>,
+    ) -> bool {
+        if !self.many_selected() || !self.selection_from_cards {
+            return false;
+        }
+        let messages = self.multi_selection();
+        if messages.is_empty() {
+            return false;
+        }
+        // In Junk, Spam means the reverse, as it does for the list (#168).
+        let action = if action == BulkAction::Spam && messages.iter().all(|m| self.in_junk(m)) {
+            BulkAction::NotSpam
+        } else {
+            action
+        };
+        self.on_bulk(action, messages, sender.clone());
+        true
+    }
+
     /// A bulk action applied to every selected message.
     fn on_bulk(
         &mut self,
@@ -443,6 +492,7 @@ impl AppModel {
                 self.user_set_flags(star_label(false), &messages, FlagKind::Star, false)
             }
             BulkAction::DeleteForever => self.confirm_purge(messages, &sender),
+            BulkAction::Snooze | BulkAction::Unsnooze => self.apply_snooze(action, messages),
             // Archive/Delete/Spam remove every selected row. Doing that one
             // at a time blocks the UI thread (a render cycle per message) and
             // trips GTK's "app is not responding" dialog for large selections.

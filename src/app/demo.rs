@@ -135,6 +135,10 @@ pub(super) fn demo_filters() -> Vec<config::FilterRule> {
         dest_path: dest.into(),
         tag: String::new(),
         count_unread: true,
+        forward_to: Vec::new(),
+        forward_since: 0,
+        mark_read: false,
+        delete: false,
     };
     vec![
         mk(

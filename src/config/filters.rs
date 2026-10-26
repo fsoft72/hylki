@@ -51,6 +51,66 @@ pub(crate) struct FilterRule {
     /// destinations never count, whatever this says.
     #[serde(default = "count_unread_default")]
     pub(crate) count_unread: bool,
+    /// Addresses the matching mail is forwarded to, in the manual Forward's
+    /// format. Empty forwards nothing. Written beside the older keys so a
+    /// version that predates them ignores them.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub(crate) forward_to: Vec<String>,
+    /// Unix seconds from which mail is forwarded: set when the Forward was
+    /// added to the rule, so old mail in the folder is never sent on. 0
+    /// means unset.
+    #[serde(default, skip_serializing_if = "is_zero_i64")]
+    pub(crate) forward_since: i64,
+    /// Mark matching mail as read.
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub(crate) mark_read: bool,
+    /// Permanently delete matching mail (never to Trash). Excludes a
+    /// destination folder.
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub(crate) delete: bool,
+}
+
+fn is_zero_i64(v: &i64) -> bool {
+    *v == 0
+}
+
+/// The `forward_since` for a rule being saved: the start it had when the
+/// destinations are the same, otherwise `now`. Mail already in the folder
+/// must not go to an address added later, and an address that already got
+/// it must not get it twice. `prior` is the rule's old start and addresses.
+pub(crate) fn forward_start(prior: Option<(i64, &[String])>, to: &[String], now: i64) -> i64 {
+    if to.is_empty() {
+        return 0;
+    }
+    let sorted = |list: &[String]| {
+        let mut v: Vec<String> = list.iter().map(|a| a.to_lowercase()).collect();
+        v.sort();
+        v
+    };
+    match prior {
+        Some((since, old)) if since > 0 && sorted(old) == sorted(to) => since,
+        _ => now,
+    }
+}
+
+/// The addresses a Forward action names, from the comma-separated text of
+/// the editor: trimmed, lowercased and de-duplicated in order, empties
+/// dropped. `Err` carries the first entry that is not a plain address.
+pub(crate) fn parse_forward_addresses(text: &str) -> Result<Vec<String>, String> {
+    let mut out: Vec<String> = Vec::new();
+    for part in text.split(',').map(str::trim).filter(|p| !p.is_empty()) {
+        let valid = part.split_once('@').is_some_and(|(local, domain)| {
+            !local.is_empty() && !domain.is_empty() && !domain.contains('@')
+        }) && !part.chars().any(char::is_whitespace);
+        if !valid {
+            return Err(part.to_string());
+        }
+        let addr = part.to_lowercase();
+        if !out.contains(&addr) {
+            out.push(addr);
+        }
+    }
+    Ok(out)
 }
 
 fn count_unread_default() -> bool {
@@ -171,10 +231,26 @@ struct FilterRuleDisk {
     tag: String,
     #[serde(default = "count_unread_default")]
     count_unread: bool,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    forward_to: Vec<String>,
+    #[serde(default, skip_serializing_if = "is_zero_i64")]
+    forward_since: i64,
+    #[serde(default, skip_serializing_if = "is_false")]
+    mark_read: bool,
+    #[serde(default, skip_serializing_if = "is_false")]
+    delete: bool,
 }
 
 impl From<FilterRuleDisk> for FilterRule {
     fn from(d: FilterRuleDisk) -> Self {
+        // A destination and a delete exclude each other; the safer of the
+        // two wins.
+        let delete = d.delete && d.dest_path.is_empty();
+        if d.delete && !delete {
+            tracing::warn!(
+                "filter: a rule with a destination and Delete keeps only the destination"
+            );
+        }
         FilterRule {
             name: d.name,
             account_email: d.account_email,
@@ -186,6 +262,10 @@ impl From<FilterRuleDisk> for FilterRule {
             dest_path: d.dest_path,
             tag: d.tag,
             count_unread: d.count_unread,
+            forward_to: d.forward_to,
+            forward_since: d.forward_since,
+            mark_read: d.mark_read,
+            delete,
         }
     }
 }
@@ -210,6 +290,10 @@ impl From<FilterRule> for FilterRuleDisk {
             dest_path: r.dest_path,
             tag: r.tag,
             count_unread: r.count_unread,
+            forward_to: r.forward_to,
+            forward_since: r.forward_since,
+            mark_read: r.mark_read,
+            delete: r.delete,
         }
     }
 }
@@ -423,6 +507,10 @@ impl FilterRule {
             dest_path: String::new(),
             tag: String::new(),
             count_unread: count_unread_default(),
+            forward_to: Vec::new(),
+            forward_since: 0,
+            mark_read: false,
+            delete: false,
         };
         rule.set_conditions(conditions);
         rule
@@ -465,6 +553,16 @@ impl FilterRule {
             .map(|c| format!("{:?} {:?} {}", c.field, c.matcher, c.value))
             .collect::<Vec<_>>()
             .join(if self.any { " or " } else { " and " })
+    }
+
+    /// Whether the rule does anything to a match: files it, tags it,
+    /// forwards it, marks it read or deletes it.
+    pub(crate) fn has_action(&self) -> bool {
+        !self.dest_path.is_empty()
+            || !self.tag.is_empty()
+            || !self.forward_to.is_empty()
+            || self.mark_read
+            || self.delete
     }
 
     /// Whether any condition looks the sender up in the address books.

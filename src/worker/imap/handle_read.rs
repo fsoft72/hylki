@@ -171,6 +171,7 @@ impl<E: Emit> ImapWorker<E> {
                 gallery: folder_is_gallery(cache.as_ref(), account_id, path),
                 path: path.to_string(),
                 remaining: None,
+                failures: 0,
             });
         }
         // Pre-download recent bodies so opening them is instant.

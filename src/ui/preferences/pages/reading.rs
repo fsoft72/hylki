@@ -26,6 +26,7 @@ pub(in crate::ui::preferences) struct ReadingPage {
     pub(in crate::ui::preferences) single_message_card_row: adw::SwitchRow,
     pub(in crate::ui::preferences) always_show_recipients_row: adw::SwitchRow,
     pub(in crate::ui::preferences) pgp_labels_row: adw::SwitchRow,
+    pub(in crate::ui::preferences) find_place_row: adw::ComboRow,
     pub(in crate::ui::preferences) reader_switch_row: adw::SwitchRow,
     pub(in crate::ui::preferences) reader_default_row: adw::ComboRow,
     pub(in crate::ui::preferences) print_page_numbers_row: adw::SwitchRow,
@@ -198,6 +199,14 @@ impl ReadingPage {
                             let _ = sender.output(PrefOutput::SetPgpLabels(row.is_active()));
                         },
                     },
+
+                    #[name = "find_place_row"]
+                    adw::ComboRow {
+                        set_title: &i18n("Find bar position"),
+                        connect_selected_notify[sender] => move |row| {
+                            let _ = sender.output(PrefOutput::SetReaderFindBottom(row.selected() == 1));
+                        },
+                    },
                 },
 
                 add = &adw::PreferencesGroup {
@@ -271,6 +280,7 @@ impl ReadingPage {
             single_message_card_row,
             always_show_recipients_row,
             pgp_labels_row,
+            find_place_row,
             reader_switch_row,
             reader_default_row,
             print_page_numbers_row,

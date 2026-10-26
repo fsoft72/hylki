@@ -65,11 +65,15 @@ impl ContactsPage {
             return Flow::Break(());
         }
         // Keep the same person selected across a refresh, by identity.
+        let who = |c: &ContactDetails| (c.name.clone(), c.primary_email().map(str::to_string));
         let on_hit = self.selected.filter(|&i| i >= DIRECTORY);
-        let keep = self
-            .selected
-            .and_then(|i| self.contacts.get(i))
-            .map(|c| (c.name.clone(), c.primary_email().map(str::to_string)));
+        let keep = self.selected.and_then(|i| self.contacts.get(i)).map(who);
+        // A directory entry just added to Contacts is that contact now; one
+        // that was a contact already stays the directory's entry.
+        let added = on_hit
+            .and_then(|i| self.entry(i))
+            .map(who)
+            .filter(|hit| !self.contacts.iter().any(|c| who(c) == *hit));
         // And those selected together, the same way.
         let identity = |c: &ContactDetails| {
             (
@@ -97,14 +101,9 @@ impl ContactsPage {
         self.editor = None;
         self.editing_target = None;
         self.selected = keep
-            .and_then(|(name, email)| {
-                self.contacts
-                    .iter()
-                    .position(|c| c.name == name && c.primary_email().map(str::to_string) == email)
-            })
+            .or(added)
+            .and_then(|person| self.contacts.iter().position(|c| who(c) == person))
             .or(on_hit);
-        // One just added from a directory is a contact now.
-        self.drop_known_hits();
         if self.selected.is_some_and(|i| self.entry(i).is_none()) {
             self.selected = None;
         }
@@ -336,7 +335,6 @@ impl ContactsPage {
             .and_then(|i| self.entry(i))
             .map(|c| (c.name.clone(), c.primary_email().map(str::to_string)));
         self.directory_hits = hits;
-        self.drop_known_hits();
         if let Some((name, email)) = shown {
             self.selected = self
                 .directory_hits

@@ -47,6 +47,13 @@ impl AppModel {
             {
                 sender.input(AppMsg::DeleteAttachment(target));
             }
+            msg @ (AppMsg::Snooze(..)
+            | AppMsg::Unsnooze
+            | AppMsg::PickSnoozeTime
+            | AppMsg::SnoozeMessages { .. }
+            | AppMsg::SnoozeMenu
+            | AppMsg::WakeSnoozed
+            | AppMsg::Unsnoozed { .. }) => self.on_snooze(msg, sender),
             msg @ (AppMsg::ShowOutbox
             | AppMsg::OutboxItems { .. }
             | AppMsg::EditCurrentOutbox
@@ -229,6 +236,8 @@ impl AppModel {
             | AppMsg::ListSortChanged(..)) => self.on_list_header(msg, sender),
             msg @ AppMsg::OwnGravatarFetched { .. } => self.on_identity(msg),
             msg @ (AppMsg::SetReaderActionsCollapsed(..)
+            | AppMsg::SetReaderCompact(..)
+            | AppMsg::MeasureReaderFold
             | AppMsg::ReaderControlsChanged(..)
             | AppMsg::ReaderOverflowMenu
             | AppMsg::ReaderToolbarMenu { .. }
@@ -430,6 +439,7 @@ impl AppModel {
             | PrefOutput::SetTrayMail(..)
             | PrefOutput::SetLauncherBadge(..)
             | PrefOutput::SetSingleKey(..)
+            | PrefOutput::SetStartFullscreen(..)
             | PrefOutput::SetKeepDownloads(..)
             | PrefOutput::SetGmailKeys(..)
             | PrefOutput::SetDesktopIcons(..)
@@ -447,6 +457,7 @@ impl AppModel {
             | PrefOutput::ImportSettings
             | PrefOutput::ContactSourcesChanged) => self.on_prefs_data_pref(pref, sender),
             pref @ (PrefOutput::SetReaderToolbar(..)
+            | PrefOutput::SetToolbarFoldRight(..)
             | PrefOutput::SetShowRemoteBanner(..)
             | PrefOutput::SetShowSpoofBanner(..)
             | PrefOutput::SetAutoRemoteContent(..)
@@ -463,6 +474,7 @@ impl AppModel {
             | PrefOutput::SetAttachmentDrawer(..)
             | PrefOutput::SetReaderDefault(..)
             | PrefOutput::SetPgpLabels(..)
+            | PrefOutput::SetReaderFindBottom(..)
             | PrefOutput::SetSingleMessageCard(..)
             | PrefOutput::SetCardPaletteCollapse(..)
             | PrefOutput::SetCardPaletteMenu(..)
@@ -510,6 +522,7 @@ impl AppModel {
             | PrefOutput::SetReplyPosition(..)
             | PrefOutput::SetSignaturePosition(..)
             | PrefOutput::SetSignatureDashes(..)
+            | PrefOutput::SetReplyHeader(..)
             | PrefOutput::SetUndoSend(..)) => self.on_prefs_compose_pref(pref),
             // The rest of Preferences' outputs are mapped to their own
             // messages before they get here.

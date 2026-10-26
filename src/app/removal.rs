@@ -22,7 +22,7 @@ use crate::ui::dialog::confirm_destructive;
 
 /// A bulk move per (account, source path): the destination path, the
 /// UIDs and the rows kept for undo.
-type MoveGroups = HashMap<(u32, String), (String, Vec<u32>, Vec<Message>)>;
+pub(super) type MoveGroups = HashMap<(u32, String), (String, Vec<u32>, Vec<Message>)>;
 
 impl AppModel {
     /// Whether a message already lives in its account's Trash — where "delete"
@@ -304,12 +304,15 @@ impl AppModel {
             | BulkAction::MarkUnread
             | BulkAction::Flag
             | BulkAction::Unflag
-            | BulkAction::DeleteForever => return,
+            | BulkAction::DeleteForever
+            | BulkAction::Snooze
+            | BulkAction::Unsnooze => return,
         };
         // (account, source path) → (dest path, uids, the rows for undo).
         // dest is per-account.
         let mut groups: MoveGroups = HashMap::new();
         let mut removed_ids = Vec::with_capacity(messages.len());
+        let moving: HashSet<(u32, u32)> = messages.iter().map(|m| (m.account_id, m.id)).collect();
         let mut missing_dest = false;
         for m in &messages {
             let Some(src) = self.resolve_folder_path(m) else {
@@ -327,8 +330,9 @@ impl AppModel {
                 .or_insert_with(|| (dest, Vec::new(), Vec::new()));
             slot.1.push(m.uid);
             slot.2.push(m.clone());
-            self.discard_message_local(m);
-            removed_ids.push(m.id);
+            if self.discard_moved(m, &moving) {
+                removed_ids.push(m.id);
+            }
         }
         if missing_dest {
             self.notice_error(i18n_f(
@@ -338,10 +342,11 @@ impl AppModel {
         }
         self.bulk_pending += groups.len();
         if !groups.is_empty() {
+            let count: usize = groups.values().map(|g| g.1.len()).sum();
             self.notifications.emit(NotifyInput::SetStatus(format!(
                 "Moving {} message{} to {} on the server…",
-                removed_ids.len(),
-                if removed_ids.len() == 1 { "" } else { "s" },
+                count,
+                if count == 1 { "" } else { "s" },
                 kind_label(kind),
             )));
         }
@@ -406,7 +411,7 @@ impl AppModel {
 
     /// The Inbox's copy of a Gmail message listed under another label, if
     /// the Inbox holds it.
-    fn inbox_copy(&self, m: &Message) -> Option<Message> {
+    pub(super) fn inbox_copy(&self, m: &Message) -> Option<Message> {
         if m.message_id.is_empty() {
             return None;
         }
@@ -483,6 +488,31 @@ impl AppModel {
         self.discard_message_local(m);
         self.message_list.emit(MessageListInput::Remove(m.id));
         self.push_unread_counts();
+    }
+
+    /// `m` moved out of its folder with the messages `moving`, all of them
+    /// taken out of the caches here. Returns whether its list row goes too:
+    /// a card of the open conversation moved without the rest of the
+    /// conversation's row leaves the conversation instead, as a deleted card
+    /// does, and the row stays for what is left.
+    pub(super) fn discard_moved(&mut self, m: &Message, moving: &HashSet<(u32, u32)>) -> bool {
+        let rest_stays = self.listed_thread.iter().any(|k| !moving.contains(k));
+        let head = if rest_stays {
+            self.leave_conversation(m)
+        } else {
+            None
+        };
+        self.discard_message_local(m);
+        match head {
+            Some(head) => {
+                self.message_list.emit(MessageListInput::LeaveConversation {
+                    gone: (m.account_id, m.id),
+                    head,
+                });
+                false
+            }
+            None => true,
+        }
     }
 
     /// One card of the open conversation leaving its folder: the card goes

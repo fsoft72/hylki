@@ -2,10 +2,181 @@
 
 ## Unreleased
 
+- **Fixed: a pale account color left the reader's account chip hard to
+  read** (#530, reported by samuel-edlmeier). The chip's text keeps the
+  account color but is darkened on a light theme, or lightened on a dark
+  one, until it reaches a 4.5:1 contrast with the chip.
+
+- **Fixed: a sent reply's card showed its attachments only once the copy
+  was back from Sent.** A reply sent from the split pane lists its files on
+  its card from the moment it becomes one, and they open from there before
+  the copy is read back.
+
+- **Added: the keys beside a message's menu entries.** The reader toolbar's
+  ⋯ menu, the right-click menus of a message in the list and in the reader,
+  and the menu for several selected messages show the key that does each
+  entry: the single key while single-key shortcuts are on, Gmail's with
+  Gmail keys, and otherwise Ctrl+R, Ctrl+Shift+R, Ctrl+U, Ctrl+F,
+  Ctrl+Shift+P and Delete. With single keys on, every Tags menu shows the
+  number key beside each of the first nine tags. Single-key shortcuts are
+  on for a new install; an existing one keeps its setting.
+
+- **Fixed: the menu of an address in the reader was always English** (#529,
+  reported by samuel-edlmeier). New Message, Copy Address and Add to
+  Contacts are in the translations. A right-click on an address while the
+  message menu was open showed the message menu again, and a right-click on
+  the ground around the cards opened a message menu; the first now opens the
+  address menu and the second opens none.
+
+- **Fixed: the line above a quoted reply was always English** (#528,
+  reported by samuel-edlmeier). "On …, … wrote:" and the forwarded message
+  header (From, Date, Subject) were not in the translations, and are now.
+  Both give the full date and time of the original; a reply to mail from
+  the same day said only the time. The signature still goes above the quote
+  in a Markdown reply or forward whatever the language. Settings →
+  Composing → Reply Header sets a line of your own, with `{name}`,
+  `{address}`, `{date}` and `{time}` filled in from the original.
+
+- **Fixed: a narrow reader pushed the window buttons off the window.** With
+  minimize, maximize and close all shown, the reader's left group of
+  buttons, the ⋯ menu and the window buttons were wider than the narrowest
+  reader, and the close button went past the edge. The folded right group
+  no longer leaves empty space behind, and below the width the row needs,
+  measured as it is drawn, the buttons draw closer together. The left group
+  always stays on the bar. The right group of the toolbar takes any number
+  of buttons, and folds into the ⋯ menu once it would come within one
+  button gap of the left group, measured as drawn; it folded with a wide
+  space still left before.
+
+- **Changed: the reader toolbar's left group holds seven buttons, and Spam
+  is in it.** Spam sits between Archive and Delete by default. A toolbar
+  whose left group was never changed gets it there too; one arranged by hand
+  keeps Spam where it was. **Settings → Appearance → Always fold the right
+  group into ⋯** keeps the right group in the ⋯ menu at every width. It is
+  on for a new install and off for an existing one, which keeps the group on
+  the bar while it fits.
+
+- **Added: Snooze** (#527, suggested by Bohne13). Snooze, on the reader's
+  toolbar, in a message's right-click menu and on z (b with Gmail's keys),
+  puts a message away until this evening, tomorrow, the weekend or a date
+  and time of your own. It waits in the account's Snoozed
+  folder on the server, made the first time, and comes back to the folder it
+  came from, unread, at that time, or as soon as a reply arrives. In the
+  Snoozed folder each message shows when it comes back, a new time can be
+  chosen, and Unsnooze brings it back now. The times are kept in
+  `snoozed.toml`, and the mail comes back while Hylki is running or when it
+  next starts. A move on JMAP or Microsoft 365 to a folder the account does
+  not have yet now makes it, as IMAP did.
+
+- **Added: a search for other people's OpenPGP keys** (#432, suggested by
+  3v1n0). A keyring of a hundred keys or more was one long list in
+  Settings → OpenPGP. Other people's keys are now sorted by name, and a
+  search field above them finds one by name, address, key ID or
+  fingerprint, with a menu beside it that shows only the trusted keys, the
+  ones not trusted yet, or the expired and revoked ones.
+
+- **Fixed: right-to-left mail arrived left to right** (#524, reported by
+  bjesus). The composer lays out each line in the direction of its own
+  text, but sent nothing that said so, and most mail clients showed Hebrew,
+  Arabic or Persian aligned to the left. A rich text or Markdown message now
+  goes out wrapped in `<div dir="rtl">` when it starts right to left, with a
+  `dir` on each line that runs the other way, so it reads as it did in the
+  composer. Mail with no right-to-left text is sent exactly as before, and
+  HTML written by hand is sent as written. The Markdown preview shows the
+  same.
+
+- **Translations:** French (PR #519 by frenchy82) brought up to date.
+
+- **Fixed: a picked LDAP directory showed nobody** (#307, reported by
+  3v1n0). A person whose address was kept in any other book was dropped
+  from the directory's answer. Only the contacts the list shows now hide a
+  directory entry, and Add to Contacts is not offered for someone already
+  kept.
+
+- **Added: fullscreen** (#511). F11, or Fullscreen in the main menu, puts
+  the main window fullscreen and back. Settings → System → Start fullscreen
+  opens it that way at every start. Leaving fullscreen keeps the size and
+  maximized state the window had before.
+
+- **Added: filters can forward, mark as read and delete** (#521, by Fabio
+  Rotondo). The "Then" part of a filter is a list of actions built row by
+  row: Forward to, Mark as Read, Move to and Delete. A forward is the
+  manual Forward's message, sent once per message, and only for mail of the
+  last 30 days that arrived after the Forward was added; older mail is left
+  alone by every action of that rule. Nothing else the rule does happens
+  until the forward has gone: a refused forward is tried again on the next
+  sync, and one waiting in the Outbox holds the original until it is sent.
+  Encrypted mail is never forwarded. Delete erases the message from the
+  server without going through Trash, and cannot be combined with Move.
+
+- **Added: a message in a conversation can be dragged to a folder.** A drag
+  from its header, or from its folded card, carries it to a folder in the
+  sidebar as a drag of its row in the list does, with the same card under
+  the pointer. With several cards selected, the drag carries all of them.
+  The message leaves the conversation, which stays open with the rest.
+
+- **Fixed: Ctrl or Shift and a click on a card selected only that card.**
+  Several cards of a conversation are all its one row in the list, which
+  counted that row once per card, took the mismatch for a selection of its
+  own and handed the reader back a single card. Ctrl or Shift and a click on
+  a folded card no longer opens it either.
+
+- **Fixed: deleting several selected cards deleted the whole conversation.**
+  Archive, Delete, Delete Permanently, Spam and Move to Inbox went to the
+  list, whose one row stands for the whole conversation. They now act on
+  the selected messages, which leave the conversation as a single deleted
+  card does.
+
+- **Fixed: a click on a message's text did not select its card.** In a
+  conversation, only a click on a card's header or its edges selected it.
+  The text sits in a frame that runs no scripts, so the page never heard
+  the click, and a fallback caught it only when the reader already had the
+  keyboard. The reader now catches the click itself and asks the page which
+  card's frame it landed on. A click on a link, or one that ends a text
+  selection, still leaves the selection alone.
+
+- **Added: the find bar can open under the message** (#392, requested by
+  3v1n0). **Settings → Reading → Find bar position** puts it at the top of
+  the message, as before, or at the bottom, where opening it leaves the
+  message where it is. With the attachment drawer showing, the bar sits
+  above the drawer's handle.
+
+- **Fixed: closing the find bar left the keyboard in the message list**
+  (#392, reported by 3v1n0). After Esc or a second Ctrl+F, the list had
+  the focus without showing it, so the next Ctrl+F searched the list
+  instead of the message. Closing the bar now gives the keyboard back to
+  where it was when the bar opened.
+
 - **Changed: the source is split into smaller files.** The 102 source
   files, the largest 29,364 lines, are now 608 grouped by area under `src/`,
   none longer than 1,360 lines. Behaviour is unchanged, and 204 new tests pin
   it. The unused `relm4-components` dependency is gone.
+
+## 1.45.3 — 2026-10-24
+
+An account's chevron in the sidebar opens and folds the account again.
+
+- **Fixed: an account's chevron in the sidebar did nothing** (#525, reported
+  by Samuel Edlmeier). With "Fold accounts with one click" off, only a double
+  click on the header opened or folded an account. The chevron's button sits
+  inside the header's, and a button takes its click in the capture phase, so
+  the header claimed the release before the chevron saw it. The header now
+  hands a click on the chevron to the chevron.
+
+## 1.45.2 — 2026-10-23
+
+A folder the server will not open no longer keeps the CPU busy.
+
+- **Fixed: a folder the server would not open kept the CPU busy** (#512,
+  reported by valqk). The background index put the folder back in its queue
+  after every failed SELECT and tried again at once, logging in afresh each
+  time: hundreds of tries a minute, for good. Dovecot lists a Sieve script's
+  symlink as a folder (`dovecot.sieve`) and answers its SELECT with NO
+  [SERVERBUG], which is how it showed. A folder the server refuses is now
+  left out of the index for the session after one try, and one that fails
+  for any other reason after three tries in a row. The first folder left
+  out is named in the status bar with the server's reason, once a run; the
+  log names every one.
 
 ## 1.45.1 — 2026-10-22
 

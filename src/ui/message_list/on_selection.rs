@@ -49,18 +49,23 @@ impl MessageList {
         // handed over plus what the app merged in from other folders
         // since (#220). Either way it was opened from the viewed row.
         let conversation = reader_conversation(&self.emitted_thread, &conversation);
-        let positions: Vec<usize> = keys
-            .iter()
-            .filter_map(|key| {
-                row_for_reader_key(
-                    key,
-                    &self.shown,
-                    &self.msg_thread,
-                    &conversation,
-                    self.selected_id,
-                )
-            })
-            .collect();
+        let mut positions: Vec<usize> = Vec::new();
+        for key in &keys {
+            let row = row_for_reader_key(
+                key,
+                &self.shown,
+                &self.msg_thread,
+                &conversation,
+                self.selected_id,
+            );
+            // Several cards of a collapsed conversation are all its one row:
+            // counted twice, the row's key never matched the selection GTK
+            // reports, which was then taken for the user's and sent back to
+            // the reader as one card, undoing a Ctrl or Shift click there.
+            if let Some(row) = row.filter(|r| !positions.contains(r)) {
+                positions.push(row);
+            }
+        }
         // What the reader asked for, as this list can represent it, so
         // the change GTK is about to report is recognised as ours
         // rather than the user's.

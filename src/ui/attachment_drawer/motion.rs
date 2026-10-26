@@ -187,7 +187,18 @@ impl AttachmentDrawer {
     /// where a click or a drag brings the drawer back out. Only a message
     /// with no attachments (no drawer, no seam) hides it.
     fn update_pill_visibility(&self) {
-        self.pill.set_visible(!self.items.is_empty());
+        let shown = !self.items.is_empty();
+        self.pill.set_visible(shown);
+        // The pill's zone covers the reader's foot, where the find bar can
+        // sit (#392): the class on the reader's overlay lets the bar make
+        // room for it instead of losing clicks to it.
+        if let Some(wrap) = self.pill.parent() {
+            if shown {
+                wrap.add_css_class("drawer-seam");
+            } else {
+                wrap.remove_css_class("drawer-seam");
+            }
+        }
     }
 
     /// Flip collapsed/expanded — a plain click on the grab pill — sliding the
