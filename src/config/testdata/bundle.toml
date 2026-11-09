@@ -5,6 +5,7 @@ filters = []
 allowed_senders = []
 auto_remote_content = false
 remote_ahead = false
+clean_links = true
 gravatar = false
 avatars = true
 sender_logos = false
@@ -82,7 +83,7 @@ app_theme = "system"
 text_scale = 100
 theme = ""
 preview_lines = 1
-list_layout = "cards"
+list_layout = "automatic"
 list_columns = [
     "star",
     "replied",

@@ -1470,6 +1470,15 @@ msgstr "Όλες οι σημειώσεις έκδοσης στο GitHub"
 msgid "Delete this conversation?"
 msgstr "Διαγραφή αυτής της συνομιλίας;"
 
+msgid ""
+"The message in this conversation will be deleted. You can turn this warning "
+"off in Settings."
+msgid_plural ""
+"All {n} messages in this conversation will be deleted. You can turn this "
+"warning off in Settings."
+msgstr[0] ""
+msgstr[1] ""
+
 msgid "Delete Conversation"
 msgstr "Διαγραφή συνομιλίας"
 
@@ -1893,6 +1902,11 @@ msgstr "Το αρχείο είναι κενό."
 msgid "The file has no rows below its first."
 msgstr "Το αρχείο δεν περιέχει γραμμές μετά την πρώτη."
 
+msgid ""
+"The signing key is not for {addr}, the address this message is from, so the "
+"signature does not show who sent it."
+msgstr ""
+
 msgid "GnuPG (gpg) is not installed, so this message cannot be read."
 msgstr ""
 "Το GnuPG (gpg) δεν είναι εγκατεστημένο, επομένως αυτό το μήνυμα δεν μπορεί "
@@ -2156,6 +2170,12 @@ msgstr "Κρυπτογραφημένο με OpenPGP· δεν ήταν δυνατ
 msgid "Encrypted with OpenPGP"
 msgstr "Κρυπτογραφημένο με OpenPGP"
 
+#, fuzzy
+msgid ""
+"Encrypted, and signed by {signer}, whose key is not for the sender's address "
+"{addr}"
+msgstr "Κρυπτογραφημένο και υπογεγραμμένο από {signer}· η υπογραφή έχει λήξει"
+
 msgid "Encrypted, and signed by {signer}"
 msgstr "Κρυπτογραφημένο και υπογεγραμμένο από {signer}"
 
@@ -2179,6 +2199,9 @@ msgstr "Κρυπτογραφημένο και υπογεγραμμένο από 
 
 msgid "OpenPGP-signed; the signature could not be checked"
 msgstr "Υπογεγραμμένο με OpenPGP· δεν ήταν δυνατός ο έλεγχος της υπογραφής"
+
+msgid "Signed by {signer}, whose key is not for the sender's address {addr}"
+msgstr ""
 
 msgid "Signed by {signer}"
 msgstr "Υπογεγραμμένο από {signer}"
@@ -2207,6 +2230,10 @@ msgstr "Κρυπτογραφημένο"
 
 msgid "Signature not checked"
 msgstr "Η υπογραφή δεν ελέγχθηκε"
+
+#, fuzzy
+msgid "Signed by another address"
+msgstr "Μετακίνηση σε άλλον κατάλογο διευθύνσεων"
 
 msgid "Encrypted and signed"
 msgstr "Κρυπτογραφημένο και υπογεγραμμένο"
@@ -3085,8 +3112,38 @@ msgstr "Αποθήκευση κάθε συνημμένου σε φάκελο"
 msgid "Save Attachment"
 msgstr "Αποθήκευση συνημμένου"
 
+#, fuzzy
+msgid "Open “{name}”?"
+msgstr "Άδειασμα του «{name}»;"
+
+msgid ""
+"This attachment is a program or a script. Opening it can run it with your "
+"permissions. Open it only if you expected it and trust where it came from."
+msgstr ""
+
+#, fuzzy
+msgid "Open Anyway"
+msgstr "Αποστολή τώρα"
+
 msgid "The file could not be opened"
 msgstr "Δεν ήταν δυνατό το άνοιγμα του αρχείου"
+
+#. No Flatseal toggle can help here: portal access is not a
+#. permission, and the failure is inside the portal's own launcher.
+#. Offer the steps that actually work.
+#, fuzzy
+msgid ""
+"The desktop portal reported: {error}\n"
+"\n"
+"• Download the file, then open it from Files\n"
+"• Updating “xdg-desktop-portal” and logging back in may fix direct opening"
+msgstr ""
+"Η πύλη της επιφάνειας εργασίας ανέφερε: {error}\n"
+"\n"
+"• Κάντε δεξί κλικ στον σύνδεσμο, αντιγράψτε τον και ανοίξτε τον στο "
+"πρόγραμμα περιήγησής σας\n"
+"• Η ενημέρωση του «xdg-desktop-portal» και η εκ νέου σύνδεση ενδέχεται να "
+"διορθώσουν το απευθείας άνοιγμα συνδέσμων"
 
 msgid "Go to Message"
 msgstr "Μετάβαση στο μήνυμα"
@@ -3223,6 +3280,122 @@ msgstr "Επόμενο"
 
 msgid "Open in the default app"
 msgstr "Άνοιγμα στην προεπιλεγμένη εφαρμογή"
+
+#, fuzzy
+msgid "Waiting for the Keyring"
+msgstr "Αναμονή για αποστολή"
+
+msgid ""
+"Mail stored on this computer is encrypted with a key stored in the keyring. "
+"Unlock the keyring if it asks."
+msgstr ""
+
+msgid ""
+"This happens once and can take a few minutes. If you quit, your mail is left "
+"as it was."
+msgstr ""
+
+#, fuzzy
+msgid "Checking the copy"
+msgstr "Έλεγχος σύνδεσης…"
+
+msgid "Encrypting Stored Mail"
+msgstr ""
+
+#, fuzzy
+msgid "Decrypting Stored Mail"
+msgstr "Έλεγχος για νέα αλληλογραφία"
+
+#, fuzzy
+msgid "Store Unencrypted…"
+msgstr "Δεν έχει αποκρυπτογραφηθεί"
+
+msgid "Reset Cache…"
+msgstr ""
+
+msgid "Try Again"
+msgstr "Δοκιμή ξανά"
+
+#, fuzzy
+msgid "Keyring Unavailable"
+msgstr "Δεν υπάρχει διαθέσιμος φάκελος {v1}"
+
+msgid ""
+"Mail kept on this computer is encrypted with a key stored in the keyring, "
+"and the keyring is locked or did not answer. Unlock it, then try again."
+msgstr ""
+
+msgid "Mail Cache Key Missing"
+msgstr ""
+
+msgid ""
+"Mail kept on this computer is encrypted, and the keyring no longer holds its "
+"key. If the keyring was replaced, restore the old one and try again. "
+"Otherwise reset the cache to download your mail again."
+msgstr ""
+
+msgid "Mail Cache Cannot Be Unlocked"
+msgstr ""
+
+msgid ""
+"The key in the keyring does not open the mail kept on this computer. If the "
+"keyring was replaced, restore the old one and try again. Otherwise reset the "
+"cache to download your mail again."
+msgstr ""
+
+msgid "Mail Cache Not Converted"
+msgstr ""
+
+msgid ""
+"The mail kept on this computer could not be converted, and was left as it "
+"was. Check that the disk has free space, then try again."
+msgstr ""
+
+#, fuzzy
+msgid "Mail Cache Unreadable"
+msgstr "Σήμανση ως μη αναγνωσμένο"
+
+msgid ""
+"The mail kept on this computer could not be read. Try again, or reset the "
+"cache to download your mail again."
+msgstr ""
+
+msgid ""
+"Mail that exists only on this computer is lost: a POP3 account's mail, and "
+"unsent mail in the Outbox."
+msgstr ""
+
+#, fuzzy
+msgid ""
+"Mail kept on this computer is deleted and downloaded again from the server."
+msgstr "Η τοπική αλληλογραφία δεν αποστέλλεται και δεν διαθέτει πρόχειρα"
+
+msgid "Reset the Mail Cache?"
+msgstr ""
+
+msgid "Reset"
+msgstr ""
+
+msgid ""
+"Anyone who can read your files, or a backup of them, can then read the mail "
+"kept on this computer, including mail that is end-to-end encrypted on the "
+"server."
+msgstr ""
+
+msgid "Encryption can be turned back on in Settings → Privacy."
+msgstr ""
+
+msgid ""
+"The encrypted cache cannot be opened without the keyring, so it is deleted "
+"and your mail is downloaded again."
+msgstr ""
+
+msgid "Store Mail Unencrypted?"
+msgstr ""
+
+#, fuzzy
+msgid "Store Unencrypted"
+msgstr "Δεν έχει αποκρυπτογραφηθεί"
 
 msgid "New Event"
 msgstr "Νέο συμβάν"
@@ -3863,6 +4036,16 @@ msgid ""
 msgstr ""
 "Δεν υπάρχει κλειδί OpenPGP για τη διεύθυνση {addr}. Ζητήστε το δημόσιο "
 "κλειδί ή ανακτήστε το στις Ρυθμίσεις, OpenPGP."
+
+msgid "Encrypt to keys you have not checked?"
+msgstr ""
+
+msgid ""
+"Nothing confirms that the keys for {addresses} belong to them. If one is "
+"someone else's, that person can read this message and the recipient cannot. "
+"To check a key, compare its fingerprint with its owner and trust it under "
+"Settings, OpenPGP. Send Anyway does not ask about these keys again."
+msgstr ""
 
 msgid "Send later"
 msgstr "Αποστολή αργότερα"
@@ -5427,9 +5610,6 @@ msgstr "Μετάφραση…"
 msgid "Could not translate: {why}"
 msgstr "Δεν ήταν δυνατή η μετάφραση: {why}"
 
-msgid "Try Again"
-msgstr "Δοκιμή ξανά"
-
 msgid "Translated from {language} by {service}."
 msgstr "Μεταφράστηκε από τα {language} μέσω {service}."
 
@@ -5500,6 +5680,10 @@ msgstr ""
 
 msgid "Status bar ({n})"
 msgstr "Γραμμή κατάστασης ({n})"
+
+#, fuzzy
+msgid "Ask Again"
+msgstr "Δοκιμή ξανά"
 
 msgid "All keys"
 msgstr "Όλα τα κλειδιά"
@@ -5587,6 +5771,12 @@ msgstr "Ανάκτηση κατά διεύθυνση…"
 
 msgid "Search by name, address or key ID"
 msgstr "Αναζήτηση κατά όνομα, διεύθυνση ή αναγνωριστικό κλειδιού"
+
+msgid "Unchecked keys you encrypt to"
+msgstr ""
+
+msgid "Send Anyway stopped the warning for these keys."
+msgstr ""
 
 msgid "No keys from other people yet."
 msgstr "Δεν υπάρχουν ακόμη κλειδιά άλλων ατόμων."
@@ -6252,12 +6442,10 @@ msgid ""
 "and Trash are hidden again."
 msgstr ""
 
-msgid "Reset"
-msgstr ""
-
+#, fuzzy
 msgid ""
-"Accounts, preferences, filters, tags and layout, in one file. Passwords and "
-"OpenPGP keys are not included."
+"Accounts, preferences, filters, tags and layout, in one file. Passwords, "
+"OAuth client secrets and OpenPGP keys are not included."
 msgstr ""
 "Λογαριασμοί, προτιμήσεις, φίλτρα, ετικέτες και διάταξη σε ένα αρχείο. Δεν "
 "περιλαμβάνονται κωδικοί πρόσβασης και κλειδιά OpenPGP."
@@ -6387,6 +6575,9 @@ msgstr "Ενότητες"
 msgid "Favorites"
 msgstr "Αγαπημένα"
 
+msgid "Show column headings"
+msgstr "Εμφάνιση επικεφαλίδων στηλών"
+
 msgid "Preview lines"
 msgstr "Γραμμές προεπισκόπησης"
 
@@ -6405,6 +6596,9 @@ msgstr "Απόκρυψη του θέματος"
 msgid "Tag chips hide with it."
 msgstr "Οι ετικέτες σε μορφή μικρών πλαισίων κρύβονται μαζί του."
 
+msgid "Tags and labels under the text"
+msgstr "Ετικέτες κάτω από το κείμενο"
+
 #, fuzzy
 msgid "Hide stars"
 msgstr "Απόκρυψη των avatar των αποστολέων"
@@ -6412,9 +6606,6 @@ msgstr "Απόκρυψη των avatar των αποστολέων"
 #, fuzzy
 msgid "Hide attachment icons"
 msgstr "Απόκρυψη συνημμένων"
-
-msgid "Tags and labels under the text"
-msgstr "Ετικέτες κάτω από το κείμενο"
 
 msgid "Fold the reading pane's toolbar"
 msgstr "Σύμπτυξη της γραμμής εργαλείων του παραθύρου ανάγνωσης"
@@ -6544,9 +6735,6 @@ msgstr ""
 "τη λίστα για αφαίρεση. Η ημερομηνία λήξης εμφανίζεται μόνο για αλληλογραφία "
 "Microsoft 365."
 
-msgid "Show column headings"
-msgstr "Εμφάνιση επικεφαλίδων στηλών"
-
 msgid "Fit columns to the list"
 msgstr "Προσαρμογή στηλών στο πλάτος της λίστας"
 
@@ -6562,16 +6750,12 @@ msgstr "Το Hylki δεν συλλέγει τηλεμετρία ούτε στέ�
 msgid "Always load remote content"
 msgstr "Να φορτώνεται πάντα το απομακρυσμένο περιεχόμενο"
 
-msgid "Remote content can tell a sender when and where you read."
-msgstr ""
-"Το απομακρυσμένο περιεχόμενο μπορεί να ενημερώσει τον αποστολέα για το πότε "
-"και πού διαβάσατε το μήνυμα."
-
 msgid "Pre-load remote content for the next messages"
 msgstr "Προφόρτωση απομακρυσμένου περιεχομένου για τα επόμενα μηνύματα"
 
-msgid "Their senders can tell they were opened."
-msgstr "Οι αποστολείς τους μπορούν να καταλάβουν ότι ανοίχτηκαν."
+#, fuzzy
+msgid "Remove trackers from links"
+msgstr "Αφαίρεση αυτού του ψευδωνύμου"
 
 msgid "Warn when remote content is blocked"
 msgstr "Προειδοποίηση όταν αποκλείεται απομακρυσμένο περιεχόμενο"
@@ -6584,13 +6768,6 @@ msgstr ""
 msgid "Warn when the addressing doesn't match"
 msgstr "Προειδοποίηση όταν οι διευθύνσεις δεν ταιριάζουν"
 
-msgid ""
-"The badge beside the sender stays. A possible forgery always shows the "
-"banner."
-msgstr ""
-"Το σήμα δίπλα στον αποστολέα παραμένει. Αν υπάρχει πιθανότητα "
-"πλαστογράφησης, το πλαίσιο προειδοποίησης εμφανίζεται πάντα."
-
 msgid "Use Gravatar when a contact has no photo"
 msgstr "Χρήση Gravatar όταν μια επαφή δεν έχει φωτογραφία"
 
@@ -6600,17 +6777,31 @@ msgstr "Στέλνει στο Gravatar ένα hash της διεύθυνσης �
 msgid "Show sender logos"
 msgstr "Εμφάνιση λογοτύπων αποστολέων"
 
-msgid ""
-"Most are fetched from the sender's domain, which learns your IP address."
-msgstr ""
-"Τα περισσότερα λαμβάνονται από τον τομέα του αποστολέα, ο οποίος μαθαίνει τη "
-"διεύθυνση IP σας."
-
 msgid "Send read receipts"
 msgstr "Αποστολή επιβεβαιώσεων ανάγνωσης"
 
-msgid "A receipt tells the sender when you opened the message."
-msgstr "Η επιβεβαίωση ενημερώνει τον αποστολέα πότε ανοίξατε το μήνυμα."
+#. Not "On This Computer": that names an account kind.
+#, fuzzy
+msgid "Stored Mail"
+msgstr "Proton Mail"
+
+#, fuzzy
+msgid "Encrypt stored mail"
+msgstr "Κρυπτογραφημένο μήνυμα"
+
+#, fuzzy
+msgid "Encrypt Stored Mail?"
+msgstr "Κρυπτογραφημένο"
+
+msgid ""
+"Mail stored on this computer will be encrypted at the next start which can "
+"take a few minutes. Earlier versions of the app cannot open it. Turn this "
+"setting off and restart before going back to an older version."
+msgstr ""
+
+#, fuzzy
+msgid "Encrypt"
+msgstr "Κρυπτογραφημένο"
 
 msgid "Open at startup"
 msgstr "Άνοιγμα κατά την εκκίνηση"
@@ -7376,6 +7567,16 @@ msgstr "Αφαίρεση του συνημμένου…"
 
 msgid "Could not remove the attachment: {e}"
 msgstr "Δεν ήταν δυνατή η αφαίρεση του συνημμένου: {e}"
+
+msgid ""
+"GNOME Online Accounts could not provide a sign-in token for {email}. Open "
+"Settings → Online Accounts and sign in again."
+msgstr ""
+
+msgid ""
+"Microsoft did not accept the saved sign-in for {email}. Open Hylki's "
+"Settings → Mail Accounts and sign in to it again."
+msgstr ""
 
 msgid "The attachment is no longer in the message on the server"
 msgstr "Το συνημμένο δεν υπάρχει πλέον στο μήνυμα στον διακομιστή"
@@ -8482,6 +8683,18 @@ msgstr "Επικόλληση με μορφοποίηση"
 msgid "Paste as Plain Text"
 msgstr "Επικόλληση ως απλό κείμενο"
 
+#, fuzzy
+msgid "Cut"
+msgstr "Χώρα"
+
+#, fuzzy
+msgid "Select All"
+msgstr "Διαγραφή όλων"
+
+#, fuzzy
+msgid "Insert Emoji"
+msgstr "Εισαγωγή emoji"
+
 msgid "Email Client"
 msgstr "Πρόγραμμα-πελάτης email"
 
@@ -8618,6 +8831,30 @@ msgstr "Τα ενοποιημένα εισερχόμενα σε φωτεινή �
 
 msgid "Hyprlab"
 msgstr "Hyprlab"
+
+#~ msgid "Remote content can tell a sender when and where you read."
+#~ msgstr ""
+#~ "Το απομακρυσμένο περιεχόμενο μπορεί να ενημερώσει τον αποστολέα για το "
+#~ "πότε και πού διαβάσατε το μήνυμα."
+
+#~ msgid "Their senders can tell they were opened."
+#~ msgstr "Οι αποστολείς τους μπορούν να καταλάβουν ότι ανοίχτηκαν."
+
+#~ msgid ""
+#~ "The badge beside the sender stays. A possible forgery always shows the "
+#~ "banner."
+#~ msgstr ""
+#~ "Το σήμα δίπλα στον αποστολέα παραμένει. Αν υπάρχει πιθανότητα "
+#~ "πλαστογράφησης, το πλαίσιο προειδοποίησης εμφανίζεται πάντα."
+
+#~ msgid ""
+#~ "Most are fetched from the sender's domain, which learns your IP address."
+#~ msgstr ""
+#~ "Τα περισσότερα λαμβάνονται από τον τομέα του αποστολέα, ο οποίος μαθαίνει "
+#~ "τη διεύθυνση IP σας."
+
+#~ msgid "A receipt tells the sender when you opened the message."
+#~ msgstr "Η επιβεβαίωση ενημερώνει τον αποστολέα πότε ανοίξατε το μήνυμα."
 
 #~ msgid ""
 #~ "The parts switched on below hide while Focus Mode is on. Activated by "

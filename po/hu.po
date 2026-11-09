@@ -1549,6 +1549,15 @@ msgstr "A teljes verzióinformáció a GitHub-on"
 msgid "Delete this conversation?"
 msgstr "Törli ezt a beszélgetést?"
 
+msgid ""
+"The message in this conversation will be deleted. You can turn this warning "
+"off in Settings."
+msgid_plural ""
+"All {n} messages in this conversation will be deleted. You can turn this "
+"warning off in Settings."
+msgstr[0] ""
+msgstr[1] ""
+
 msgid "Delete Conversation"
 msgstr "Beszélgetés törlése"
 
@@ -1997,6 +2006,11 @@ msgstr "A mappa nincs a kiszolgálón"
 msgid "The file has no rows below its first."
 msgstr "A mappa nincs a kiszolgálón"
 
+msgid ""
+"The signing key is not for {addr}, the address this message is from, so the "
+"signature does not show who sent it."
+msgstr ""
+
 msgid "GnuPG (gpg) is not installed, so this message cannot be read."
 msgstr "A GnuPG (gpg) nincs telepítve, ezért ez az üzenet nem olvasható."
 
@@ -2261,6 +2275,12 @@ msgstr "OpenPGP-vel titkosítva; nem sikerült visszafejteni"
 msgid "Encrypted with OpenPGP"
 msgstr "OpenPGP-vel titkosítva"
 
+#, fuzzy
+msgid ""
+"Encrypted, and signed by {signer}, whose key is not for the sender's address "
+"{addr}"
+msgstr "Titkosítva és aláírva: {signer}; az aláírás lejárt"
+
 msgid "Encrypted, and signed by {signer}"
 msgstr "Titkosítva és aláírva: {signer}"
 
@@ -2282,6 +2302,9 @@ msgstr "Titkosítva és aláírva: {signer}; az aláírás lejárt"
 
 msgid "OpenPGP-signed; the signature could not be checked"
 msgstr "OpenPGP-vel aláírva; az aláírás nem ellenőrizhető"
+
+msgid "Signed by {signer}, whose key is not for the sender's address {addr}"
+msgstr ""
 
 msgid "Signed by {signer}"
 msgstr "Aláírta: {signer}"
@@ -2309,6 +2332,10 @@ msgstr "Titkosítva"
 
 msgid "Signature not checked"
 msgstr "Az aláírás nem került ellenőrzésre"
+
+#, fuzzy
+msgid "Signed by another address"
+msgstr "El akarod menteni a könyvtárat?"
 
 msgid "Encrypted and signed"
 msgstr "Titkosítva és aláírva"
@@ -3225,8 +3252,38 @@ msgstr "Minden melléklet mentése egy mappába"
 msgid "Save Attachment"
 msgstr "Melléklet mentése"
 
+#, fuzzy
+msgid "Open “{name}”?"
+msgstr "Kiüríti ezt: „{name}”?"
+
+msgid ""
+"This attachment is a program or a script. Opening it can run it with your "
+"permissions. Open it only if you expected it and trust where it came from."
+msgstr ""
+
+#, fuzzy
+msgid "Open Anyway"
+msgstr "Küldés most"
+
 msgid "The file could not be opened"
 msgstr "A fájl nem megnyitható"
+
+#. No Flatseal toggle can help here: portal access is not a
+#. permission, and the failure is inside the portal's own launcher.
+#. Offer the steps that actually work.
+#, fuzzy
+msgid ""
+"The desktop portal reported: {error}\n"
+"\n"
+"• Download the file, then open it from Files\n"
+"• Updating “xdg-desktop-portal” and logging back in may fix direct opening"
+msgstr ""
+"Az portál a következő üzenetet jelezte: {error}\n"
+"\n"
+"• Kattints jobb gombbal a hivatkozásra, másold ki, majd nyisd meg a "
+"böngésződben\n"
+"• Az „xdg-desktop-portal” frissítése és az újbóli bejelentkezés megoldhatja "
+"a hivatkozások közvetlen megnyitásának problémáját"
 
 msgid "Go to Message"
 msgstr "Ugrás az üzenethez"
@@ -3363,6 +3420,125 @@ msgstr "Következő"
 
 msgid "Open in the default app"
 msgstr "Megnyitás az alapértelmezett alkalmazásban"
+
+#, fuzzy
+msgid "Waiting for the Keyring"
+msgstr "Nincs visszavonható művelet"
+
+msgid ""
+"Mail stored on this computer is encrypted with a key stored in the keyring. "
+"Unlock the keyring if it asks."
+msgstr ""
+
+msgid ""
+"This happens once and can take a few minutes. If you quit, your mail is left "
+"as it was."
+msgstr ""
+
+#, fuzzy
+msgid "Checking the copy"
+msgstr "Kapcsolat ellenőrzése…"
+
+msgid "Encrypting Stored Mail"
+msgstr ""
+
+#, fuzzy
+msgid "Decrypting Stored Mail"
+msgstr "Új levelek keresése"
+
+#, fuzzy
+msgid "Store Unencrypted…"
+msgstr "Nincs dekódolva"
+
+msgid "Reset Cache…"
+msgstr ""
+
+msgid "Try Again"
+msgstr "Próbáld újra"
+
+#, fuzzy
+msgid "Keyring Unavailable"
+msgstr "Nem érhető el a(z) {v1} mappa"
+
+msgid ""
+"Mail kept on this computer is encrypted with a key stored in the keyring, "
+"and the keyring is locked or did not answer. Unlock it, then try again."
+msgstr ""
+
+msgid "Mail Cache Key Missing"
+msgstr ""
+
+msgid ""
+"Mail kept on this computer is encrypted, and the keyring no longer holds its "
+"key. If the keyring was replaced, restore the old one and try again. "
+"Otherwise reset the cache to download your mail again."
+msgstr ""
+
+msgid "Mail Cache Cannot Be Unlocked"
+msgstr ""
+
+msgid ""
+"The key in the keyring does not open the mail kept on this computer. If the "
+"keyring was replaced, restore the old one and try again. Otherwise reset the "
+"cache to download your mail again."
+msgstr ""
+
+msgid "Mail Cache Not Converted"
+msgstr ""
+
+msgid ""
+"The mail kept on this computer could not be converted, and was left as it "
+"was. Check that the disk has free space, then try again."
+msgstr ""
+
+#, fuzzy
+msgid "Mail Cache Unreadable"
+msgstr "Megjelölés olvasatlanként"
+
+msgid ""
+"The mail kept on this computer could not be read. Try again, or reset the "
+"cache to download your mail again."
+msgstr ""
+
+msgid ""
+"Mail that exists only on this computer is lost: a POP3 account's mail, and "
+"unsent mail in the Outbox."
+msgstr ""
+
+#, fuzzy
+msgid ""
+"Mail kept on this computer is deleted and downloaded again from the server."
+msgstr ""
+"A könyvtár eltávolításra kerül az Evolution Data Server-ről, így az "
+"Evolution és az azt használó egyéb alkalmazások sem látják többé. A "
+"kiszolgálón semmi sem változik."
+
+msgid "Reset the Mail Cache?"
+msgstr ""
+
+msgid "Reset"
+msgstr ""
+
+msgid ""
+"Anyone who can read your files, or a backup of them, can then read the mail "
+"kept on this computer, including mail that is end-to-end encrypted on the "
+"server."
+msgstr ""
+
+msgid "Encryption can be turned back on in Settings → Privacy."
+msgstr ""
+
+msgid ""
+"The encrypted cache cannot be opened without the keyring, so it is deleted "
+"and your mail is downloaded again."
+msgstr ""
+
+msgid "Store Mail Unencrypted?"
+msgstr ""
+
+#, fuzzy
+msgid "Store Unencrypted"
+msgstr "Nincs dekódolva"
 
 #, fuzzy
 msgid "New Event"
@@ -4019,6 +4195,16 @@ msgid ""
 msgstr ""
 "Nincs OpenPGP-kulcs ehhez: {addr}. Kérje el a nyilvános kulcsukat, vagy "
 "kérje le a Beállítások → OpenPGP alatt."
+
+msgid "Encrypt to keys you have not checked?"
+msgstr ""
+
+msgid ""
+"Nothing confirms that the keys for {addresses} belong to them. If one is "
+"someone else's, that person can read this message and the recipient cannot. "
+"To check a key, compare its fingerprint with its owner and trust it under "
+"Settings, OpenPGP. Send Anyway does not ask about these keys again."
+msgstr ""
 
 msgid "Send later"
 msgstr "Küldés később"
@@ -5648,9 +5834,6 @@ msgstr "Tesztelés folyamatban…"
 msgid "Could not translate: {why}"
 msgstr "Az üzenet nem címkézhető: {e}"
 
-msgid "Try Again"
-msgstr "Próbáld újra"
-
 msgid "Translated from {language} by {service}."
 msgstr ""
 
@@ -5720,6 +5903,10 @@ msgstr ""
 
 msgid "Status bar ({n})"
 msgstr "Állapotsáv ({n})"
+
+#, fuzzy
+msgid "Ask Again"
+msgstr "Próbáld újra"
 
 #, fuzzy
 msgid "All keys"
@@ -5814,6 +6001,12 @@ msgid "Fetch by address…"
 msgstr "Lekérés cím alapján…"
 
 msgid "Search by name, address or key ID"
+msgstr ""
+
+msgid "Unchecked keys you encrypt to"
+msgstr ""
+
+msgid "Send Anyway stopped the warning for these keys."
 msgstr ""
 
 msgid "No keys from other people yet."
@@ -6513,13 +6706,10 @@ msgid ""
 "and Trash are hidden again."
 msgstr ""
 
-msgid "Reset"
-msgstr ""
-
 #, fuzzy
 msgid ""
-"Accounts, preferences, filters, tags and layout, in one file. Passwords and "
-"OpenPGP keys are not included."
+"Accounts, preferences, filters, tags and layout, in one file. Passwords, "
+"OAuth client secrets and OpenPGP keys are not included."
 msgstr ""
 "Fiókok és beállítások egyetlen fájlban. A jelszavak a rendszer kulcstartóján "
 "maradnak, és soha nem kerülnek exportálásra."
@@ -6652,6 +6842,10 @@ msgstr "Műveletek"
 msgid "Favorites"
 msgstr ""
 
+#, fuzzy
+msgid "Show column headings"
+msgstr "Beszélgetés megjelenítése"
+
 msgid "Preview lines"
 msgstr "Előnézeti sorok"
 
@@ -6671,6 +6865,9 @@ msgstr "A tárgy elrejtése"
 msgid "Tag chips hide with it."
 msgstr ""
 
+msgid "Tags and labels under the text"
+msgstr ""
+
 #, fuzzy
 msgid "Hide stars"
 msgstr "A feladók avatárjainak elrejtése"
@@ -6678,9 +6875,6 @@ msgstr "A feladók avatárjainak elrejtése"
 #, fuzzy
 msgid "Hide attachment icons"
 msgstr "Mellékletek elrejtése"
-
-msgid "Tags and labels under the text"
-msgstr ""
 
 msgid "Fold the reading pane's toolbar"
 msgstr "Az olvasópanel eszköztárának összecsukása"
@@ -6811,10 +7005,6 @@ msgid ""
 msgstr ""
 
 #, fuzzy
-msgid "Show column headings"
-msgstr "Beszélgetés megjelenítése"
-
-#, fuzzy
 msgid "Fit columns to the list"
 msgstr "Helyezze a kerülmb here ide hide it"
 
@@ -6830,14 +7020,12 @@ msgstr ""
 msgid "Always load remote content"
 msgstr "Távoli tartalom mindig töltődjön be"
 
-msgid "Remote content can tell a sender when and where you read."
-msgstr ""
-
 msgid "Pre-load remote content for the next messages"
 msgstr ""
 
-msgid "Their senders can tell they were opened."
-msgstr ""
+#, fuzzy
+msgid "Remove trackers from links"
+msgstr "Álnév (alias) eltávolítása"
 
 msgid "Warn when remote content is blocked"
 msgstr "Figyelmeztetés távoli tartalom blokkolásakor"
@@ -6849,11 +7037,6 @@ msgstr "Figyelmeztetés távoli tartalom blokkolásakor"
 msgid "Warn when the addressing doesn't match"
 msgstr "Figyelmeztetés, ha a címzés nem egyezik"
 
-msgid ""
-"The badge beside the sender stays. A possible forgery always shows the "
-"banner."
-msgstr ""
-
 msgid "Use Gravatar when a contact has no photo"
 msgstr "Gravatar használata, ha a névjegyhez nincs fénykép"
 
@@ -6863,16 +7046,32 @@ msgstr ""
 msgid "Show sender logos"
 msgstr "Feladói logók megjelenítése"
 
-msgid ""
-"Most are fetched from the sender's domain, which learns your IP address."
-msgstr ""
-
 #, fuzzy
 msgid "Send read receipts"
 msgstr "Címzettek elrejtése"
 
-msgid "A receipt tells the sender when you opened the message."
+#. Not "On This Computer": that names an account kind.
+#, fuzzy
+msgid "Stored Mail"
+msgstr "Proton Mail"
+
+#, fuzzy
+msgid "Encrypt stored mail"
+msgstr "Titkosított üzenet"
+
+#, fuzzy
+msgid "Encrypt Stored Mail?"
+msgstr "Titkosítva"
+
+msgid ""
+"Mail stored on this computer will be encrypted at the next start which can "
+"take a few minutes. Earlier versions of the app cannot open it. Turn this "
+"setting off and restart before going back to an older version."
 msgstr ""
+
+#, fuzzy
+msgid "Encrypt"
+msgstr "Titkosítva"
 
 msgid "Open at startup"
 msgstr "Automatikus indítás rendszerindításkor"
@@ -7648,6 +7847,16 @@ msgstr "A melléklet eltávolítása…"
 
 msgid "Could not remove the attachment: {e}"
 msgstr "A melléklet eltávolítása nem sikerült: {e}"
+
+msgid ""
+"GNOME Online Accounts could not provide a sign-in token for {email}. Open "
+"Settings → Online Accounts and sign in again."
+msgstr ""
+
+msgid ""
+"Microsoft did not accept the saved sign-in for {email}. Open Hylki's "
+"Settings → Mail Accounts and sign in to it again."
+msgstr ""
 
 msgid "The attachment is no longer in the message on the server"
 msgstr "A melléklet már nem található az üzenetben a kiszolgálón"
@@ -8781,6 +8990,17 @@ msgstr "Beillesztés formázással"
 
 msgid "Paste as Plain Text"
 msgstr "Beillesztés egyszerű szövegként"
+
+msgid "Cut"
+msgstr ""
+
+#, fuzzy
+msgid "Select All"
+msgstr "Törlés"
+
+#, fuzzy
+msgid "Insert Emoji"
+msgstr "Hivatkozás beszúrása"
 
 msgid "Email Client"
 msgstr "E-mail kliens"

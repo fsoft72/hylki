@@ -45,6 +45,12 @@ pub(crate) struct PrivacyFile {
     /// Off by default: a sender's tracking learns of a message never opened.
     #[serde(default)]
     pub(crate) remote_ahead: bool,
+    /// Whether a link opened from a message loses its tracking parameters
+    /// (`utm_*`, `fbclid`, …) and known redirectors (Google's `/url`,
+    /// Facebook's `l.php`) first; see [`crate::mail::link_clean`]. On unless
+    /// switched off: a site that needs one of them is the rare case.
+    #[serde(default = "default_on")]
+    pub(crate) clean_links: bool,
     /// Whether to load sender avatars from Gravatar (off by default — it sends
     /// a hash of each sender's email to a third party).
     #[serde(default)]
@@ -369,7 +375,9 @@ pub(crate) struct PrivacyFile {
     #[serde(default = "default_preview_lines")]
     pub(crate) preview_lines: u32,
     /// How the message list lays out a message: as a card, on one line, or
-    /// whichever the pane's width suits (#334).
+    /// whichever the pane's width suits (#334). A new install starts on
+    /// Automatic; a file without the key was written when Cards was all there
+    /// was, so it keeps cards.
     #[serde(default)]
     pub(crate) list_layout: ListLayout,
     /// The columns a single-line list shows, in order, by name (#334).
@@ -638,6 +646,7 @@ impl Default for PrivacyFile {
             allowed_senders: Vec::new(),
             auto_remote_content: false,
             remote_ahead: false,
+            clean_links: true,
             show_remote_banner: true,
             show_spoof_banner: true,
             show_unified: true,
@@ -746,7 +755,7 @@ impl Default for PrivacyFile {
             text_scale: default_text_scale(),
             theme: String::new(),
             preview_lines: default_preview_lines(),
-            list_layout: ListLayout::Cards,
+            list_layout: ListLayout::Automatic,
             list_columns: default_list_columns(),
             list_headings: false,
             list_column_scroll: false,

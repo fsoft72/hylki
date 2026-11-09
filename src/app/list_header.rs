@@ -505,14 +505,16 @@ impl AppModel {
     }
 
     /// Tell the list whether to lay messages out on one line (#334): the
-    /// Layout setting, or for Automatic, the width of the pane.
+    /// Layout setting, or for Automatic, the width of the pane. `list_wide`
+    /// only follows the split beside the reader; with the reader below or
+    /// off the list has the window's width, so Automatic counts it as wide.
     pub(super) fn push_single_line(&self) {
-        // With the reader below or off the list is a table (#475).
         let on = match self.list_layout_now() {
-            _ if self.reading_pane != config::ReadingPane::Right => true,
             config::ListLayout::Cards => false,
             config::ListLayout::SingleLine => true,
-            config::ListLayout::Automatic => self.list_wide,
+            config::ListLayout::Automatic => {
+                self.list_wide || self.reading_pane != config::ReadingPane::Right
+            }
         };
         self.message_list.emit(MessageListInput::SetSingleLine(on));
     }
@@ -540,6 +542,16 @@ impl AppModel {
             stars: !self.focus.active(config::FocusPart::HideStars),
             attachments: !self.focus.active(config::FocusPart::HideAttachmentIcons),
         });
+    }
+
+    /// Whether the single-line layout has column headings: Focus Mode's switch
+    /// while it is on, else the setting.
+    pub(super) fn list_headings_now(&self) -> bool {
+        if self.focus.enabled {
+            self.focus.column_headings
+        } else {
+            self.list_headings
+        }
     }
 
     /// The avatars the list draws: Focus Mode's switch while it is on, else

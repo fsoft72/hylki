@@ -1470,6 +1470,15 @@ msgstr "Notas completas de la versión en GitHub"
 msgid "Delete this conversation?"
 msgstr "¿Eliminar esta conversación?"
 
+msgid ""
+"The message in this conversation will be deleted. You can turn this warning "
+"off in Settings."
+msgid_plural ""
+"All {n} messages in this conversation will be deleted. You can turn this "
+"warning off in Settings."
+msgstr[0] ""
+msgstr[1] ""
+
 msgid "Delete Conversation"
 msgstr "Eliminar conversación"
 
@@ -1899,6 +1908,11 @@ msgstr "El archivo no es de texto"
 msgid "The file has no rows below its first."
 msgstr "El archivo no es de texto"
 
+msgid ""
+"The signing key is not for {addr}, the address this message is from, so the "
+"signature does not show who sent it."
+msgstr ""
+
 msgid "GnuPG (gpg) is not installed, so this message cannot be read."
 msgstr ""
 "GnuPG (gpg) no está instalado, por lo que no se puede leer este mensaje."
@@ -2156,6 +2170,12 @@ msgstr "Cifrado con OpenPGP; no se pudo descifrar"
 msgid "Encrypted with OpenPGP"
 msgstr "Cifrado con OpenPGP"
 
+#, fuzzy
+msgid ""
+"Encrypted, and signed by {signer}, whose key is not for the sender's address "
+"{addr}"
+msgstr "Cifrado y firmado por {signer}; la firma ha caducado"
+
 msgid "Encrypted, and signed by {signer}"
 msgstr "Cifrado y firmado por {signer}"
 
@@ -2179,6 +2199,9 @@ msgstr "Cifrado y firmado por {signer}; la firma ha caducado"
 
 msgid "OpenPGP-signed; the signature could not be checked"
 msgstr "Firmado con OpenPGP; no se pudo comprobar la firma"
+
+msgid "Signed by {signer}, whose key is not for the sender's address {addr}"
+msgstr ""
 
 msgid "Signed by {signer}"
 msgstr "Firmado por {signer}"
@@ -2207,6 +2230,10 @@ msgstr "Cifrado"
 
 msgid "Signature not checked"
 msgstr "Firma no comprobada"
+
+#, fuzzy
+msgid "Signed by another address"
+msgstr "Mover a otra libreta de direcciones"
 
 msgid "Encrypted and signed"
 msgstr "Cifrado y firmado"
@@ -3062,8 +3089,37 @@ msgstr "Guardar todos los archivos adjuntos en una carpeta"
 msgid "Save Attachment"
 msgstr "Guardar archivo adjunto"
 
+#, fuzzy
+msgid "Open “{name}”?"
+msgstr "¿Vaciar «{name}»?"
+
+msgid ""
+"This attachment is a program or a script. Opening it can run it with your "
+"permissions. Open it only if you expected it and trust where it came from."
+msgstr ""
+
+#, fuzzy
+msgid "Open Anyway"
+msgstr "Enviar ahora"
+
 msgid "The file could not be opened"
 msgstr "No se pudo abrir el archivo"
+
+#. No Flatseal toggle can help here: portal access is not a
+#. permission, and the failure is inside the portal's own launcher.
+#. Offer the steps that actually work.
+#, fuzzy
+msgid ""
+"The desktop portal reported: {error}\n"
+"\n"
+"• Download the file, then open it from Files\n"
+"• Updating “xdg-desktop-portal” and logging back in may fix direct opening"
+msgstr ""
+"El portal del escritorio informó de: {error}\n"
+"\n"
+"• Haz clic derecho en el enlace, cópialo y ábrelo en el navegador\n"
+"• Actualizar «xdg-desktop-portal» y volver a iniciar sesión puede solucionar "
+"la apertura directa de enlaces"
 
 msgid "Go to Message"
 msgstr "Ir al mensaje"
@@ -3200,6 +3256,124 @@ msgstr "Siguiente"
 
 msgid "Open in the default app"
 msgstr "Abrir en la aplicación predeterminada"
+
+#, fuzzy
+msgid "Waiting for the Keyring"
+msgstr "En espera de envío"
+
+msgid ""
+"Mail stored on this computer is encrypted with a key stored in the keyring. "
+"Unlock the keyring if it asks."
+msgstr ""
+
+msgid ""
+"This happens once and can take a few minutes. If you quit, your mail is left "
+"as it was."
+msgstr ""
+
+#, fuzzy
+msgid "Checking the copy"
+msgstr "Comprobando la conexión…"
+
+msgid "Encrypting Stored Mail"
+msgstr ""
+
+#, fuzzy
+msgid "Decrypting Stored Mail"
+msgstr "Buscando correo nuevo"
+
+#, fuzzy
+msgid "Store Unencrypted…"
+msgstr "No descifrado"
+
+msgid "Reset Cache…"
+msgstr ""
+
+msgid "Try Again"
+msgstr "Intentar de nuevo"
+
+#, fuzzy
+msgid "Keyring Unavailable"
+msgstr "No hay ninguna carpeta {v1} disponible"
+
+msgid ""
+"Mail kept on this computer is encrypted with a key stored in the keyring, "
+"and the keyring is locked or did not answer. Unlock it, then try again."
+msgstr ""
+
+msgid "Mail Cache Key Missing"
+msgstr ""
+
+msgid ""
+"Mail kept on this computer is encrypted, and the keyring no longer holds its "
+"key. If the keyring was replaced, restore the old one and try again. "
+"Otherwise reset the cache to download your mail again."
+msgstr ""
+
+msgid "Mail Cache Cannot Be Unlocked"
+msgstr ""
+
+msgid ""
+"The key in the keyring does not open the mail kept on this computer. If the "
+"keyring was replaced, restore the old one and try again. Otherwise reset the "
+"cache to download your mail again."
+msgstr ""
+
+msgid "Mail Cache Not Converted"
+msgstr ""
+
+msgid ""
+"The mail kept on this computer could not be converted, and was left as it "
+"was. Check that the disk has free space, then try again."
+msgstr ""
+
+#, fuzzy
+msgid "Mail Cache Unreadable"
+msgstr "Marcar como no leído"
+
+msgid ""
+"The mail kept on this computer could not be read. Try again, or reset the "
+"cache to download your mail again."
+msgstr ""
+
+msgid ""
+"Mail that exists only on this computer is lost: a POP3 account's mail, and "
+"unsent mail in the Outbox."
+msgstr ""
+
+#, fuzzy
+msgid ""
+"Mail kept on this computer is deleted and downloaded again from the server."
+msgstr ""
+"Se eliminan de este equipo los mensajes y adjuntos, y se vuelven a descargar "
+"al abrirlos. No cambia nada en el servidor."
+
+msgid "Reset the Mail Cache?"
+msgstr ""
+
+msgid "Reset"
+msgstr ""
+
+msgid ""
+"Anyone who can read your files, or a backup of them, can then read the mail "
+"kept on this computer, including mail that is end-to-end encrypted on the "
+"server."
+msgstr ""
+
+msgid "Encryption can be turned back on in Settings → Privacy."
+msgstr ""
+
+msgid ""
+"The encrypted cache cannot be opened without the keyring, so it is deleted "
+"and your mail is downloaded again."
+msgstr ""
+
+msgid "Store Mail Unencrypted?"
+msgstr ""
+
+#, fuzzy
+msgid "Store Unencrypted"
+msgstr "No descifrado"
 
 msgid "New Event"
 msgstr ""
@@ -3829,6 +4003,16 @@ msgid ""
 msgstr ""
 "No hay ninguna clave OpenPGP para {addr}. Pide su clave pública o búscala "
 "desde Ajustes → OpenPGP."
+
+msgid "Encrypt to keys you have not checked?"
+msgstr ""
+
+msgid ""
+"Nothing confirms that the keys for {addresses} belong to them. If one is "
+"someone else's, that person can read this message and the recipient cannot. "
+"To check a key, compare its fingerprint with its owner and trust it under "
+"Settings, OpenPGP. Send Anyway does not ask about these keys again."
+msgstr ""
 
 msgid "Send later"
 msgstr "Enviar más tarde"
@@ -5401,9 +5585,6 @@ msgstr "Traduciendo…"
 msgid "Could not translate: {why}"
 msgstr "No se pudo traducir: {why}"
 
-msgid "Try Again"
-msgstr "Intentar de nuevo"
-
 msgid "Translated from {language} by {service}."
 msgstr "Traducido del {language} por {service}."
 
@@ -5474,6 +5655,10 @@ msgstr ""
 
 msgid "Status bar ({n})"
 msgstr "Barra de estado ({n})"
+
+#, fuzzy
+msgid "Ask Again"
+msgstr "Intentar de nuevo"
 
 msgid "All keys"
 msgstr "Todas las claves"
@@ -5560,6 +5745,12 @@ msgstr "Obtener por dirección…"
 
 msgid "Search by name, address or key ID"
 msgstr "Buscar por nombre, dirección o identificador de clave"
+
+msgid "Unchecked keys you encrypt to"
+msgstr ""
+
+msgid "Send Anyway stopped the warning for these keys."
+msgstr ""
 
 msgid "No keys from other people yet."
 msgstr "Todavía no hay claves de otras personas."
@@ -6222,12 +6413,10 @@ msgid ""
 "and Trash are hidden again."
 msgstr ""
 
-msgid "Reset"
-msgstr ""
-
+#, fuzzy
 msgid ""
-"Accounts, preferences, filters, tags and layout, in one file. Passwords and "
-"OpenPGP keys are not included."
+"Accounts, preferences, filters, tags and layout, in one file. Passwords, "
+"OAuth client secrets and OpenPGP keys are not included."
 msgstr ""
 "Cuentas, preferencias, filtros, etiquetas y disposición en un único archivo. "
 "No incluye contraseñas ni claves OpenPGP."
@@ -6355,6 +6544,9 @@ msgstr "Secciones"
 msgid "Favorites"
 msgstr "Favoritos"
 
+msgid "Show column headings"
+msgstr "Mostrar encabezados de columna"
+
 msgid "Preview lines"
 msgstr "Líneas de vista previa"
 
@@ -6373,6 +6565,9 @@ msgstr "Ocultar el asunto"
 msgid "Tag chips hide with it."
 msgstr "Las etiquetas también se ocultan."
 
+msgid "Tags and labels under the text"
+msgstr "Etiquetas y rótulos debajo del texto"
+
 #, fuzzy
 msgid "Hide stars"
 msgstr "Ocultar avatares de remitentes"
@@ -6380,9 +6575,6 @@ msgstr "Ocultar avatares de remitentes"
 #, fuzzy
 msgid "Hide attachment icons"
 msgstr "Ocultar los archivos adjuntos"
-
-msgid "Tags and labels under the text"
-msgstr "Etiquetas y rótulos debajo del texto"
 
 msgid "Fold the reading pane's toolbar"
 msgstr "Contraer la barra de herramientas del panel de lectura"
@@ -6513,9 +6705,6 @@ msgstr ""
 "sácalas para quitarlas. La fecha de vencimiento solo aparece en mensajes de "
 "Microsoft 365."
 
-msgid "Show column headings"
-msgstr "Mostrar encabezados de columna"
-
 msgid "Fit columns to the list"
 msgstr "Ajustar columnas a la lista"
 
@@ -6531,15 +6720,12 @@ msgstr "Hylki no recopila telemetría ni envía datos analíticos."
 msgid "Always load remote content"
 msgstr "Cargar siempre contenido remoto"
 
-msgid "Remote content can tell a sender when and where you read."
-msgstr ""
-"El contenido remoto puede revelar al remitente cuándo y desde dónde lees."
-
 msgid "Pre-load remote content for the next messages"
 msgstr "Precargar contenido remoto de los mensajes siguientes"
 
-msgid "Their senders can tell they were opened."
-msgstr "Sus remitentes pueden saber que se han abierto."
+#, fuzzy
+msgid "Remove trackers from links"
+msgstr "Eliminar este alias"
 
 msgid "Warn when remote content is blocked"
 msgstr "Avisar cuando se bloquee contenido remoto"
@@ -6551,13 +6737,6 @@ msgstr ""
 msgid "Warn when the addressing doesn't match"
 msgstr "Avisar cuando las direcciones no coincidan"
 
-msgid ""
-"The badge beside the sender stays. A possible forgery always shows the "
-"banner."
-msgstr ""
-"Se mantiene el indicador junto al remitente. Un posible intento de "
-"suplantación siempre muestra el aviso."
-
 msgid "Use Gravatar when a contact has no photo"
 msgstr "Usar Gravatar cuando un contacto no tenga foto"
 
@@ -6567,17 +6746,31 @@ msgstr "Envía a Gravatar un hash de la dirección del remitente."
 msgid "Show sender logos"
 msgstr "Mostrar logotipos de remitentes"
 
-msgid ""
-"Most are fetched from the sender's domain, which learns your IP address."
-msgstr ""
-"La mayoría se descarga desde el dominio del remitente, que puede conocer tu "
-"dirección IP."
-
 msgid "Send read receipts"
 msgstr "Enviar confirmaciones de lectura"
 
-msgid "A receipt tells the sender when you opened the message."
-msgstr "Una confirmación indica al remitente cuándo abriste el mensaje."
+#. Not "On This Computer": that names an account kind.
+#, fuzzy
+msgid "Stored Mail"
+msgstr "Proton Mail"
+
+#, fuzzy
+msgid "Encrypt stored mail"
+msgstr "Mensaje cifrado"
+
+#, fuzzy
+msgid "Encrypt Stored Mail?"
+msgstr "Cifrado"
+
+msgid ""
+"Mail stored on this computer will be encrypted at the next start which can "
+"take a few minutes. Earlier versions of the app cannot open it. Turn this "
+"setting off and restart before going back to an older version."
+msgstr ""
+
+#, fuzzy
+msgid "Encrypt"
+msgstr "Cifrado"
 
 msgid "Open at startup"
 msgstr "Abrir al iniciar"
@@ -7335,6 +7528,16 @@ msgstr "Eliminando el archivo adjunto…"
 
 msgid "Could not remove the attachment: {e}"
 msgstr "No se pudo eliminar el archivo adjunto: {e}"
+
+msgid ""
+"GNOME Online Accounts could not provide a sign-in token for {email}. Open "
+"Settings → Online Accounts and sign in again."
+msgstr ""
+
+msgid ""
+"Microsoft did not accept the saved sign-in for {email}. Open Hylki's "
+"Settings → Mail Accounts and sign in to it again."
+msgstr ""
 
 msgid "The attachment is no longer in the message on the server"
 msgstr "El archivo adjunto ya no está en el mensaje del servidor"
@@ -8421,6 +8624,18 @@ msgstr "Pegar con formato"
 msgid "Paste as Plain Text"
 msgstr "Pegar como texto sin formato"
 
+#, fuzzy
+msgid "Cut"
+msgstr "País"
+
+#, fuzzy
+msgid "Select All"
+msgstr "Eliminar todo"
+
+#, fuzzy
+msgid "Insert Emoji"
+msgstr "Insertar emoji"
+
 msgid "Email Client"
 msgstr "Cliente de correo electrónico"
 
@@ -8554,6 +8769,29 @@ msgstr "La bandeja de entrada unificada en modo claro"
 
 msgid "Hyprlab"
 msgstr "Hyprlab"
+
+#~ msgid "Remote content can tell a sender when and where you read."
+#~ msgstr ""
+#~ "El contenido remoto puede revelar al remitente cuándo y desde dónde lees."
+
+#~ msgid "Their senders can tell they were opened."
+#~ msgstr "Sus remitentes pueden saber que se han abierto."
+
+#~ msgid ""
+#~ "The badge beside the sender stays. A possible forgery always shows the "
+#~ "banner."
+#~ msgstr ""
+#~ "Se mantiene el indicador junto al remitente. Un posible intento de "
+#~ "suplantación siempre muestra el aviso."
+
+#~ msgid ""
+#~ "Most are fetched from the sender's domain, which learns your IP address."
+#~ msgstr ""
+#~ "La mayoría se descarga desde el dominio del remitente, que puede conocer "
+#~ "tu dirección IP."
+
+#~ msgid "A receipt tells the sender when you opened the message."
+#~ msgstr "Una confirmación indica al remitente cuándo abriste el mensaje."
 
 #~ msgid ""
 #~ "The parts switched on below hide while Focus Mode is on. Activated by "
