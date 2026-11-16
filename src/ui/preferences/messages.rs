@@ -59,6 +59,8 @@ pub(crate) struct PrefInit {
     pub(crate) card_attachments: bool,
     /// The attachment drawer beneath the reader is shown (#213).
     pub(crate) attachment_drawer: bool,
+    /// Space sends pictures and PDFs to the file previewer too (#625).
+    pub(crate) previewer_pictures: bool,
     /// Conversation rows may expand into their members in the message list.
     pub(crate) thread_expansion: bool,
     /// A conversation's row speaks for the newest message anywhere in the
@@ -114,6 +116,8 @@ pub(crate) struct PrefInit {
     pub(crate) compose_format: crate::config::ComposeFormat,
     /// Replies and forwards to plain-text mail are written in plain text (#436).
     pub(crate) follow_plain: bool,
+    /// Switching to plain text asks first when something would be lost.
+    pub(crate) ask_plain_switch: bool,
     /// Where the split reply opens in the reading pane (#212).
     pub(crate) reply_position: crate::config::ReplyPosition,
     /// Where the signature sits in a reply or forward (#237).
@@ -170,6 +174,7 @@ pub(crate) struct PrefInit {
     pub(crate) list_column_scroll: bool,
     pub(crate) list_group_by_date: bool,
     pub(crate) list_pills_below: bool,
+    pub(crate) list_follows_window: bool,
     pub(crate) list_search_open: bool,
     pub(crate) contacts_search_open: bool,
     pub(crate) contact_names: bool,
@@ -452,6 +457,7 @@ pub(crate) enum PrefOutput {
     SetReaderZoom(u32),
     SetCardAttachments(bool),
     SetAttachmentDrawer(bool),
+    SetPreviewerPictures(bool),
     SetThreadExpansion(bool),
     SetThreadRowNewest(bool),
     SetConfirmThreadDelete(bool),
@@ -528,6 +534,8 @@ pub(crate) enum PrefOutput {
     SetGroupByDate(bool),
     /// A card's tags and labels on a line under its text (#374).
     SetPillsBelow(bool),
+    /// The list keeps its share of the window, not its width (#648).
+    SetListFollowsWindow(bool),
     /// Keep the list's search field open (#446).
     SetListSearchOpen(bool),
     /// Keep Contacts' search field open.
@@ -562,6 +570,7 @@ pub(crate) enum PrefOutput {
     SetPlainFont(String),
     SetComposeFormat(crate::config::ComposeFormat),
     SetFollowPlain(bool),
+    SetAskPlainSwitch(bool),
     SetReplyPosition(crate::config::ReplyPosition),
     SetSignaturePosition(crate::config::SignaturePosition),
     SetSignatureDashes(bool),

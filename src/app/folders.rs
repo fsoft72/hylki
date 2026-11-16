@@ -528,7 +528,7 @@ impl AppModel {
                 rekey_folder_key(k, &key_prefix, h, path, new_path);
             }
             self.save_sidebar_state();
-            // A folder keeps its sort, under its new name.
+            // A folder keeps its sort and names, under its new name.
             let sorts = std::mem::take(&mut self.list_sorts);
             let before = sorts.keys().cloned().collect::<Vec<_>>();
             self.list_sorts = sorts
@@ -538,7 +538,28 @@ impl AppModel {
                     (k, sort)
                 })
                 .collect();
-            if !self.list_sorts.keys().eq(before.iter()) {
+            let names = std::mem::take(&mut self.list_recipients);
+            let names_before = names.keys().cloned().collect::<Vec<_>>();
+            self.list_recipients = names
+                .into_iter()
+                .map(|(mut k, on)| {
+                    rekey_folder_key(&mut k, &key_prefix, h, path, new_path);
+                    (k, on)
+                })
+                .collect();
+            let folds = std::mem::take(&mut self.list_folded_days);
+            let folds_before = folds.keys().cloned().collect::<Vec<_>>();
+            self.list_folded_days = folds
+                .into_iter()
+                .map(|(mut k, days)| {
+                    rekey_folder_key(&mut k, &key_prefix, h, path, new_path);
+                    (k, days)
+                })
+                .collect();
+            if !self.list_sorts.keys().eq(before.iter())
+                || !self.list_recipients.keys().eq(names_before.iter())
+                || !self.list_folded_days.keys().eq(folds_before.iter())
+            {
                 self.save_settings();
             }
         }
@@ -617,10 +638,17 @@ impl AppModel {
     /// account editor if it still exists, else the Sent folder. `None` when
     /// the account has neither — the message is sent without a copy.
     pub(super) fn sent_copy_path(&self, account_id: u32) -> Option<String> {
+        self.sent_copy_path_as(account_id, None)
+    }
+
+    /// [`Self::sent_copy_path`] for a message sent as `from` (the composer's
+    /// From alias; `None` for the account's own address), which may leave
+    /// through an alias's own SMTP and so need a copy after all (#640).
+    pub(super) fn sent_copy_path_as(&self, account_id: u32, from: Option<&str>) -> Option<String> {
         let cfg = self.account_config(account_id);
         // The server files its own copy: appending a second one is what makes
         // a Gmail account show every sent message twice.
-        if cfg.is_some_and(|c| c.server_saves_sent) {
+        if cfg.is_some_and(|c| c.server_files_sent(from)) {
             return None;
         }
         let chosen = cfg.and_then(|c| c.sent_copy_path.as_deref());

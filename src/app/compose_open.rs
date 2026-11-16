@@ -177,6 +177,7 @@ impl AppModel {
             to: m.to.clone(),
             cc: m.cc.clone(),
             subject: m.subject.clone(),
+            written_plain: crate::mail::quote::body_is_plain_text(&body_html),
             body_html,
             from_address: m.from_addr.clone(),
             attachments: extra.attach,
@@ -187,7 +188,10 @@ impl AppModel {
     }
 
     /// Open the compose editor on a draft's own bytes: everything it was
-    /// saved with, its files written out for the composer to attach.
+    /// saved with, its files written out for the composer to attach. An
+    /// encrypted draft is decrypted first, off the main thread, as gpg may
+    /// ask for the passphrase; the editor opens when it answers (see the
+    /// `DraftDecrypted` handler).
     pub(super) fn compose_from_draft_raw(
         &mut self,
         m: Message,
@@ -196,7 +200,31 @@ impl AppModel {
         extra: HandOffFiles,
         sender: &ComponentSender<Self>,
     ) {
+        if crate::mail::pgp::is_encrypted(raw) {
+            let token = self.next_transfer;
+            self.next_transfer += 1;
+            self.pending_sealed_draft = Some((token, m, inline, extra));
+            let raw = raw.to_vec();
+            let s = sender.input_sender().clone();
+            std::thread::spawn(move || {
+                let raw = crate::worker::decrypt_draft(&raw);
+                let _ = s.send(AppMsg::DraftDecrypted { token, raw });
+            });
+            return;
+        }
         let e = crate::worker::editable_from_raw(raw, &[]);
+        self.compose_from_editable(m, e, inline, extra, sender);
+    }
+
+    /// The editor on a draft taken apart (and decrypted, if it was).
+    pub(super) fn compose_from_editable(
+        &mut self,
+        m: Message,
+        e: crate::worker::EditableMessage,
+        inline: bool,
+        extra: HandOffFiles,
+        sender: &ComponentSender<Self>,
+    ) {
         let mut attachments = stage_attachments(
             &format!("hylki-draft-{}-{}", m.account_id, m.uid),
             &e.attachments,
@@ -208,10 +236,12 @@ impl AppModel {
             bcc: e.bcc,
             subject: e.subject,
             body_html: e.body_html,
+            written_plain: e.plain,
             in_reply_to: e.in_reply_to,
             references: e.references,
             receipt: Some(e.receipt),
             importance: e.importance,
+            encrypt: e.encrypt,
             from_address: first_recipient(&e.from)
                 .map(|(_, addr)| addr)
                 .unwrap_or_default(),
@@ -243,6 +273,7 @@ impl AppModel {
         // back in Templates, and sending leaves it there.
         prefill.template =
             self.folder_kind(m.account_id, m.folder_id) == Some(FolderKind::Templates);
+        let keeps_list = self.draft_keeps_list.take() == Some((m.account_id, m.id));
         if inline && self.reading_pane == config::ReadingPane::Right {
             self.attachments.clear();
             self.attachments_loading = false;
@@ -250,9 +281,9 @@ impl AppModel {
             self.current = None;
             self.current_thread.clear();
             self.show_message(None, false);
-            self.open_inline_reply(m.account_id, prefill, None, sender);
+            self.open_inline_compose(m.account_id, prefill, None, !keeps_list, sender);
             if let Some(r) = self.reader_compose.as_mut() {
-                r.list_draft = true;
+                r.list_draft = Some((m.account_id, m.id));
             }
         } else {
             self.open_compose(m.account_id, prefill, sender);
@@ -372,6 +403,7 @@ impl AppModel {
                 cc: m.cc.clone(),
                 subject: m.subject.clone(),
                 body_html: editable_copy_html(&m.body),
+                written_plain: crate::mail::quote::body_is_plain_text(&m.body),
                 attachments,
                 from_address: if template {
                     m.from_addr.clone()

@@ -17,9 +17,9 @@ use super::msg::AppMsg;
 
 /// Whether mail a filter just filed into a folder of `kind` is announced
 /// as new mail. Mail sent straight to Trash or Junk is mail the person
-/// asked never to see: no notification and no sound for it, just as the
-/// tray's arrivals badge leaves it out. `None` is a folder the app does
-/// not know yet, which counts like any other.
+/// asked never to see: no notification and no sound for it, just as
+/// `counted_folders` never counts it as unread. `None` is a folder the app
+/// does not know yet, which counts like any other.
 fn announces_filed(kind: Option<FolderKind>) -> bool {
     !matches!(kind, Some(FolderKind::Trash | FolderKind::Junk))
 }
@@ -475,7 +475,7 @@ impl AppModel {
                 sender.input(AppMsg::HandOffDraftPickNow);
             }
         }
-        if let Some(waiting) = self.pending_template_pick.as_mut() {
+        if let Some((_, waiting)) = self.pending_template_pick.as_mut() {
             waiting.remove(&(account_id, folder_id));
             if waiting.is_empty() {
                 sender.input(AppMsg::TemplatePickNow);

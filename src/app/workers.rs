@@ -228,7 +228,11 @@ fn map_event(account_id: u32, event: WorkerEvent) -> AppMsg {
             message_id,
             check: Box::new(check),
         },
-        WorkerEvent::Source { text, .. } => AppMsg::Source { text },
+        WorkerEvent::Source { message_id, text } => AppMsg::Source {
+            account_id,
+            message_id,
+            text,
+        },
         WorkerEvent::Attachments {
             path,
             message_id,
@@ -265,10 +269,12 @@ fn map_event(account_id: u32, event: WorkerEvent) -> AppMsg {
         WorkerEvent::DraftSaved {
             autosave,
             message_id,
+            template,
         } => AppMsg::DraftSaved {
             account_id,
             autosave,
             message_id,
+            template,
         },
         WorkerEvent::Status(text) => AppMsg::Status { account_id, text },
         WorkerEvent::CopyProgress { left } => AppMsg::CopyProgress { left },
@@ -801,6 +807,13 @@ impl AppModel {
         self.refresh_own_faces();
         self.warm_own_gravatars(sender);
         self.spawn_workers(sender);
+        // The sidebar gives the launch view's account a while to list its
+        // folders once it is listed itself (#642). An account whose worker
+        // never lists it at all must not leave the window without a view.
+        let s = self.sidebar.sender().clone();
+        gtk::glib::timeout_add_seconds_local_once(30, move || {
+            let _ = s.send(SidebarInput::DropStart);
+        });
     }
 }
 

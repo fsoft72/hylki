@@ -124,7 +124,8 @@ impl AppModel {
         sender: &ComponentSender<Self>,
     ) {
         let t_open = std::time::Instant::now();
-        if view == UnifiedView::Kind(FolderKind::Inbox) && !demo_mode() {
+        let stand_in = std::mem::take(&mut self.stand_in);
+        if view == UnifiedView::Kind(FolderKind::Inbox) && !demo_mode() && !stand_in {
             config::save_last_view(config::LastView::default());
         }
         self.close_sidebar_peek();
@@ -210,10 +211,9 @@ impl AppModel {
             )));
         self.message_list
             .emit(MessageListInput::SetColorize(account.is_none()));
-        // A Sent view's rows all come from you — name the recipients.
-        self.message_list.emit(MessageListInput::SetShowRecipient(
-            view == UnifiedView::Kind(FolderKind::Sent),
-        ));
+        // An "All folders" search keeps to the account a view is narrowed to.
+        self.message_list
+            .emit(MessageListInput::SetSearchAccount(account));
         // Unified Trash and Junk offer the way back as each account's own
         // folder does (#369); the move and Not Spam go per message.
         let restorable = matches!(
@@ -352,7 +352,11 @@ impl AppModel {
         path: String,
     ) {
         // For "Open at startup" (#256). The demo's accounts are not real.
-        if let Some(email) = self.email_of(account_id).filter(|_| !demo_mode()) {
+        let stand_in = std::mem::take(&mut self.stand_in);
+        if let Some(email) = self
+            .email_of(account_id)
+            .filter(|_| !demo_mode() && !stand_in)
+        {
             config::save_last_view(config::LastView {
                 email,
                 path: path.clone(),
@@ -382,10 +386,8 @@ impl AppModel {
                 self.folder_kind(account_id, folder_id) == Some(FolderKind::Inbox),
             )));
         self.message_list.emit(MessageListInput::SetColorize(false));
-        // A Sent folder's rows all come from you — name the recipients (#27).
-        let is_sent = self.folder_kind(account_id, folder_id) == Some(FolderKind::Sent);
         self.message_list
-            .emit(MessageListInput::SetShowRecipient(is_sent));
+            .emit(MessageListInput::SetSearchAccount(Some(account_id)));
         // Trash and Junk offer the way back to the Inbox (#138); Junk's is
         // "Not Spam" (#168).
         let kind = self.folder_kind(account_id, folder_id);
@@ -454,6 +456,8 @@ impl AppModel {
             AppMsg::UnifiedSelected(view) => {
                 self.open_unified(view, &sender);
             }
+
+            AppMsg::StandInView => self.stand_in = true,
 
             AppMsg::AccountStarredSelected(account_id) => {
                 self.open_unified_in(

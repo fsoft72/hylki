@@ -23,9 +23,11 @@ mod messages;
 mod offline;
 mod open;
 mod outbox;
+mod pgp_peers;
 mod schema;
 mod smart;
 mod text_index;
+mod thread_members;
 mod threads;
 
 pub(crate) use assistant::{MailScope, ScopedFolder};

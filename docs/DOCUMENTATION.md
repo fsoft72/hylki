@@ -402,6 +402,31 @@ replied to are letters in its name, and tags are listed in
 `new` directory are found when the folder opens. Removing the account leaves
 the folders where they are, and adding it again finds them.
 
+### Previewing an attachment
+
+A double click on a picture or a PDF in the attachment drawer shows it in
+Hylki's full-window preview, and any other file opens in the program the
+desktop has for it. Where the GNOME file previewer, Sushi, is installed,
+**Space** on a highlighted file, or **Preview** in its right-click menu, shows
+the other files in it, as GNOME Files does: text, office documents, audio,
+video and fonts among them. The arrow keys there move through the drawer's
+files, and **Space** or **Esc** closes it. **Space** on an attachment
+beneath a message in the reader, reached with **Tab**, does the same, and
+the arrow keys move through that message's files. The attachment gallery and
+the composer have **Preview** in a file's right-click menu too. Without
+Sushi, **Space** does what a double click does.
+
+**Settings → Reading → Space shows pictures and PDFs in Sushi** sends
+those to Sushi too, in the drawer and in the reader. Off, as it starts,
+**Space** shows them in Hylki's own preview.
+
+Hylki's preview prints the file it shows from its printer button or
+**Ctrl+P**: a PDF as it is, a picture centred on one page.
+
+Sushi is a package of the system: `sushi` in Fedora and Arch, `gnome-sushi`
+in Debian and Ubuntu. The Flatpak reaches it on the session bus as
+`org.gnome.NautilusPreviewer`.
+
 ### Deleting an attachment from the server
 
 **Delete from Server…** in the right-click menu of a file in the attachment
@@ -711,7 +736,7 @@ in every book is listed, so someone kept in two books shows twice, each
 with its book named.
 
 The Hylki book's page in **Settings → Contacts** shows how many contacts it
-holds, and has **Import vCard files**, **Export as a vCard file** (one `.vcf`
+holds, and has **Import vCard or CSV files**, **Export as a vCard file** (one `.vcf`
 file with every contact, which other apps can import) and **Delete all
 contacts**, which asks first and leaves the other books alone. **Save new
 contacts in**, on the same page as the list, sets the default book for
@@ -719,18 +744,46 @@ contacts made in Hylki, from the Contacts view or with **Add Sender to
 Contacts**. Until it is set, a new contact goes to the first writable EDS
 book, or to the Hylki book when there is none.
 
-Importing reads `.vcf` files into the Hylki book, from Settings or from the
-import button in the Contacts view's header. A file can hold many contacts,
-in vCard 2.1, 3.0 or 4.0. A contact with the same ID as one already in the
-book updates it, and one without an ID is matched by its content, so
-importing a file twice adds nothing new. A contact list in the file becomes
-a group (see [Contact groups](#contact-groups)). Entries with neither a name
-nor an address are skipped; truncated or oversized entries
-(over 5 MB) are counted as damaged; a second card with the same ID in one
-file is skipped, so the first is kept. Files over 50 MB are refused, and
-photos are used only when they are inside the file: nothing is fetched from
-the web. A person who is in both an EDS book and the Hylki book appears in
-each, with the book named, and once in the composer's suggestions.
+Importing reads `.vcf` and `.csv` files, from Settings or from the import
+button in the Contacts view's header. Once the files are chosen, **Import
+Contacts** asks which address book they go to: the Hylki book or any EDS
+book that can be written to. It starts on the book the Contacts view is
+showing, and from Settings on the Hylki book. A `.vcf` file can hold many
+contacts, in vCard 2.1, 3.0 or 4.0. A contact with the same ID as one
+already in the book updates it, and one without an ID is matched by its
+content, so importing a file into the same book twice adds nothing new. A
+contact list in the file becomes a group (see
+[Contact groups](#contact-groups)). Entries with neither a name nor an
+address are skipped; truncated or oversized entries (over 5 MB) are counted
+as damaged; a second card with the same ID in one file is skipped, so the
+first is kept. Files over 50 MB are refused, and photos are used only when
+they are inside the file: nothing is fetched from the web. A person who is
+in both an EDS book and the Hylki book appears in each, with the book
+named, and once in the composer's suggestions.
+
+A CSV file's first row names its columns, and each column with a value in
+it has a row in **Import Contacts**: its name, its first values, and the
+contact field it fills, which can be changed to any other field or to **Do
+not import**. Columns start matched by their names. The exports of Google
+Contacts, Outlook and Thunderbird are matched as they are, and so are
+columns named in English: Name or First Name and Last Name, Email, Phone,
+Company, Job Title, Address or its parts (Street, City, Postal Code,
+Country), Website, Birthday and Notes. A column of email addresses is
+matched to Email whatever its name. A label column, such as Google's
+"E-mail 1 - Label", gives the value after it its label (Home, Work, Mobile
+or Fax). Under the file's name the window counts the contacts and groups
+the file makes; it imports nothing until a column is matched to a name, an
+email address or a phone number. Commas, semicolons and tabs all work as
+the separator, and the file can be UTF-8, UTF-16 or Windows-1252. A row
+with no name, address, phone number or company is skipped.
+
+Google's labels, Outlook's categories, or a column matched to **Groups**,
+put each person in the group of that name, which is made when the book has
+none. A book whose groups are Evolution lists, such as the Hylki book or
+On This Computer, takes only the people with an email address into them; a
+CardDAV book's groups take everyone. A Nextcloud book keeps the names as
+categories on each contact, and a Google or Microsoft 365 book, which keeps
+no groups, leaves them on each contact.
 
 The book is the file `local_contacts.db` in Hylki's data folder, kept apart
 from the mail cache, so clearing the cache leaves it alone.
@@ -794,6 +847,19 @@ group (`KIND:group`) is shown and offered with the people it names in the
 same book, but is changed in the app it came from. Groups are not counted as contacts in **Settings →
 Contacts**, and the people in a group do not count as contacts for the
 filters below.
+
+A group in a Nextcloud book is saved the way Nextcloud keeps its own. It has
+no card: it is a category on the card of each person in it, which the
+Nextcloud Contacts app, DAVx⁵ and Thunderbird show as the group. The
+categories on a Nextcloud book's contacts are listed as its groups.
+Changing a group in Hylki changes its people's cards: someone added gets the
+category, someone removed loses it, and renaming or deleting the group
+renames it on, or takes it off, every card that has it. The people stay.
+Like an Apple group, it holds contacts of its own book, copied there from
+another book when they join, and can hold people with no email address. A
+group with nobody in it has nothing to keep it, so a new one needs at least
+one person. Send as Bcc is kept in Hylki, since a category cannot say it.
+Hylki knows a Nextcloud book by its address, which has `/remote.php/` in it.
 
 ### Filtering on Contacts
 
@@ -1002,6 +1068,12 @@ goes where a signature goes. Changing **From** to another account puts in
 that account's own signature; an alias of the same account keeps the one
 picked.
 
+A signature's **Sender name** replaces the account's name in From while that
+signature is in the message, so one mailbox can sign as different people
+(empty keeps the account's name). It applies to the account's own address
+only: an alias keeps its own name. The From row then shows even when the
+account has a single address.
+
 ### Where the signature goes
 
 In a reply or forward the account's signature is placed above the quoted
@@ -1198,6 +1270,10 @@ templates there, Thunderbird among them, sees the same ones.
   Message** (on its right-click menu when the sidebar is folded to icons),
   or <kbd>Ctrl+Shift+N</kbd>, lists every account's templates to start
   from.
+- **Insert Template**, in the composer's formatting row, puts a template's
+  text into the message being written, where the cursor is. The recipients,
+  the subject and the quoted original stay, so a reply can use a standard
+  answer. The template's own signature is left out.
 
 A folder called Templates is taken for the role, at the top of the account
 or directly under the Inbox. Nothing on a server marks one otherwise, so a
@@ -1318,6 +1394,25 @@ your addresses starts from that address, and a draft saved from a typed
 address opens with it. Whether the server accepts mail from an address it
 does not know is up to the server: many refuse it, or rewrite it.
 
+An alias can be the account's default From address: **Default From
+address** in the alias's settings. A new message from the account starts
+from it, and so does a reply to mail that was not sent to one of the
+account's addresses, such as a mailing list's. A reply to mail sent to an
+address still answers from that address, and **Settings → Composing → Send
+new messages from** still comes first when it names an address.
+
+Several aliases can share one address under different names, such as a
+manager and a director writing from one shared mailbox, and the account's own
+address can have more names the same way. Mail from a shared address goes
+through the account's own SMTP server: an alias with its own server needs an
+address of its own.
+
+The account's **Server saves its own copy of sent mail** only covers mail
+that goes through the account's own SMTP server. Mail sent as an alias
+through its own server gets a copy in the account's Sent folder, unless
+**Server saves its own copy of sent mail** is on in that alias's settings,
+for a server that files sent mail in the account itself.
+
 A JMAP account lists the identities the server keeps for it as well, so an
 alias made in the webmail is in the From row without setting it up again.
 The message is sent as the identity with its address, or as a catch-all
@@ -1334,6 +1429,19 @@ Return starts a new paragraph** swaps the two. In a list <kbd>Return</kbd>
 still starts the next item, and pressed twice in a quote it still leaves the
 quote. The setting applies when a composer opens. Markdown, HTML and plain
 text are written as source, where <kbd>Return</kbd> is always a new line.
+
+### Pasting
+
+**Settings → Composing → Paste as plain text**, on by default, makes
+<kbd>Ctrl+V</kbd> paste the clipboard's text without its formatting. Cells
+copied from a spreadsheet, such as LibreOffice Calc, are the exception: they
+arrive as their table, with the fonts, colors, borders and column widths the
+spreadsheet gave them, as other mail clients show them. A single cell
+arrives as its value. With the setting off, <kbd>Ctrl+V</kbd> keeps the
+formatting of whatever is pasted. Right-clicking the text offers **Paste
+with Formatting** and **Paste as Plain Text** either way, and
+<kbd>Ctrl+Shift+V</kbd> pastes the text alone, so cells arrive as text
+separated by tabs.
 
 ### The formatting toolbar
 
@@ -1462,7 +1570,7 @@ The settings are in `grammar.toml`; the API key is in the keyring.
 ### Writing in Markdown or HTML
 
 A message can be written in any of four formats, chosen in **Settings →
-Composing → Write messages in** for new messages and switched for any single
+Composing → Start new messages in** for new messages and switched for any single
 message with the format button at the right-hand end of the composer's
 formatting row, which wears the icon of the format it is set to and lists
 the others, the current one in your accent colour:
@@ -1485,15 +1593,20 @@ the same way.
 
 Switching format converts what is already in the message, so you can start a
 reply in rich text and finish it in Markdown; the quoted original comes
-across as `>` lines.
+across as `>` lines. Switching from rich text to plain text asks first when
+the message holds formatting, pictures or links, which plain text removes
+and switching back does not restore. **Settings → Composing → Ask before
+switching to plain text** turns the question off.
 
 **Settings → Composing → Reply in the original's format**, off by default,
-answers plain text in kind. A reply, a reply to all or a forward of a message
+answers mail in kind. A reply, a reply to all or a forward of a message
 that came as plain text only, the way mailing lists and many of the people on
 them send it, opens in plain text, the original quoted as `>` lines that keep
-its indents. A message with an HTML part is answered in the format chosen in
-**Write messages in**. Drafts, templates and **Edit as New** open as they
-always have, and the format button still switches any one message.
+its indents. A message with formatting of its own opens in rich text when
+**Start new messages in** is set to plain text, so the quote keeps its look;
+with Markdown or HTML source chosen it opens in that, as both send formatted
+mail. Drafts, templates and **Edit as New** open as they always have, and the
+format button still switches any one message.
 
 **The Markdown Hylki understands** is the dialect documented at
 [markdownguide.org](https://www.markdownguide.org/): all of the basic
@@ -1665,6 +1778,9 @@ signature. There are four ways to get one, none of which need a terminal:
   beside their name. Click it and choose **Fetch the sender's key**. Hylki
   looks in the message itself first (many clients attach the key in an
   Autocrypt header), then asks the sender's provider (WKD), then the keyservers.
+  A key from the message's Autocrypt header is taken only when the header
+  names the sender's own address, and it goes into Hylki's own keyring of
+  found keys, never yours (see below).
 - A message with a key file attached shows an **Import OpenPGP key** button on
   that attachment.
 - Under *Settings → OpenPGP → Other people's keys*, **Fetch by address…**
@@ -1732,6 +1848,47 @@ account then open with Sign on, and a reopened draft does too. Changing From
 in the composer moves Sign to the new account's setting until you press Sign
 yourself; after that the composer leaves it as you set it. Stored on the
 account as `sign_by_default = true` in `accounts.toml`.
+
+**Autocrypt, found keys and encrypted drafts**
+
+Turn on **Send your key with your mail** under an account's *OpenPGP* group
+and every message from it carries your public key in an `Autocrypt:` header
+(Autocrypt Level 1). Hylki then also keeps the keys other people send that
+way, and the keys passed on inside encrypted mail to several people
+(Autocrypt gossip). A key is taken only from mail whose From address the
+receiving server authenticated (a green sender check), and only for that
+address. **Encrypt by default** under it says you prefer encrypted mail:
+when everyone you write to says the same, the composer turns Encrypt on by
+itself. Stored as `autocrypt = true` and `autocrypt_mutual = true`.
+
+Keys found this way, and keys found by looking a recipient up, go into a
+keyring of Hylki's own (`discovered-keys` in Hylki's data folder), never
+your GnuPG keyring: nobody vouched for them, and gpg would otherwise use them
+for everything else too. Which key belongs to whom is kept in the cache.
+
+Sending encrypted to a key the recipient sent with their mail, or one their
+domain or keys.openpgp.org publishes, does not ask first. A key passed on by
+someone else asks, as a key in your keyring that nobody vouched for does,
+and **Send Anyway** stops asking about it.
+
+While you address a message, each recipient's pill shows a lock: green for a
+key in your keyring, blue for one Hylki found (Autocrypt or WKD), amber for
+one passed on by someone else or that may be out of date, and dim (red while
+Encrypt is on) for none. Hovering says where the key came from. The pills
+only show locks when your From address has a key of its own.
+
+*Settings → OpenPGP → Finding keys* has two switches, both off to start
+with. **Look up recipients' keys** asks each recipient's own domain (WKD) a
+moment after you add them, which tells that domain that you are writing to
+the address. **Also ask a keyserver** asks keys.openpgp.org for addresses WKD
+has nothing for, which tells it who you write to.
+
+A draft of a message set to be encrypted is saved encrypted to your key alone,
+with its subject, recipients and Bcc inside, so neither the server nor the
+cache holds its text. Opening it again asks for your passphrase if the agent
+needs it, and the message opens with Encrypt on. This works for IMAP, JMAP and
+Microsoft 365 accounts. Without a key of your own for the From address, the
+draft is saved readable, as it was before.
 
 **Reading the result**
 
@@ -1948,11 +2105,13 @@ double-click it in GNOME Files (Hylki is offered for email files), pass it to
 palette (**Ctrl+K**). It is drawn as mail from a server is, with its
 attachments in the drawer, and **Reply**, **Reply All** and **Forward**
 write from the account in view. It belongs to no folder, so there is nothing
-to star, move or delete.
+to star, move or delete. **Copy To…** in its right-click menu stores it in
+a folder of any account that takes mail, On This Computer included, marked
+read; the window stays open.
 
 **Save as File…**, in a message's right-click menu in the list or on its card,
 saves the message whole, as the server keeps it, under its subject with
-`.eml` on the end.
+`.eml` on the end. In a message window, the same menu also has **Copy To…**.
 
 A `.msg` keeps the headers the mail server sent when Outlook has them, and
 otherwise its sender, recipients, subject and date are read from the file.
@@ -2060,6 +2219,12 @@ which marks it read as **Settings → Reading → Mark as read** says. A
 conversation opens whole, each message marked as its window scrolls through
 it. Hylki remembers the choice.
 
+The list keeps the width it is dragged to, or its height with the reader below.
+A window too small for that narrows the list for the moment, and the list goes
+back to it when the window grows again. **Settings → Message List → Resize the
+list with the window** keeps the list's share of the window instead: a list
+dragged to half the window stays half of it at any size.
+
 **Settings → Message List → Layout** sets how the list shows a message.
 **Cards** gives the sender, the subject and the start of the text lines of
 their own. **Single line** puts them on one line in columns: the sender's
@@ -2129,7 +2294,16 @@ on at midnight. A conversation goes under the heading of the message that
 places it in the sort, the newest for newest first and the oldest for oldest
 first, and its replies stay with it when it is opened out. The headings work
 in both layouts and in search results, and are not rows: the keyboard,
-selection and swipes pass them by. It is off unless switched on.
+selection and swipes pass them by.
+
+A click on a heading folds its section: the heading stays, with the number
+of conversations under it and a dot when any of them is unread, and its mail
+is out of the list until a click on the heading opens it again. With the list focused, <kbd>←</kbd> on
+a message folds its section, and <kbd>→</kbd> or <kbd>Enter</kbd> on a
+folded heading opens it; the arrow keys stop on a folded heading, which
+opens nothing in the reader. Each folder, unified row, tag and smart folder
+keeps the sections folded in it, as it keeps its sort. A message opened from
+elsewhere, such as a notification, opens the section it is in.
 
 **Settings → Message List → Tint tagged messages** washes the row of a
 tagged message with its tag's color, in both layouts. A message with more
@@ -2204,7 +2378,12 @@ A value with spaces goes in quotes: `from:"mario rossi"`. A colon in any other
 word, such as `10:30` or `re:`, is searched for as written.
 
 The sort and filter button in the list's header opens a popover of three
-columns. **Sort by** orders the list by date, newest or oldest first, by
+columns. **Show** at the top of the first chooses whom each message's row
+names: its **Sender**, or its **Recipients** after "To:". Sent folders and
+the Outbox name the recipients and every other folder the sender, until
+the other is chosen; the choice is kept for the open folder, as its order
+is, so a folder of sent mail imported elsewhere can name its recipients
+too. **Sort by** orders the list by date, newest or oldest first, by
 sender or subject, or puts unread or starred mail first. The order chosen
 there or by a column heading is kept for the open folder, from one launch to
 the next, and each folder, unified row, tag and smart folder has its own.

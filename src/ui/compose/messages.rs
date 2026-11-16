@@ -11,11 +11,11 @@ use crate::worker::OutgoingMessage;
 #[derive(Debug)]
 pub(crate) enum ComposeInput {
     Send,
-    /// The OpenPGP send check answered, for these inputs: the keys to ask
-    /// about, or what stops the send.
+    /// The OpenPGP send check answered, for these inputs: what it found
+    /// (see `PgpCheck`), or what stops the send.
     PgpChecked {
         checked: Vec<String>,
-        result: Result<Vec<crate::config::AcceptedKey>, String>,
+        result: Result<super::pgp_check::PgpCheck, String>,
     },
     /// Send Later (#145): queue for this unix time, then send as usual.
     SendAt(i64),
@@ -111,6 +111,20 @@ pub(crate) enum ComposeInput {
     ShowPreview(String),
     /// The OpenPGP Encrypt toggle; encrypting turns signing on too.
     ToggleEncrypt(bool),
+    /// A recipient was added, removed or moved: their keys are looked up
+    /// again once the typing settles.
+    RecipientsChanged,
+    /// The settled lookup, for the recipients as they were at this
+    /// generation.
+    LookUpKeys(u64),
+    /// What the lookup found: each recipient's key, and whether badges are
+    /// shown at all (the From has a key of its own). Sent once from what
+    /// is on disk, and again after the network was asked.
+    KeysFound {
+        generation: u64,
+        badges: bool,
+        statuses: Vec<crate::mail::pgp::discovery::KeyStatus>,
+    },
     /// The Send menu's read receipt check (#520).
     ToggleReceipt(bool),
     /// The Send menu's importance, picked (#563).
@@ -135,6 +149,11 @@ pub(crate) enum ComposeInput {
     SaveDraft,
     /// Save a copy of the message as a template (#360), and go on writing.
     SaveAsTemplate,
+    /// Put a saved template into this message, at the caret or above the
+    /// quoted original when the editor no longer has one.
+    InsertTemplate,
+    /// The app fetched the template picked for this composer.
+    TemplateBody(String),
     /// The From account's signature, put in by hand (#385): at the caret,
     /// or before or after the text from the button's right-click menu.
     InsertSignature(SigPlace),
@@ -299,6 +318,8 @@ pub(crate) enum ComposeOutput {
     /// Save the message to the Templates folder (#360), replacing the
     /// template at its `draft_origin` if it has one.
     SaveTemplate(Box<OutgoingMessage>),
+    /// Ask the app to show its template picker for this composer.
+    PickTemplate { id: u32 },
     /// Delete the draft this composer was opened from, and close it. The app
     /// moves the draft to Trash (undoable, like deleting it from the list).
     DeleteDraft { id: u32, origin: DraftOrigin },

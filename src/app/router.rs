@@ -83,6 +83,7 @@ impl AppModel {
             | AppMsg::OpenAttachmentMessage { .. }) => self.on_gallery(msg),
             msg @ (AppMsg::UnifiedSelected(..)
             | AppMsg::AccountStarredSelected(..)
+            | AppMsg::StandInView
             | AppMsg::FolderSelected { .. }) => self.on_navigation(msg, sender),
             msg @ (AppMsg::AccountFolded { .. }
             | AppMsg::ToggleCustomFolders(..)
@@ -135,6 +136,7 @@ impl AppModel {
             | AppMsg::PopoutClosed(..)
             | AppMsg::AddContactFrom { .. }
             | AppMsg::PopoutMoveTo { .. }
+            | AppMsg::PopoutCopyTo { .. }
             | AppMsg::PopoutShortcut { .. }
             | AppMsg::ViewSource) => self.on_popout(msg, sender),
             msg @ (AppMsg::SetReadingPane(..)
@@ -226,7 +228,9 @@ impl AppModel {
             | AppMsg::CopyContacts { .. }
             | AppMsg::MoveContacts { .. }
             | AppMsg::ContactWriteDone(..)
-            | AppMsg::ImportContacts(..)
+            | AppMsg::ImportContacts { .. }
+            | AppMsg::ContactImportReady(..)
+            | AppMsg::RunContactImport(..)
             | AppMsg::ContactsImported(..)) => self.on_contacts(msg, sender),
             msg @ AppMsg::OpenAbout => self.on_about(msg, sender),
             msg @ (AppMsg::AllowSender(..)
@@ -247,7 +251,9 @@ impl AppModel {
             | AppMsg::ListCount(..)
             | AppMsg::ListColumnWidths(..)
             | AppMsg::ListSortChanged(..)
-            | AppMsg::ListSortForAll) => self.on_list_header(msg, sender),
+            | AppMsg::ListSortForAll
+            | AppMsg::ListShowRecipients(_)
+            | AppMsg::ListFoldedDays(_)) => self.on_list_header(msg, sender),
             msg @ AppMsg::OwnGravatarFetched { .. } => self.on_identity(msg),
             msg @ (AppMsg::SetReaderActionsCollapsed(..)
             | AppMsg::SetReaderCompact(..)
@@ -291,6 +297,8 @@ impl AppModel {
             msg @ (AppMsg::NewFromTemplate
             | AppMsg::TemplatePickNow
             | AppMsg::TemplatePicked(..)
+            | AppMsg::PickTemplate { .. }
+            | AppMsg::TemplateInsertPicked { .. }
             | AppMsg::SaveDraftMessage(..)
             | AppMsg::SaveTemplateMessage(..)
             | AppMsg::AutoSaveDraft { .. }
@@ -395,9 +403,9 @@ impl AppModel {
             | AppMsg::MovesSettled { .. }
             | AppMsg::FolderUnreadByPath { .. }
             | AppMsg::BodyHits { .. }) => self.on_events_folders(msg, sender),
-            msg @ (AppMsg::RawExported { .. } | AppMsg::RawImported { .. }) => {
-                self.on_transfer(msg, sender)
-            }
+            msg @ (AppMsg::RawExported { .. }
+            | AppMsg::RawImported { .. }
+            | AppMsg::DraftDecrypted { .. }) => self.on_transfer(msg, sender),
             msg @ (AppMsg::Messages { .. }
             | AppMsg::MessagesAppend { .. }
             | AppMsg::BackfillDone { .. }
@@ -500,6 +508,7 @@ impl AppModel {
             | PrefOutput::SetAlwaysShowRecipients(..)
             | PrefOutput::SetCardAttachments(..)
             | PrefOutput::SetAttachmentDrawer(..)
+            | PrefOutput::SetPreviewerPictures(..)
             | PrefOutput::SetReaderDefault(..)
             | PrefOutput::SetPgpLabels(..)
             | PrefOutput::SetAccountChip(..)
@@ -521,6 +530,7 @@ impl AppModel {
             | PrefOutput::SetListBulkBarBottom(..)
             | PrefOutput::SetGroupByDate(..)
             | PrefOutput::SetPillsBelow(..)
+            | PrefOutput::SetListFollowsWindow(..)
             | PrefOutput::SetListColumns(..)
             | PrefOutput::SetPreviewLines(..)
             | PrefOutput::SetAttachmentsRow(..)
@@ -545,6 +555,7 @@ impl AppModel {
             | PrefOutput::SetSpellcheckLangs(..)
             | PrefOutput::SetComposeFormat(..)
             | PrefOutput::SetFollowPlain(..)
+            | PrefOutput::SetAskPlainSwitch(..)
             | PrefOutput::SetReplyPosition(..)
             | PrefOutput::SetSignaturePosition(..)
             | PrefOutput::SetSignatureDashes(..)

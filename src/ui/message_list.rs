@@ -16,6 +16,7 @@ use crate::ui::message_row::{RowData, RowShared};
 
 mod component;
 mod conversations;
+mod day_fold;
 mod filters;
 mod init;
 mod layout;
@@ -120,6 +121,9 @@ pub(crate) struct MessageList {
     server_searching: bool,
     /// Which messages the search field filters over.
     scope: SearchScope,
+    /// The account of the folder or view on show, which the "This Account"
+    /// scopes keep to (#649); `None` from a view across accounts.
+    search_account: Option<u32>,
     /// The search scope's button and popover.
     scope_picker: Option<ScopePicker>,
     /// The search field widget, kept so a folder switch can clear its text.
@@ -330,6 +334,8 @@ pub(crate) struct MessageList {
     /// has them.
     group_by_date: bool,
     day_headings: bool,
+    /// The date sections the view on show keeps folded (#659).
+    folded_days: Vec<crate::ui::message_row::DaySection>,
     /// A card's pills on a line under its text (#374).
     pills_below: bool,
     /// Show the column headings over a single-line list (#334).

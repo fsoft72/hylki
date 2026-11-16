@@ -569,10 +569,12 @@ fn signatures_read_old_configs_and_write_for_them() {
     let two = vec![
         NamedSignature {
             name: "English".into(),
+            sender_name: "Ada".into(),
             html: "Regards".into(),
         },
         NamedSignature {
             name: "Deutsch".into(),
+            sender_name: String::new(),
             html: "Grüße".into(),
         },
     ];
@@ -648,6 +650,8 @@ fn settings_bundle_roundtrip_parses() {
         folder_sort: None,
         sign_by_default: false,
         plain_subject: false,
+        autocrypt: false,
+        autocrypt_mutual: false,
         graph_directory: false,
         graph_directory_only: false,
         graph_label_names: false,
