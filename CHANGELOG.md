@@ -2,6 +2,34 @@
 
 ## Unreleased
 
+- **Added: events and tasks from selected text** (#637, requested by
+  adri99-net). With text selected in the reader, the right-click menu offers
+  **Create Event from Selection…** and **Create Task from Selection…**. The
+  dialog starts from the date, start and end times, or range of days written
+  in the selection ("Friday at 3pm", "Nov 20-22", "20/11, 14:00-15:30"),
+  takes a short selection without its date as the title, and puts the
+  selection in the notes. A day without a time makes an all-day event.
+  Relative words and dates without a year count from the message's date.
+  Month and weekday names are read in English and the desktop's language.
+  The dates are read by fixed rules on this computer, with no language model.
+
+- **Added: smart folders with negative conditions** (#639, requested by
+  3v1n0). A text condition can now be **does not contain**, **is not**,
+  **does not start with** or **does not end with**, and **No attachments**
+  and **Not tagged** join the conditions. A new **Gmail label** condition
+  finds mail by its labels, or with no text any label, so it can also find
+  mail that has none. On Gmail, the copy of a message filed under a label
+  now counts as having it, so "Not tagged Work" leaves out mail under Work.
+
+- **Added: mail can be named by its Reply-To sender** (#641, requested by
+  somepaulo). **Settings → Contacts → Show the Reply-To sender** names a
+  message by the first address in its Reply-To header instead of From, in
+  the message list, the reader and notifications, so a web form's mail
+  shows the person who filled it in. The reader's header follows the name
+  with "via" and the From address. Mail from your own accounts, and mail
+  whose Reply-To repeats From, keep their sender. Off by default. A search
+  for a sender now also finds the Reply-To name and address.
+
 - **Added: the message source opens in the reader, with find**
   (#658, requested by samuel-edlmeier). View Source shows the source in
   place of the message, in the main window's reader or a message's own
@@ -38,6 +66,15 @@
   and Thunderbird, or from English names such as Name, Email and Phone, and
   any of them can be matched by hand. Labels and categories become contact
   groups in the book's own kind of group.
+
+- **Changed: contacts move to another address book from a dialog.**
+  **Move to Address Book…** in a contact's right-click menu, in the menu of
+  several selected together, and **Move to…** in their pane open a dialog
+  that lists the books they can go to, each under its account; one picked
+  and **Move** pressed, they move, with no second question. It replaces the
+  submenus of book names, and needs no address books in the sidebar to drag
+  onto. The menu item stays in the menu, unavailable, when there is no other
+  book to go to.
 
 - **Fixed: a message with large attachments or pictures was slow to open**
   (#608, by Valentin Morice). A conversation with a 19 MB attachment opened
@@ -106,6 +143,35 @@
   links stay whole. A saved plain-text draft reopens with its paragraphs
   joined.
 
+- **Changed: address completion suggests the people written to most
+  first.** Anyone the user has sent mail to comes before an address that
+  only matches the typing, and the most written to before the rest, so a
+  newsletter no longer outranks a person. Mail sent is counted from the
+  Sent folders (mail from one of the user's addresses or aliases) and from
+  each send. A word inside a name now matches as well as its start.
+
+- **Changed: the contributors and translators are on a Credits page** of
+  the About dialog, opened from a **Credits** row under **Release Notes**,
+  instead of over sixty rows on its main page.
+
+## 1.48.3 — 2026-11-16
+
+A patch release with three fixes and a French update: contacts moved to a
+Nextcloud address book leave the Hylki book, shared mailboxes nest under
+their parents in the Folders tree, and address book names show whole in
+their dropdowns.
+
+- **Fixed: contacts moved to a Nextcloud book stayed in the Hylki book**
+  (#652, reported by 7system7). Evolution Data Server keeps a server's
+  address book read-only for a moment after it opens, until it has
+  connected, and refuses every write in that time with "Permission
+  denied". When no other app held the book open, a move, copy or edit into
+  it failed that way, so moved contacts stayed where they were and showed
+  again beside the next import. A write now waits up to 10 seconds for its
+  book to become writable, and a book gets 5 seconds before it counts as
+  read-only, so a Nextcloud book that had not been opened yet is no longer
+  missing from the books contacts can go to.
+
 - **Fixed: shared mailboxes drew at the top of Folders with no parent**
   (#664, by Peter Hagen). On Dovecot servers, mailcow among them, a shared
   mailbox such as `Shared/user@dom/INBOX` showed as a lone "Inbox", because
@@ -124,19 +190,8 @@
   a tooltip. The address book picker above the contact list shows the
   checkmark on the picked book, like the others.
 
-- **Changed: address completion suggests the people written to most
-  first.** Anyone the user has sent mail to comes before an address that
-  only matches the typing, and the most written to before the rest, so a
-  newsletter no longer outranks a person. Mail sent is counted from the
-  Sent folders (mail from one of the user's addresses or aliases) and from
-  each send. A word inside a name now matches as well as its start.
-
-- **Changed: the contributors and translators are on a Credits page** of
-  the About dialog, opened from a **Credits** row under **Release Notes**,
-  instead of over sixty rows on its main page.
-
-- **Translations:** French (PR #660 by frenchy82), 2492 of 2523 strings
-  translated.
+- **Translations:** French (PR #660 by frenchy82), 2498 of 2503 strings
+  translated. German (PR #668 by Samuel Edlmeier), complete.
 
 ## 1.48.2 — 2026-11-15
 
