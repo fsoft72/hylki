@@ -103,8 +103,13 @@ impl<E: Emit> ImapWorker<E> {
                 // Save a copy to the Sent folder, or beside the
                 // original for a reply (#468); sending still counts
                 // as success even if this part fails.
-                let reply =
-                    reply_copy_path(account, account_id, cache.as_ref(), &message.in_reply_to);
+                let reply = reply_copy_path(
+                    account,
+                    account_id,
+                    cache.as_ref(),
+                    &message.in_reply_to,
+                    message.from_alias.as_deref(),
+                );
                 let sess = ensured(session);
                 match file_sent_copy(sess, reply.as_deref(), sent_path.as_deref(), &raw).await {
                     Ok(Some(path)) => {
@@ -227,11 +232,11 @@ impl<E: Emit> ImapWorker<E> {
         if autosave.is_none() {
             emit(WorkerEvent::Status(saving_text(template)));
         }
-        // A draft is kept as written: signing and encrypting happen
-        // at send time (#133).
+        // A draft is never signed; one of a message to be encrypted is
+        // encrypted to the user alone (see `build_draft`), so the server
+        // never holds its text (#133).
         let mut message = OutgoingMessage {
             sign: false,
-            encrypt: false,
             ..*message
         };
         restore_msgid_case(cache.as_ref(), &mut message);
@@ -295,6 +300,7 @@ impl<E: Emit> ImapWorker<E> {
                         emit(WorkerEvent::DraftSaved {
                             autosave,
                             message_id: Some(message_id),
+                            template,
                         });
                     }
                     Err(e) => {

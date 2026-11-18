@@ -57,9 +57,14 @@ impl MessageView {
             )
         };
         // An empty slot when there are no files, so the marks of every card
-        // stand in the same columns.
+        // stand in the same columns; the CSS draws it only while another
+        // message on the page has files (#616).
         let clip = if m.has_attachment {
-            icon("", "mail-attachment-symbolic", &i18n("Has attachments"))
+            icon(
+                " hylki-mark-clip",
+                "mail-attachment-symbolic",
+                &i18n("Has attachments"),
+            )
         } else {
             "<span class=\"hylki-mark hylki-mark-none\"></span>".to_string()
         };
@@ -133,7 +138,7 @@ impl MessageView {
              for(var i=0;i<ms.length;i++){{var on=k.indexOf(ms[i].dataset.key)>=0;\
              if(ms[i].classList.contains('hylki-folded')===on)continue;\
              ms[i].classList.toggle('hylki-folded',on);\
-             if(!on){{var f=ms[i].querySelector('iframe.hylki-frame');if(f){{f._h=0;s(f);}}}}}}}})({})",
+             if(!on){{var f=ms[i].querySelector('iframe.hylki-frame');if(f){{wake(f);f._h=0;s(f);}}}}}}}})({})",
             serde_json::to_string(&keys).unwrap_or_else(|_| "[]".into()),
         );
         self.run_js(&js);

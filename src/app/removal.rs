@@ -67,7 +67,7 @@ impl AppModel {
     }
 
     /// Ask before deleting a whole conversation (a selected thread head). Can
-    /// be turned off in Preferences (`confirm_thread_delete`).
+    /// be turned off in Settings (`confirm_thread_delete`).
     pub(super) fn confirm_delete_thread(
         &self,
         messages: Vec<Message>,
@@ -75,9 +75,11 @@ impl AppModel {
     ) {
         let n = messages.len();
         let heading = i18n("Delete this conversation?");
-        let body = format!(
-            "All {n} messages in this conversation will be deleted. \
-             You can turn this warning off in Preferences."
+        let body = ni18n_f(
+            "The message in this conversation will be deleted. You can turn this warning off in Settings.",
+            "All {n} messages in this conversation will be deleted. You can turn this warning off in Settings.",
+            n as u32,
+            &[("n", &n.to_string())],
         );
         let s = sender.clone();
         confirm_destructive(
@@ -432,10 +434,32 @@ impl AppModel {
     /// unread counts — the caller does that (single delete via `discard_message`;
     /// bulk via one `RemoveMany` + one push in `apply_bulk_move`).
     pub(super) fn discard_message_local(&mut self, m: &Message) {
-        self.forget_threads(m.account_id);
         if let Some(p) = self.popouts.get(&(m.account_id, m.id)) {
             p.window.close();
         }
+        self.discard_from_caches(m);
+        self.close_gone_draft(m);
+        if self
+            .current
+            .as_ref()
+            .is_some_and(|c| c.id == m.id && c.account_id == m.account_id)
+        {
+            // Drop the reader's view state, but DON'T blank it here: the list's
+            // Remove handler advances to the next message (or emits SelectionCleared
+            // when the folder is empty), which drives the reader. Blanking now would
+            // flash "No message selected" before the next one loads.
+            self.current = None;
+            self.current_thread.clear();
+            self.attachments.clear();
+            self.sync_attachment_drawer();
+            self.attachments_loading = false;
+        }
+    }
+
+    /// The part of [`Self::discard_message_local`] that goes by the message's
+    /// folder as well as its UID: the caches and the unread count.
+    pub(super) fn discard_from_caches(&mut self, m: &Message) {
+        self.forget_threads(m.account_id);
         if let Some(msgs) = self.unified_slices.get_mut(&(m.account_id, m.folder_id)) {
             msgs.retain(|x| x.uid != m.uid);
         }
@@ -453,21 +477,6 @@ impl AppModel {
             if let Some(n) = self.folder_unread.get_mut(&(m.account_id, m.folder_id)) {
                 *n = n.saturating_sub(1);
             }
-        }
-        if self
-            .current
-            .as_ref()
-            .is_some_and(|c| c.id == m.id && c.account_id == m.account_id)
-        {
-            // Drop the reader's view state, but DON'T blank it here: the list's
-            // Remove handler advances to the next message (or emits SelectionCleared
-            // when the folder is empty), which drives the reader. Blanking now would
-            // flash "No message selected" before the next one loads.
-            self.current = None;
-            self.current_thread.clear();
-            self.attachments.clear();
-            self.sync_attachment_drawer();
-            self.attachments_loading = false;
         }
     }
 

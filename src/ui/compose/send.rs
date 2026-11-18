@@ -3,6 +3,7 @@
 
 use super::messages::ComposeOutput;
 use super::messages::{ComposeInput, OutgoingFields};
+use super::pgp_check::{ask_unvouched, pgp_send_check, PgpCheck};
 use super::types::ComposeAccount;
 use super::types::ComposePrefill;
 use super::Compose;
@@ -20,11 +21,17 @@ const AUTOSAVE_SECS: u32 = 30;
 
 /// An identity's From as the composer writes it out: "Name <address>".
 fn identity_display(a: &ComposeAccount) -> String {
-    a.alias_from
-        .clone()
+    wire_from(a)
         .unwrap_or_else(|| a.label.clone())
         .trim()
         .to_string()
+}
+
+/// The From an identity puts on the wire, `None` for the account's own as
+/// configured: an alias's, or the account's address under the sender name of
+/// the signature in the message.
+fn wire_from(a: &ComposeAccount) -> Option<String> {
+    a.alias_from.clone().or_else(|| a.signed_as.clone())
 }
 
 /// Whether two Froms name the same person at the same address, however
@@ -37,46 +44,6 @@ pub(super) fn same_from(a: &str, b: &str) -> bool {
             .map(|(n, e)| (n.trim().trim_matches('"').to_string(), e.to_lowercase()))
     };
     matches!((one(a), one(b)), (Some(x), Some(y)) if x == y)
-}
-
-/// Whether an OpenPGP send can go ahead (#133): a key of the user's own
-/// for the From address (or the account's chosen key), and, to encrypt, a
-/// public key for every recipient. The message names the first gap.
-fn pgp_send_check(
-    from: &str,
-    chosen_key: Option<&str>,
-    fields: &[&str],
-    encrypt: bool,
-) -> Result<(), String> {
-    let gpg = crate::mail::pgp::Gpg::system();
-    let own = chosen_key
-        .and_then(|f| crate::mail::pgp::secret_key_by_fingerprint(&gpg, f))
-        .or_else(|| crate::mail::pgp::secret_key_for(&gpg, from));
-    if own.is_none() {
-        return Err(crate::i18n::i18n_f(
-            "There is no OpenPGP key of your own for {addr}. Generate one under Settings, OpenPGP, \
-             or choose a key in the account's settings.",
-            &[("addr", from)],
-        ));
-    }
-    if encrypt {
-        for field in fields {
-            for (_, addr) in crate::worker::parse_recipients(field) {
-                let addr = addr.as_str();
-                if addr.is_empty() {
-                    continue;
-                }
-                if crate::mail::pgp::public_key_for(&gpg, addr).is_none() {
-                    return Err(crate::i18n::i18n_f(
-                        "There is no OpenPGP key for {addr}. Ask them for their public key, or fetch it \
-                         under Settings, OpenPGP.",
-                        &[("addr", addr)],
-                    ));
-                }
-            }
-        }
-    }
-    Ok(())
 }
 
 /// The Send Later picker (#145), starting from the scheduled time if there
@@ -103,7 +70,7 @@ impl Compose {
     /// address.
     pub(super) fn chosen_from(&self, widgets: &ComposeWidgets) -> Result<Option<String>, String> {
         let idx = widgets.from_row.selected() as usize;
-        let picked = self.accounts.get(idx).and_then(|a| a.alias_from.clone());
+        let picked = self.accounts.get(idx).and_then(wire_from);
         if !self.custom_from {
             return Ok(picked);
         }
@@ -195,7 +162,7 @@ impl Compose {
         let from_account_id = self.accounts.get(idx).map(|a| a.id).unwrap_or(1);
         let from_alias = self
             .chosen_from(widgets)
-            .unwrap_or_else(|_| self.accounts.get(idx).and_then(|a| a.alias_from.clone()));
+            .unwrap_or_else(|_| self.accounts.get(idx).and_then(wire_from));
         OutgoingFields {
             html: String::new(),
             text: String::new(),
@@ -251,12 +218,15 @@ impl Compose {
             request_receipt: self.request_receipt,
             importance: self.importance,
             receipt_report: None,
+            merged: false,
+            peer_keys: self.peer_keys.clone(),
             send_at: self.send_at,
         }
     }
 
     /// Handles [`ComposeInput::SaveDraftIfDirty`].
     pub(super) fn on_save_draft_if_dirty(&mut self, sender: &ComponentSender<Self>) {
+        self.stop_autosave();
         // Save only if the user actually edited something, so navigating
         // away from a pristine quote-only reply doesn't litter Drafts.
         if self.fields_dirty {
@@ -326,10 +296,35 @@ impl Compose {
         self.signature_btn
             .set_visible(!account.signatures.is_empty());
         let new_sig = account.signature.clone();
-        if !account_changed || new_sig == self.current_sig {
-            return;
+        if account_changed && new_sig != self.current_sig {
+            self.put_signature(new_sig);
         }
-        self.put_signature(new_sig);
+        // The account's own address takes the sender name of the signature
+        // now in the message, which an alias of the same account may have
+        // picked.
+        let sender_name = self.accounts[idx]
+            .signatures
+            .iter()
+            .find(|sig| !self.current_sig.is_empty() && sig.html == self.current_sig)
+            .map(|sig| sig.sender_name.clone())
+            .unwrap_or_default();
+        self.apply_signature_sender(idx, &sender_name, widgets);
+    }
+
+    /// Handles [`ComposeInput::ToggleEncrypt`].
+    pub(super) fn on_toggle_encrypt(&mut self, on: bool, widgets: &ComposeWidgets) {
+        self.encrypt = on;
+        // Anything but the composer's own setting is the user's choice,
+        // which Autocrypt then leaves alone.
+        if self.encrypt_expected.take() != Some(on) {
+            self.encrypt_touched = true;
+        }
+        self.editor.pause_grammar(on);
+        if on && !self.sign {
+            self.sign = true;
+            widgets.sign_btn.set_active(true);
+        }
+        self.show_key_badges(widgets);
     }
 
     /// Handles [`ComposeInput::ToggleSign`].
@@ -346,16 +341,18 @@ impl Compose {
     pub(super) fn on_pgp_checked(
         &mut self,
         checked: Vec<String>,
-        result: Result<(), String>,
+        result: Result<PgpCheck, String>,
         widgets: &ComposeWidgets,
         sender: &ComponentSender<Self>,
     ) {
         self.pgp_checking = false;
         match result {
-            Ok(()) => {
+            Ok(check) if check.unvouched.is_empty() => {
+                self.peer_keys = check.found;
                 self.pgp_cleared = Some(checked);
                 sender.input_sender().emit(ComposeInput::Send);
             }
+            Ok(check) => ask_unvouched(check, checked, widgets, sender),
             Err(problem) => {
                 let parent = widgets.to_row.root().and_downcast::<gtk::Window>();
                 alert(parent.as_ref(), &i18n("Cannot send with OpenPGP"), &problem);
@@ -365,6 +362,10 @@ impl Compose {
 
     /// Handles [`ComposeInput::Send`].
     pub(super) fn on_send(&mut self, widgets: &ComposeWidgets, sender: &ComponentSender<Self>) {
+        // The screen shows what an assistant suggests, not what would go.
+        if self.edit_waiting(widgets) {
+            return;
+        }
         let to = widgets.to_row.text().trim().to_string();
         if to.is_empty() {
             widgets.to_row.add_css_class("error");
@@ -480,7 +481,15 @@ impl Compose {
                 gtk::glib::spawn_future_local(async move {
                     let result = gtk::gio::spawn_blocking(move || {
                         let fields: Vec<&str> = fields.iter().map(String::as_str).collect();
-                        pgp_send_check(&from_email, key.as_deref(), &fields, encrypt)
+                        pgp_send_check(
+                            &crate::mail::pgp::Gpg::system(),
+                            crate::cache::Cache::open().ok().as_ref(),
+                            &crate::config::load_accepted_keys(),
+                            &from_email,
+                            key.as_deref(),
+                            &fields,
+                            encrypt,
+                        )
                     })
                     .await
                     .unwrap_or_else(|_| Err("task failed".into()));
@@ -493,8 +502,24 @@ impl Compose {
         false
     }
 
-    /// Handles [`ComposeInput::SendBody`].
-    pub(super) fn on_send_body(&mut self, fields: OutgoingFields, sender: &ComponentSender<Self>) {
+    /// Handles [`ComposeInput::SendBody`]: a message that mentions an
+    /// attachment it does not have is asked about first.
+    pub(super) fn on_send_body(
+        &mut self,
+        fields: OutgoingFields,
+        widgets: &ComposeWidgets,
+        sender: &ComponentSender<Self>,
+    ) {
+        if let Some(word) = self.unattached_mention(&fields) {
+            self.ask_send_unattached(&word, fields, widgets, sender);
+            return;
+        }
+        self.finish_send(fields, sender);
+    }
+
+    /// Hand the message to the app to send, and close the composer.
+    pub(super) fn finish_send(&mut self, fields: OutgoingFields, sender: &ComponentSender<Self>) {
+        self.stop_autosave();
         let mut out = self.outgoing_message(fields);
         // The direction of each line (#524) is written in only here, on
         // the way out: a draft goes back into the editor, which finds it
@@ -538,12 +563,21 @@ impl Compose {
             let _ = sender.output(ComposeOutput::SaveTemplate(Box::new(out)));
             return;
         }
+        self.stop_autosave();
         if self.template {
             let _ = sender.output(ComposeOutput::SaveTemplate(Box::new(out)));
         } else {
             let _ = sender.output(ComposeOutput::SaveDraft(Box::new(out)));
         }
         let _ = sender.output(ComposeOutput::Close(self.compose_id));
+    }
+
+    /// The composer is done with the message (saved, sent or thrown away):
+    /// no automatic save may follow. One whose body was still being read
+    /// would reach the worker after the composer's own save, with no draft
+    /// to replace, and leave a second copy in Drafts (#634).
+    pub(super) fn stop_autosave(&mut self) {
+        self.autosave_off = true;
     }
 
     /// Handles [`ComposeInput::AutoSave`].
@@ -571,7 +605,7 @@ impl Compose {
         widgets: &ComposeWidgets,
         sender: &ComponentSender<Self>,
     ) {
-        if self.autosaving {
+        if self.autosaving || self.autosave_off {
             return;
         }
         let fields = self.draft_fields(widgets);
@@ -625,7 +659,7 @@ impl Compose {
             .all(|f| f.trim().is_empty())
             && text.trim().is_empty()
             && self.attachments.is_empty();
-        if self.autosaved == Some(hash) || empty || self.autosaving {
+        if self.autosaved == Some(hash) || empty || self.autosaving || self.autosave_off {
             return;
         }
         let out = self.outgoing_message(OutgoingFields {
@@ -682,7 +716,8 @@ impl Compose {
         sender: &ComponentSender<Self>,
     ) {
         // Populate the From dropdown.
-        let labels: Vec<&str> = self.accounts.iter().map(|a| a.label.as_str()).collect();
+        let labels: Vec<String> = self.accounts.iter().map(identity_display).collect();
+        let labels: Vec<&str> = labels.iter().map(String::as_str).collect();
         let strings = gtk::StringList::new(&labels);
         widgets.from_row.set_model(Some(&strings));
         // Custom factory so the selected account isn't needlessly ellipsized.
@@ -709,7 +744,18 @@ impl Compose {
         });
         widgets.from_row.set_factory(Some(&factory));
         widgets.from_row.set_selected(selected as u32);
-        widgets.from_row.set_visible(self.accounts.len() > 1);
+        // A sender name carried by a signature is part of the From even
+        // when there is only one address, so the row stays visible to show
+        // which name will actually go out.
+        let named_by_signature = self.accounts.iter().any(|account| {
+            account
+                .signatures
+                .iter()
+                .any(|signature| !signature.sender_name.trim().is_empty())
+        });
+        widgets
+            .from_row
+            .set_visible(self.accounts.len() > 1 || named_by_signature);
         {
             // The pencil types a From of your own (#347); the custom row's
             // button goes back to the list.

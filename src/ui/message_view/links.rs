@@ -33,6 +33,29 @@ pub(super) fn is_launchable_uri(uri: &str) -> bool {
     }
 }
 
+thread_local! {
+    /// The Privacy switch for taking trackers off links. Held here rather
+    /// than by each reader, so the pop-out window's follows it too.
+    static CLEAN_LINKS: std::cell::Cell<bool> = const { std::cell::Cell::new(true) };
+}
+
+/// Hand the readers the Privacy switch for tracking parameters and
+/// redirectors on links.
+pub(crate) fn set_clean_links(on: bool) {
+    CLEAN_LINKS.with(|c| c.set(on));
+}
+
+/// The address to open or copy for a link in a message: without its trackers and
+/// redirectors while the Privacy switch is on (see
+/// [`crate::mail::link_clean`]).
+pub(super) fn link_to_open(uri: &str) -> String {
+    if CLEAN_LINKS.with(std::cell::Cell::get) {
+        crate::mail::link_clean::clean_link(uri)
+    } else {
+        uri.to_string()
+    }
+}
+
 /// What to show in the link preview: the destination, plus an explicit warning
 /// when the link's visible text claims a different site than it goes to — the
 /// oldest phishing trick there is (`click here: paypal.com` pointing elsewhere).
@@ -107,6 +130,13 @@ pub(super) fn decode_data_uri(uri: &str) -> Option<(String, Vec<u8>)> {
     (!data.is_empty()).then(|| (mime.to_ascii_lowercase(), data))
 }
 
+/// The content type and bytes of a picture the message carries itself: a
+/// `data:` URI, or one lifted out of its body to be served apart. `None` for
+/// a remote picture, which is only an address here.
+pub(super) fn own_picture(uri: &str) -> Option<(String, Vec<u8>)> {
+    decode_data_uri(uri).or_else(|| crate::services::inline_images::picture(uri))
+}
+
 /// A sensible filename to pre-fill the save dialog with. The original name isn't
 /// recoverable from a `data:` URI — the properly named copy is in the attachment
 /// drawer — so offer `image.<ext>` derived from the MIME type.
@@ -117,4 +147,31 @@ pub(super) fn default_image_name(mime: &str) -> String {
         other => other.rsplit('/').next().unwrap_or("img"),
     };
     format!("image.{ext}")
+}
+
+/// The name to pre-fill when saving a remote picture: the last part of its
+/// address when that looks like a file name (`banner.png`), else what
+/// [`default_image_name`] makes of the content type. Tracking and CDN
+/// addresses often end in an ID with no extension.
+pub(super) fn remote_image_name(url: &str, content_type: &str) -> String {
+    let path = url.split(['?', '#']).next().unwrap_or(url);
+    let path = path.split_once("://").map_or(path, |(_, rest)| rest);
+    let last = path.split_once('/').map_or("", |(_, p)| p);
+    let last = crate::encoding::percent::decode(last.rsplit('/').next().unwrap_or(""), false);
+    let named = last.rsplit_once('.').is_some_and(|(stem, ext)| {
+        !stem.is_empty()
+            && (1..=5).contains(&ext.len())
+            && ext.chars().all(|c| c.is_ascii_alphanumeric())
+    }) && !last.contains(['/', '\\', '\0'])
+        && !last.starts_with('.');
+    if named {
+        last
+    } else {
+        let mime = content_type.split(';').next().unwrap_or("").trim();
+        let mime = mime.to_ascii_lowercase();
+        match mime.strip_prefix("image/") {
+            Some(sub) if !sub.is_empty() => default_image_name(&mime),
+            _ => "image".to_string(),
+        }
+    }
 }

@@ -65,8 +65,8 @@ pub(super) fn send_failed(
     refused: bool,
     emit: &impl Fn(WorkerEvent),
 ) {
-    let queued =
-        !refused && queue_outbox_message(cache, account_id, account, msg, sent_path, error, None);
+    let queued = (!refused || msg.merged)
+        && queue_outbox_message(cache, account_id, account, msg, sent_path, error, None);
     // Queue first, drop the superseded row second: a crash in between leaves
     // the message queued twice, which is recoverable, rather than not at all.
     if let (true, Some(old), Some(c)) = (queued, msg.outbox_origin, cache) {
@@ -79,7 +79,14 @@ pub(super) fn send_failed(
             "No network connection. The message is in the Outbox and will be sent when the connection is back.",
         )));
     } else {
-        emit(WorkerEvent::error(if queued {
+        emit(WorkerEvent::error(if queued && refused {
+            // A merge's message the server would not take: retrying will
+            // not help unless it is edited, or the server's limit resets.
+            i18n_f(
+                "Send failed: {e}. The message is in the Outbox.",
+                &[("e", error)],
+            )
+        } else if queued {
             i18n_f(
                 "Send failed: {e}. The message is in the Outbox and will be sent when the connection is back.",
                 &[("e", error)],
@@ -194,6 +201,7 @@ pub(crate) fn park_for_next_launch(
     account: &AccountConfig,
     msg: &OutgoingMessage,
     sent_path: Option<&str>,
+    at: i64,
 ) -> bool {
     let mut msg = msg.clone();
     restore_msgid_case(Some(cache), &mut msg);
@@ -204,7 +212,7 @@ pub(crate) fn park_for_next_launch(
         &msg,
         sent_path,
         "",
-        Some(crate::datefmt::now()),
+        Some(at),
     );
     if let (true, Some(old)) = (queued, msg.outbox_origin) {
         cache.delete_outbox(old);
@@ -226,11 +234,12 @@ pub(super) fn current_sent_copy_path(
     account_id: u32,
     cache: Option<&Cache>,
     queued: Option<&str>,
+    from: Option<&str>,
 ) -> Option<String> {
     let folders = cache
         .map(|c| c.load_folders(account_id))
         .unwrap_or_default();
-    pick_queued_sent_copy(account, &folders, queued)
+    pick_queued_sent_copy(account, &folders, queued, from)
 }
 
 /// [`current_sent_copy_path`] once the folder list is in hand.
@@ -238,10 +247,11 @@ fn pick_queued_sent_copy(
     account: &AccountConfig,
     folders: &[Folder],
     queued: Option<&str>,
+    from: Option<&str>,
 ) -> Option<String> {
     // Set since the message was queued (or all along): the server keeps its
     // own copy and ours would be a duplicate.
-    if account.server_saves_sent {
+    if account.server_files_sent(from) {
         return None;
     }
     if folders.is_empty() {
@@ -318,10 +328,11 @@ pub(crate) fn reply_copy_path(
     account_id: u32,
     cache: Option<&Cache>,
     in_reply_to: &str,
+    from: Option<&str>,
 ) -> Option<String> {
     // A server that files its own copy files it in Sent, and a second
     // copy beside the original would be one more than the user asked for.
-    if account.reply_copies == ReplyCopies::WithSent || account.server_saves_sent {
+    if account.reply_copies == ReplyCopies::WithSent || account.server_files_sent(from) {
         return None;
     }
     let cache = cache?;
@@ -556,6 +567,35 @@ mod tests {
         assert!(cache.outbox_items(1).is_empty());
     }
 
+    /// #447: a mail merge's refused message waits in the Outbox with the
+    /// reason, rather than opening a composer for each of hundreds.
+    #[test]
+    fn a_refused_merge_message_waits_in_the_outbox() {
+        let cache = Cache::in_memory().expect("cache");
+        let account = sample_account();
+        let mut msg = sample_outgoing();
+        msg.to = "ann@example.com".into();
+        msg.merged = true;
+        let events = std::cell::RefCell::new(Vec::new());
+        send_failed(
+            Some(&cache),
+            1,
+            &account,
+            &msg,
+            None,
+            "550 no such user",
+            true,
+            &|e| events.borrow_mut().push(e),
+        );
+        assert!(!events
+            .into_inner()
+            .iter()
+            .any(|e| matches!(e, WorkerEvent::Unsent(_))));
+        let items = cache.outbox_items(1);
+        assert_eq!(items.len(), 1);
+        assert_eq!(items[0].last_error, "550 no such user");
+    }
+
     #[test]
     fn a_queued_message_takes_the_sent_copy_folder_it_finds_on_the_way_out() {
         use crate::models::{Folder, FolderKind};
@@ -579,23 +619,23 @@ mod tests {
         // The account says Inbox now; the message was queued for Sent. It goes
         // where the account says today, not where it said last week.
         assert_eq!(
-            pick_queued_sent_copy(&account(Some("INBOX")), &folders, Some("Sent")).as_deref(),
+            pick_queued_sent_copy(&account(Some("INBOX")), &folders, Some("Sent"), None).as_deref(),
             Some("INBOX"),
         );
         // Turned back off since queuing: back to the Sent folder.
         assert_eq!(
-            pick_queued_sent_copy(&account(None), &folders, Some("INBOX")).as_deref(),
+            pick_queued_sent_copy(&account(None), &folders, Some("INBOX"), None).as_deref(),
             Some("Sent"),
         );
         // Chosen folder gone from the server: Sent rather than a dead name.
         assert_eq!(
-            pick_queued_sent_copy(&account(Some("Gone")), &folders, Some("Gone")).as_deref(),
+            pick_queued_sent_copy(&account(Some("Gone")), &folders, Some("Gone"), None).as_deref(),
             Some("Sent"),
         );
         // No folder list to read (offline, no cache): the queued path stands,
         // so a send never loses its copy over this.
         assert_eq!(
-            pick_queued_sent_copy(&account(Some("INBOX")), &[], Some("Sent")).as_deref(),
+            pick_queued_sent_copy(&account(Some("INBOX")), &[], Some("Sent"), None).as_deref(),
             Some("Sent"),
         );
         // The server files its own: nothing of ours goes anywhere, whatever
@@ -606,12 +646,27 @@ mod tests {
             ..sample_account()
         };
         assert_eq!(
-            pick_queued_sent_copy(&server_saves, &folders, Some("Sent")),
+            pick_queued_sent_copy(&server_saves, &folders, Some("Sent"), None),
             None
         );
         assert_eq!(
-            pick_queued_sent_copy(&server_saves, &[], Some("Sent")),
+            pick_queued_sent_copy(&server_saves, &[], Some("Sent"), None),
             None
+        );
+        // Unless it left through an alias's own SMTP, which that server
+        // never sees (#640): ours is then the only copy.
+        let alias_out = AccountConfig {
+            aliases: vec![crate::config::AliasConfig {
+                identity: "Ann <ann@work.example>".into(),
+                smtp_host: "smtp.work.example".into(),
+                ..Default::default()
+            }],
+            ..server_saves
+        };
+        assert_eq!(
+            pick_queued_sent_copy(&alias_out, &folders, Some("Sent"), Some("ann@work.example"))
+                .as_deref(),
+            Some("INBOX"),
         );
     }
 
@@ -677,7 +732,8 @@ mod tests {
                 &account(ReplyCopies::WithSent, false),
                 1,
                 Some(&cache),
-                "a@b"
+                "a@b",
+                None
             ),
             None
         );
@@ -686,12 +742,19 @@ mod tests {
                 &account(ReplyCopies::Original, true),
                 1,
                 Some(&cache),
-                "a@b"
+                "a@b",
+                None
             ),
             None
         );
         assert_eq!(
-            reply_copy_path(&account(ReplyCopies::Original, false), 1, Some(&cache), ""),
+            reply_copy_path(
+                &account(ReplyCopies::Original, false),
+                1,
+                Some(&cache),
+                "",
+                None
+            ),
             None
         );
         // On: the original is found by its Message-ID, spelled as the
@@ -704,6 +767,7 @@ mod tests {
             from_name: "Ada".into(),
             from_addr: "ada@example.com".into(),
             reply_to: String::new(),
+            reply_to_name: String::new(),
             to: String::new(),
             cc: String::new(),
             bcc: String::new(),
@@ -727,15 +791,15 @@ mod tests {
         cache.upsert_messages(1, "Projects/Hylki", std::slice::from_ref(&original));
         let on = account(ReplyCopies::Original, false);
         assert_eq!(
-            reply_copy_path(&on, 1, Some(&cache), "<Parent@Example.com>").as_deref(),
+            reply_copy_path(&on, 1, Some(&cache), "<Parent@Example.com>", None).as_deref(),
             Some("Projects/Hylki"),
         );
         assert_eq!(
-            reply_copy_path(&on, 2, Some(&cache), "parent@example.com"),
+            reply_copy_path(&on, 2, Some(&cache), "parent@example.com", None),
             None
         );
         assert_eq!(
-            reply_copy_path(&on, 1, Some(&cache), "other@example.com"),
+            reply_copy_path(&on, 1, Some(&cache), "other@example.com", None),
             None
         );
     }

@@ -109,6 +109,17 @@ impl AppModel {
         });
     }
 
+    /// Name mail by its Reply-To sender, or by From (#641), and redraw
+    /// what names it when that changed.
+    pub(super) fn apply_reply_to_sender(&self) {
+        if crate::contacts::set_reply_to_sender(self.reply_to_sender) {
+            self.message_list
+                .emit(MessageListInput::ContactNamesChanged);
+            self.message_view.emit(MessageViewInput::FacesChanged);
+            self.popouts_emit(|| MessageWindowInput::FacesChanged);
+        }
+    }
+
     /// The window a dialog opened from Settings belongs to: Settings while
     /// it is open, else the main window.
     pub(super) fn dialog_parent(&self) -> Option<gtk::Window> {
@@ -505,12 +516,30 @@ impl AppModel {
                 reload_contacts(&sender, 500);
             }
 
-            AppMsg::ImportContacts(paths) => {
+            AppMsg::ImportContacts { paths, book } => {
                 let s = sender.clone();
                 std::thread::spawn(move || {
-                    s.input(AppMsg::ContactsImported(crate::contacts::import_vcf_files(
-                        &paths,
-                    )));
+                    let books = if demo_mode() {
+                        crate::contacts::demo_books()
+                    } else {
+                        crate::contacts::writable_books()
+                    };
+                    let start = crate::contacts::import::prepare(paths, books, book);
+                    s.input(AppMsg::ContactImportReady(Box::new(start)));
+                });
+            }
+
+            AppMsg::ContactImportReady(start) => {
+                let s = sender.input_sender().clone();
+                crate::ui::contact_import::show(self.dialog_parent().as_ref(), *start, move |req| {
+                    let _ = s.send(AppMsg::RunContactImport(req));
+                });
+            }
+
+            AppMsg::RunContactImport(req) => {
+                let s = sender.clone();
+                std::thread::spawn(move || {
+                    s.input(AppMsg::ContactsImported(crate::contacts::import::run(&req)));
                 });
             }
 

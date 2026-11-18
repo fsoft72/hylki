@@ -62,6 +62,7 @@ pub(crate) enum MessageListInput {
     Prebuild {
         key: u64,
         fp: u64,
+        sort: (SortOrder, bool),
         messages: Vec<Message>,
     },
     /// The conversations of the view being built ahead.
@@ -79,8 +80,6 @@ pub(crate) enum MessageListInput {
     /// Whether conversation rows may expand into their members in the list
     /// (the row keeps its chip and chevron either way).
     SetThreadExpansion(bool),
-    /// Whether rows carry the actions palette line at all.
-    SetListPalette(bool),
     /// Resolve what deleting the current selection means: a lone selected row
     /// that heads a conversation stands for the whole thread (output
     /// `DeleteThread`); anything else is an ordinary `Bulk` delete.
@@ -155,6 +154,14 @@ pub(crate) enum MessageListInput {
     /// The open folder is (or stopped being) a Sent folder — rows name the
     /// recipient there instead of the sender (#27).
     SetShowRecipient(bool),
+    /// Fold a date section of the list or open it (#659): its heading's
+    /// chevron, a double click on it, or the arrow keys.
+    FoldDay {
+        section: crate::ui::message_row::DaySection,
+        fold: bool,
+    },
+    /// The date sections the view being opened keeps folded, by their keys.
+    SetFoldedDays(Vec<String>),
     /// Show or hide the colored avatars (#29).
     SetAvatars(bool),
     /// The avatars and preview lines together, as the settings and Focus
@@ -166,6 +173,12 @@ pub(crate) enum MessageListInput {
         preview_lines: u32,
         subject: bool,
         animate: bool,
+    },
+    /// Whether rows wear their star and paperclip (Focus Mode can take them
+    /// away).
+    SetMarks {
+        stars: bool,
+        attachments: bool,
     },
     /// The Focus Mode slide finished: rebuild the rows as they now are.
     LookSettled,
@@ -228,6 +241,9 @@ pub(crate) enum MessageListInput {
     Search(String),
     /// Change the search scope (all folders vs. the current folder).
     SetScope(SearchScope),
+    /// The account an "All folders" search keeps to, `None` for every
+    /// account: the view's own, sent with each view (#649).
+    SetSearchAccount(Option<u32>),
     /// Replace the cross-folder search pool (all folders, all accounts). Sent by
     /// the app when a search begins; cleared to empty when it ends. The
     /// pool's [`search_text_of`], worked out where the pool was put together,
@@ -307,9 +323,6 @@ pub(crate) enum MessageListInput {
     /// Close and clear the search toolbar (#102): Esc, empty focus-out, or
     /// the header button while open.
     CloseSearch,
-    /// Showcase staging: open row N's actions palette (screenshot hook only —
-    /// see HYLKI_SHOWCASE_PALETTE in app/showcase/list.rs).
-    DebugOpenPalette(usize),
     /// Showcase only (HYLKI_SHOWCASE_SWIPE): drive row `index` through a full
     /// swipe and release, so the commit exit can be caught in stills — there
     /// is no way to inject a real gesture on this desktop.
@@ -331,8 +344,19 @@ pub(crate) enum MessageListInput {
     /// A collapsing thread's replies have finished sliding shut — drop them
     /// from the list for real (see `start_collapse_thread`).
     FinishCollapseThread((u32, String)),
-    /// Change the list sort order.
-    SetSort(SortOrder),
+    /// Change the list sort order; `reversed` turns it the other way, as a
+    /// second click on a column heading does.
+    SetSort {
+        order: SortOrder,
+        reversed: bool,
+    },
+    /// The sort of the view being opened: not a choice, so not reported
+    /// back, and the view's own rows are drawn with it rather than the old
+    /// view's being sorted first.
+    ApplySort {
+        order: SortOrder,
+        reversed: bool,
+    },
     /// A message was read. Messages are named by their slot (account,
     /// folder, UID) here: a UID repeats from folder to folder and, in the
     /// unified view, from account to account (#333).
@@ -341,7 +365,7 @@ pub(crate) enum MessageListInput {
         slot: (u32, u32, u32),
         read: bool,
     },
-    /// A hover-palette action for a specific message (forwarded to the app).
+    /// An action on a specific message (forwarded to the app).
     RowAction {
         action: RowAction,
         message: Box<Message>,
@@ -366,12 +390,6 @@ pub(crate) enum MessageListInput {
     },
     /// The tag definitions changed: rows rebuild their chips.
     SetTags(Vec<crate::config::Tag>),
-    /// A row's tag menu toggled a tag — passed up to the app.
-    SetTagFor {
-        message: Box<Message>,
-        keyword: String,
-        add: bool,
-    },
     /// A message's paperclip, found by where it lives: its own folder and
     /// UID, since a UID is unique only within its folder.
     SetHasAttachment {
@@ -390,6 +408,9 @@ pub(crate) enum MessageListInput {
     /// Remove many messages in a single batch (bulk archive/delete/spam), so the
     /// list updates in one render pass instead of one per message.
     RemoveMany(Vec<u32>),
+    /// Remove rows by (account, folder, id): mail moved from outside the
+    /// list, where the same UID can be another folder's message.
+    RemoveExact(Vec<(u32, u32, u32)>),
     /// Secondary-click on the row showing `key`, at (x, y) in the list's
     /// coordinates: open the context menu.
     ContextMenu {
@@ -400,10 +421,6 @@ pub(crate) enum MessageListInput {
     /// Rows have just started showing conversations nobody has asked the
     /// cache about yet (#222).
     AskThreads,
-    /// Set the actions palette auto-collapse delay (seconds).
-    SetPaletteCollapse(u64),
-    /// Open the actions palette on row hover, without the ⋯ click.
-    SetPaletteHover(bool),
     /// A row's ⋯, in menu mode: the row's menu at the button's corner.
     /// Swap the swipe-gesture sides (#swipe).
     SetSwipeReversed(bool),
@@ -448,13 +465,6 @@ pub(crate) enum MessageListInput {
     /// Select a message by `(account_id, id)` AND load it in the reader — used to
     /// advance after the viewed message is removed by a background sync.
     SelectAndLoad((u32, u32)),
-    /// A row palette's Move to…: open the picker for that row (and, for a
-    /// conversation head, its thread) at window point (x, y).
-    RowMoveTo {
-        message: Box<Message>,
-        x: f64,
-        y: f64,
-    },
 }
 
 #[derive(Debug)]
@@ -484,6 +494,9 @@ pub(crate) enum MessageListOutput {
     OpenedByKey { already_open: bool },
     /// The header-bar count changed — app/list_header.rs shows it.
     CountChanged(String),
+    /// The date sections folded in the view on show changed, by their keys
+    /// (#659): the app keeps them for the view.
+    FoldedDays(Vec<String>),
     /// A row was double-clicked: open it in its own window. `thread` is the
     /// whole conversation when the row heads one (same shape as `Selected`),
     /// so the window shows every card — otherwise just `[message]`.
@@ -581,9 +594,9 @@ pub(crate) enum MessageListOutput {
         terms: Vec<String>,
         scope: ServerScope,
     },
-    /// A column heading changed the sort (#334), by its key: the sort
-    /// menus follow.
-    SortChanged(&'static str),
+    /// The sort changed, by its key and whether it is reversed: the sort
+    /// menus follow and the app keeps it (#334, #574).
+    SortChanged(&'static str, bool),
     /// A column was resized by its heading (#334): the widths to keep.
     ColumnWidths(std::collections::HashMap<crate::config::ListColumn, i32>),
     /// Customize Columns… from the headings' right-click menu (#443).

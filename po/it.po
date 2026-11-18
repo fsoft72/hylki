@@ -30,6 +30,12 @@ msgstr ""
 msgid "Release Notes"
 msgstr "Note di rilascio"
 
+msgid "Credits"
+msgstr ""
+
+msgid "Contributors and translators"
+msgstr ""
+
 msgid "Keyring Setup Help"
 msgstr "Aiuto configurazione portachiavi"
 
@@ -55,15 +61,14 @@ msgstr "Licenza (GNU AGPL v3)"
 msgid "Buy Me a Coffee"
 msgstr "Offrimi un caffè"
 
-#. Contributors — people outside Hyprlab whose patches are in the app.
+#. Contributors: people outside Hyprlab whose patches are in the app.
 msgid "Special thanks to these contributors"
 msgstr "Un ringraziamento speciale a questi contributori"
 
-#. Translators — the same list, with the languages each one carried.
+#. Translators: the same list, with the languages each one carried.
 msgid "Translated by"
 msgstr "Tradotto da"
 
-#. Footer.
 msgid "© 2026 Hyprlab"
 msgstr "© 2026 Hyprlab"
 
@@ -89,6 +94,124 @@ msgstr "Impossibile importare l'account: {e}"
 msgid "On This Computer is switched off"
 msgstr "Su questo computer"
 
+#, fuzzy
+msgid "Could not start: {error}"
+msgstr "Impossibile salvare il PDF: {error}"
+
+msgid "Off"
+msgstr "Disattivato"
+
+#, fuzzy
+msgid "No activity yet."
+msgstr "Nessun account ancora"
+
+#, fuzzy
+msgid "Message from an AI Agent"
+msgstr "Nuovo messaggio da un modello"
+
+#, fuzzy
+msgid "An AI agent prepared a message"
+msgstr "Inoltra questo messaggio"
+
+msgid "Show"
+msgstr "Mostra"
+
+#, fuzzy
+msgid "Listed accounts"
+msgstr "Sopra gli account"
+
+#, fuzzy
+msgid "Listed folders"
+msgstr "Questa cartella"
+
+#, fuzzy
+msgid "Listed messages"
+msgstr "Colora i messaggi etichettati"
+
+#, fuzzy
+msgid "Searched mail"
+msgstr "Filtri di ricerca"
+
+#, fuzzy
+msgid "Searched on the server"
+msgstr "Ricerca in corso…"
+
+#, fuzzy
+msgid "Read a message"
+msgstr "Messaggi e-mail"
+
+#, fuzzy
+msgid "Read a conversation"
+msgstr "Intera conversazione"
+
+#, fuzzy
+msgid "Listed attachments"
+msgstr "Nascondi gli allegati"
+
+#, fuzzy
+msgid "Read an attachment"
+msgstr "{n} allegato"
+
+#, fuzzy
+msgid "Looked up contacts"
+msgstr "Ordina contatti"
+
+#, fuzzy
+msgid "Prepared a message"
+msgstr "Inoltra questo messaggio"
+
+#, fuzzy
+msgid "Prepared a reply"
+msgstr "Segna come letto"
+
+#, fuzzy
+msgid "Prepared a forward"
+msgstr "Segna come letto"
+
+msgid "Changed read state"
+msgstr ""
+
+msgid "Changed stars"
+msgstr ""
+
+msgid "Listed tags"
+msgstr ""
+
+#, fuzzy
+msgid "Changed tags"
+msgstr ", etichettato {tag}"
+
+#, fuzzy
+msgid "Moved messages"
+msgstr "Sopra i messaggi"
+
+#, fuzzy
+msgid "Archived messages"
+msgstr "Archivia questo messaggio"
+
+#, fuzzy
+msgid "Moved messages to Trash"
+msgstr "Sposta il messaggio nel Cestino."
+
+#, fuzzy
+msgid "Read the open conversation"
+msgstr "Intera conversazione"
+
+#, fuzzy
+msgid "Listed open drafts"
+msgstr "Questa cartella"
+
+#, fuzzy
+msgid "Read an open draft"
+msgstr "Intera conversazione"
+
+msgid "Suggested changes to a draft"
+msgstr ""
+
+#, fuzzy
+msgid "Refused or failed: {action}"
+msgstr "Annullamento non riuscito: {e}"
+
 msgid "Delete the attachment from the server?"
 msgstr "Eliminare l'allegato dal server?"
 
@@ -113,9 +236,6 @@ msgstr "Destra"
 
 msgid "Below"
 msgstr ""
-
-msgid "Off"
-msgstr "Disattivato"
 
 #, fuzzy
 msgid "Reading Pane"
@@ -172,6 +292,21 @@ msgstr "Espandi tutti i messaggi"
 msgid "Collapse All Messages"
 msgstr "Comprimi tutti i messaggi"
 
+#, fuzzy
+msgid "Back to My Fonts and Colors"
+msgstr "Torna ai miei caratteri e colori"
+
+#, fuzzy
+msgid "Show Sender's Fonts and Colors"
+msgstr "Mostra i caratteri e i colori del mittente"
+
+msgid "Create Event from Selection…"
+msgstr ""
+
+#, fuzzy
+msgid "Create Task from Selection…"
+msgstr "Crea"
+
 msgid "View Source"
 msgstr "Visualizza sorgente"
 
@@ -191,6 +326,10 @@ msgstr ""
 msgid "Create Task…"
 msgstr "Crea"
 
+#, fuzzy
+msgid "Copy To…"
+msgstr "Sposta in…"
+
 msgid "Tags"
 msgstr "Etichette"
 
@@ -204,10 +343,6 @@ msgid "Mark as Spam"
 msgstr "Segna come indesiderato"
 
 msgid "Move To…"
-msgstr "Sposta in…"
-
-#, fuzzy
-msgid "Copy To…"
 msgstr "Sposta in…"
 
 msgid "Archive"
@@ -231,11 +366,141 @@ msgstr "Stampa…"
 msgid "New Message"
 msgstr "Nuovo messaggio"
 
-msgid "Hylki Address Book"
-msgstr "Rubrica Hylki"
+#, fuzzy
+msgid "A group needs a name."
+msgstr "Nome cartella"
+
+msgid ""
+"A group in this address book is kept on its people's cards, so it needs at "
+"least one person."
+msgstr ""
 
 msgid "Hylki cannot change this kind of group"
 msgstr ""
+
+msgid "Home"
+msgstr ""
+
+msgid "Work"
+msgstr ""
+
+msgid "Mobile"
+msgstr ""
+
+msgid "Fax"
+msgstr ""
+
+msgid "{field} ({label})"
+msgstr ""
+
+#, fuzzy
+msgid "Do not import"
+msgstr "Impossibile importare: {e}"
+
+#, fuzzy
+msgid "Full name"
+msgstr "Nome cartella"
+
+msgid "First name"
+msgstr "Nome"
+
+#, fuzzy
+msgid "Middle name"
+msgstr "Nome cartella"
+
+msgid "Last name"
+msgstr "Cognome"
+
+msgid "Name prefix"
+msgstr ""
+
+msgid "Name suffix"
+msgstr ""
+
+msgid "Nickname"
+msgstr "Soprannome"
+
+#, fuzzy
+msgid "Company"
+msgstr "Composizione"
+
+msgid "Department"
+msgstr ""
+
+msgid "Job title"
+msgstr ""
+
+#, fuzzy
+msgid "Notes"
+msgstr "Nota"
+
+msgid "Birthday"
+msgstr "Compleanno"
+
+#, fuzzy
+msgid "Birth year"
+msgstr "Compleanno"
+
+#, fuzzy
+msgid "Birth month"
+msgstr "Si ripete ogni mese"
+
+#, fuzzy
+msgid "Birth day"
+msgstr "Compleanno"
+
+#, fuzzy
+msgid "Groups"
+msgstr "Gruppo sinistra"
+
+msgid "Email"
+msgstr "Email"
+
+msgid "Phone"
+msgstr "Telefono"
+
+#, fuzzy
+msgid "Email label"
+msgstr "Client e-mail"
+
+#, fuzzy
+msgid "Phone label"
+msgstr "Telefono"
+
+#, fuzzy
+msgid "Address label"
+msgstr "Rubrica"
+
+#, fuzzy
+msgid "Website label"
+msgstr "Sito web"
+
+msgid "Address"
+msgstr "Indirizzo"
+
+msgid "Street"
+msgstr ""
+
+msgid "Apartment or suite"
+msgstr ""
+
+msgid "PO box"
+msgstr ""
+
+msgid "City"
+msgstr ""
+
+msgid "State or region"
+msgstr ""
+
+msgid "Postal code"
+msgstr ""
+
+msgid "Country"
+msgstr ""
+
+msgid "Hylki Address Book"
+msgstr "Rubrica Hylki"
 
 msgid "On This Computer"
 msgstr "Su questo computer"
@@ -383,17 +648,36 @@ msgstr[1] "{n} destinatari"
 msgid "Enable Console mode in Settings → System & Appearance"
 msgstr "Abilita la modalità Console in Impostazioni → Sistema e aspetto"
 
+msgid ""
+"No templates yet. Save one from the composer's ⋯ menu with Save as Template."
+msgstr ""
+"Nessun modello ancora. Salvane uno dal menu ⋯ del compositore con Salva come "
+"modello."
+
 msgid "New Message from Template"
 msgstr "Nuovo messaggio da modello"
 
 msgid "The new message starts as a copy of the template you pick."
 msgstr "Il nuovo messaggio inizia come copia del modello che sceglierai."
 
-msgid ""
-"No templates yet. Save one from the composer's ⋯ menu with Save as Template."
-msgstr ""
-"Nessun modello ancora. Salvane uno dal menu ⋯ del compositore con Salva come "
-"modello."
+#, fuzzy
+msgid "Insert Template"
+msgstr "Usa modello"
+
+#, fuzzy
+msgid "The template goes in where the cursor is."
+msgstr "Inserisci l'immagine dove si trova il cursore"
+
+msgid "Templates"
+msgstr "Modelli"
+
+#, fuzzy
+msgid "Template saved to {folder} in {account}"
+msgstr "Crea una nuova cartella per questo account."
+
+#, fuzzy
+msgid "Could not load the template."
+msgstr "Impossibile salvare il modello: {e}"
 
 msgid "Continue a Draft"
 msgstr "Continua una bozza"
@@ -714,6 +998,33 @@ msgstr "La tua risposta è stata inviata: forse."
 msgid "Your answer has been sent: declined."
 msgstr "La tua risposta è stata inviata: rifiutato."
 
+msgid "Retry"
+msgstr ""
+
+#, fuzzy
+msgid "Waiting for the keyring"
+msgstr "Già nel tuo portachiavi"
+
+#, fuzzy
+msgid "Couldn’t read the password"
+msgstr "Proteggi con una password"
+
+#, fuzzy
+msgid "The keyring gave an error for {accounts}: {error}"
+msgstr "Un messaggio non è stato spostato in {account}: {error}"
+
+msgid "The keyring hasn’t answered for {accounts}. Mail connects once it does."
+msgstr ""
+
+msgid ""
+"Unlock the keyring, for example the Login keyring in Passwords and Keys."
+msgstr ""
+
+msgid ""
+"Unlock the keyring, for example the Login keyring in Passwords and Keys, "
+"then choose Retry."
+msgstr ""
+
 msgid "Date (Newest first)"
 msgstr "Data (più recenti prima)"
 
@@ -752,8 +1063,18 @@ msgstr "scade il {date}"
 msgid "Until {date}"
 msgstr "scade il {date}"
 
+msgid "Sender"
+msgstr "Mittente"
+
+msgid "Recipients"
+msgstr "Destinatari"
+
 msgid "Sort by"
 msgstr "Ordina per"
+
+#, fuzzy
+msgid "Use for All Folders"
+msgstr "Tutte le cartelle"
 
 #, fuzzy
 msgid "Show only"
@@ -790,6 +1111,33 @@ msgstr "Filtri"
 
 msgid "Sort"
 msgstr "Ordina"
+
+#, fuzzy
+msgid "Sending {n} message…"
+msgid_plural "Sending {n} messages…"
+msgstr[0] "Indicizzazione di {n} messaggi…"
+msgstr[1] "Indicizzazione di {n} messaggi…"
+
+#. Each one that failed has said why already, and waits in the
+#. Outbox, a refused one included.
+#, fuzzy
+msgid "Sent {n} of {total} message"
+msgid_plural "Sent {n} of {total} messages"
+msgstr[0] "Cartella {done} di {total}"
+msgstr[1] "Cartella {done} di {total}"
+
+#, fuzzy
+msgid "Sent {n} message"
+msgid_plural "Sent {n} messages"
+msgstr[0] "Trova nel messaggio"
+msgstr[1] "Trova nel messaggio"
+
+msgid "Stop"
+msgstr ""
+
+#, fuzzy
+msgid "Show Outbox"
+msgstr "Posta in uscita"
 
 #. Rightmost, beside the window controls, as in the main window.
 msgid "Actions"
@@ -912,6 +1260,10 @@ msgid "Bold, italic, underline"
 msgstr "Grassetto, corsivo, sottolineato"
 
 msgid "Preview the highlighted attachment"
+msgstr "Anteprima dell'allegato evidenziato"
+
+#, fuzzy
+msgid "Open the highlighted attachment"
 msgstr "Anteprima dell'allegato evidenziato"
 
 msgid "Previous or next in the gallery's preview"
@@ -1201,9 +1553,6 @@ msgstr "Cerca per mittente, oggetto o account"
 msgid "(no subject)"
 msgstr "(nessun oggetto)"
 
-msgid "Message Source"
-msgstr "Sorgente del messaggio"
-
 #, fuzzy
 msgid "Forwarded message"
 msgstr "Inoltra questo messaggio"
@@ -1337,6 +1686,15 @@ msgstr "Note di rilascio complete su GitHub"
 msgid "Delete this conversation?"
 msgstr "Eliminare questa conversazione?"
 
+msgid ""
+"The message in this conversation will be deleted. You can turn this warning "
+"off in Settings."
+msgid_plural ""
+"All {n} messages in this conversation will be deleted. You can turn this "
+"warning off in Settings."
+msgstr[0] ""
+msgstr[1] ""
+
 msgid "Delete Conversation"
 msgstr "Elimina conversazione"
 
@@ -1387,12 +1745,6 @@ msgstr "Nessuna cartella Posta in arrivo disponibile per questo account"
 msgid "No {v1} folder available for some messages"
 msgstr "Nessuna cartella {v1} disponibile per alcuni messaggi"
 
-#, fuzzy
-msgid "Sending {n} message…"
-msgid_plural "Sending {n} messages…"
-msgstr[0] "Indicizzazione di {n} messaggi…"
-msgstr[1] "Indicizzazione di {n} messaggi…"
-
 msgid "Remove Account?"
 msgstr "Rimuovere l'account?"
 
@@ -1408,6 +1760,21 @@ msgstr "Rimuovi etichette"
 
 msgid "Open a message first, then print it."
 msgstr "Apri prima un messaggio, poi stampalo."
+
+msgid "Message Source"
+msgstr "Sorgente del messaggio"
+
+msgid "Find in message"
+msgstr "Trova nel messaggio"
+
+msgid "Previous match"
+msgstr "Corrispondenza precedente"
+
+msgid "Next match"
+msgstr "Corrispondenza successiva"
+
+msgid "Close find"
+msgstr "Chiudi ricerca"
 
 msgid "Delete “{name}”?"
 msgstr "Eliminare \"{name}\"?"
@@ -1464,6 +1831,10 @@ msgstr ""
 
 msgid "Could not save the message: {e}"
 msgstr "Impossibile salvare il messaggio: {e}"
+
+#, fuzzy
+msgid "Could not decrypt the draft: {e}"
+msgstr "Impossibile svuotare la cartella: {e}"
 
 msgid "Open Hylki"
 msgstr "Apri Hylki"
@@ -1614,18 +1985,22 @@ msgstr "Trova nel messaggio (Ctrl+F)"
 msgid "Downloading attachments…"
 msgstr "Download allegati in corso…"
 
+#. Translators: words in a message that mean today, for Create Event
+#. from Selection; lower case, separated by spaces. English already works.
+#, fuzzy
+msgid "today tonight"
+msgstr "Da sinistra a destra"
+
+#. Translators: words in a message that mean tomorrow, as above.
+msgid "tomorrow"
+msgstr ""
+
 msgid "Signature"
 msgstr "Firma"
 
 #, fuzzy
 msgid "Replied"
 msgstr "Rispondi"
-
-msgid "Sender"
-msgstr "Mittente"
-
-msgid "Recipients"
-msgstr "Destinatari"
 
 msgid "Correspondents"
 msgstr "Corrispondenti"
@@ -1750,6 +2125,13 @@ msgstr[0] "Un nuovo messaggio con {n} file allegato è aperto in Hylki."
 msgstr[1] "Un nuovo messaggio con {n} file allegati è aperto in Hylki."
 
 #, fuzzy
+msgid "Message ready"
+msgstr "Corpo del messaggio"
+
+msgid "An AI agent prepared a message. Check it, then send it."
+msgstr ""
+
+#, fuzzy
 msgid "On {date} at {time}, {name} wrote:"
 msgstr "{date} alle {time}"
 
@@ -1764,9 +2146,6 @@ msgstr "Nome"
 msgid "Last Name"
 msgstr "Cognome"
 
-msgid "Email"
-msgstr "Email"
-
 #, fuzzy
 msgid "Column {n}"
 msgstr "Colonne"
@@ -1778,6 +2157,11 @@ msgstr "Il file non è un file di testo"
 #, fuzzy
 msgid "The file has no rows below its first."
 msgstr "Il file non è un file di testo"
+
+msgid ""
+"The signing key is not for {addr}, the address this message is from, so the "
+"signature does not show who sent it."
+msgstr ""
 
 msgid "GnuPG (gpg) is not installed, so this message cannot be read."
 msgstr ""
@@ -1791,6 +2175,14 @@ msgstr "Crittografato per la chiave {id}, che non è nel tuo portachiavi."
 
 msgid "The encrypted block is damaged or not OpenPGP data."
 msgstr "Il blocco crittografato è danneggiato o non è dati OpenPGP."
+
+#, fuzzy
+msgid ""
+"Signing key {id} came with the sender's mail or from their domain, not from "
+"your keyring; check its fingerprint with the sender before trusting it."
+msgstr ""
+"La chiave di firma {id} è nel tuo portachiavi ma non è contrassegnata come "
+"attendibile; verifica la sua impronta digitale con il mittente."
 
 msgid "Revoked"
 msgstr "Revocata"
@@ -2039,6 +2431,12 @@ msgstr "Crittografato con OpenPGP; impossibile decrittografare"
 msgid "Encrypted with OpenPGP"
 msgstr "Crittografato con OpenPGP"
 
+#, fuzzy
+msgid ""
+"Encrypted, and signed by {signer}, whose key is not for the sender's address "
+"{addr}"
+msgstr "Crittografato e firmato da {signer}; la firma è scaduta"
+
 msgid "Encrypted, and signed by {signer}"
 msgstr "Crittografato e firmato da {signer}"
 
@@ -2062,6 +2460,9 @@ msgstr "Crittografato e firmato da {signer}; la firma è scaduta"
 
 msgid "OpenPGP-signed; the signature could not be checked"
 msgstr "Firmato con OpenPGP; impossibile verificare la firma"
+
+msgid "Signed by {signer}, whose key is not for the sender's address {addr}"
+msgstr ""
 
 msgid "Signed by {signer}"
 msgstr "Firmato da {signer}"
@@ -2090,6 +2491,10 @@ msgstr "Crittografato"
 
 msgid "Signature not checked"
 msgstr "Firma non verificata"
+
+#, fuzzy
+msgid "Signed by another address"
+msgstr "Salvare la directory?"
 
 msgid "Encrypted and signed"
 msgstr "Crittografato e firmato"
@@ -2333,17 +2738,11 @@ msgstr "Cartella"
 msgid "Permanently deletes the message"
 msgstr "Traduci questo messaggio"
 
-msgid "Show"
-msgstr "Mostra"
-
 msgid "Bring this folder back to the sidebar"
 msgstr "Riporta questa cartella nella barra laterale"
 
 msgid "Sends through {host}"
 msgstr "Invia tramite {host}"
-
-msgid "Sends through this account"
-msgstr "Invia tramite questo account"
 
 msgid "Remove this alias"
 msgstr "Rimuovi questo alias"
@@ -2369,11 +2768,19 @@ msgstr "Nome visualizzato (opzionale)"
 msgid "Email address"
 msgstr "Indirizzo e-mail"
 
+#, fuzzy
+msgid "Default From address"
+msgstr "Digita un indirizzo Da"
+
 msgid "Sending"
 msgstr "Invio"
 
 msgid "Own SMTP server"
 msgstr "Server SMTP proprio"
+
+msgid ""
+"Needed when this account's provider, such as Gmail, rewrites the sender."
+msgstr ""
 
 msgid "SMTP server"
 msgstr "Server SMTP"
@@ -2387,8 +2794,17 @@ msgstr "Nome utente SMTP"
 msgid "SMTP password"
 msgstr "Password SMTP"
 
+msgid "Server saves its own copy of sent mail"
+msgstr "Il server salva la propria copia della posta inviata"
+
+msgid "Only when this server files sent mail in this account."
+msgstr ""
+
 msgid "Test SMTP"
 msgstr "Test SMTP"
+
+msgid "Names that share an address send through this account's server."
+msgstr ""
 
 msgid "Testing…"
 msgstr "Test in corso…"
@@ -2471,6 +2887,14 @@ msgstr ""
 "Suggerisci persone della tua organizzazione mentre digiti un destinatario. "
 "Attivando questa opzione si richiede a Microsoft l'accesso alla directory; "
 "alcune organizzazioni richiedono l'approvazione di un amministratore."
+
+#, fuzzy
+msgid ""
+"Switching this off returns the account to the import list. It stays in GNOME "
+"Online Accounts."
+msgstr ""
+"Disattivarlo riporta l'account nell'elenco di importazione — rimane in GNOME "
+"Account online."
 
 msgid "Choose a Picture"
 msgstr "Scegli una foto"
@@ -2569,6 +2993,16 @@ msgid "Include the folder's unread mail in the tray icon's unread count"
 msgstr ""
 "Includi la posta non letta della cartella nel conteggio non letti dell'icona "
 "nella barra"
+
+msgid ""
+"Any folder, the Inbox included. Applies only to mail sent from here, "
+"starting now."
+msgstr ""
+
+msgid ""
+"Uses the original's folder at the time the reply is sent. Replies to mail in "
+"Sent, Drafts, Trash or Junk go with sent mail."
+msgstr ""
 
 msgid "Never"
 msgstr "Mai"
@@ -2905,11 +3339,37 @@ msgstr "Letti"
 msgid "Has attachments"
 msgstr "Ha allegati"
 
+msgid "No attachments"
+msgstr "Nessun allegato"
+
 msgid "Tagged"
 msgstr "Etichettato"
 
+#, fuzzy
+msgid "Not tagged"
+msgstr "Non contrassegnati"
+
+#, fuzzy
+msgid "Gmail label"
+msgstr "Client e-mail"
+
 msgid "Message preview"
 msgstr "Anteprima messaggio"
+
+#, fuzzy
+msgid "does not contain"
+msgstr "Salva i nuovi contatti in"
+
+msgid "is not"
+msgstr ""
+
+#, fuzzy
+msgid "does not start with"
+msgstr "inizia con"
+
+#, fuzzy
+msgid "does not end with"
+msgstr "termina con"
 
 msgid "Edit Smart Folder"
 msgstr "Modifica cartella smart"
@@ -2926,6 +3386,9 @@ msgstr "Cartelle"
 
 msgid "Any tag"
 msgstr "Qualsiasi etichetta"
+
+msgid "With no text, any label matches."
+msgstr ""
 
 msgid "The preview each message has in the list"
 msgstr "L'anteprima che ogni messaggio ha nell'elenco"
@@ -3005,8 +3468,37 @@ msgstr "Salva tutti gli allegati in una cartella"
 msgid "Save Attachment"
 msgstr "Salva allegato"
 
+#, fuzzy
+msgid "Open “{name}”?"
+msgstr "Svuotare \"{name}\"?"
+
+msgid ""
+"This attachment is a program or a script. Opening it can run it with your "
+"permissions. Open it only if you expected it and trust where it came from."
+msgstr ""
+
+#, fuzzy
+msgid "Open Anyway"
+msgstr "Invia ora"
+
 msgid "The file could not be opened"
 msgstr "Impossibile aprire il file"
+
+#. No Flatseal toggle can help here: portal access is not a
+#. permission, and the failure is inside the portal's own launcher.
+#. Offer the steps that actually work.
+#, fuzzy
+msgid ""
+"The desktop portal reported: {error}\n"
+"\n"
+"• Download the file, then open it from Files\n"
+"• Updating “xdg-desktop-portal” and logging back in may fix direct opening"
+msgstr ""
+"Il portale desktop ha segnalato: {error}\n"
+"\n"
+"• Fai clic destro sul link, copialo e aprilo nel browser\n"
+"• Aggiornare “xdg-desktop-portal” e rieseguire l'accesso potrebbe "
+"risolverel'apertura diretta dei link"
 
 msgid "Go to Message"
 msgstr "Vai al messaggio"
@@ -3036,9 +3528,6 @@ msgstr "Cerca per mittente, oggetto, tipo, nome file…"
 
 msgid "Loading attachments…"
 msgstr "Caricamento allegati in corso…"
-
-msgid "No attachments"
-msgstr "Nessun allegato"
 
 msgid "Attachments from your inboxes will appear here."
 msgstr "Gli allegati delle tue caselle in arrivo appariranno qui."
@@ -3134,11 +3623,133 @@ msgstr "Tipo (Z–A)"
 msgid "Previous"
 msgstr "Precedente"
 
+#, fuzzy
+msgid "No preview available"
+msgstr "Nessuna cartella {v1} disponibile"
+
 msgid "Next"
 msgstr "Successivo"
 
 msgid "Open in the default app"
 msgstr "Apri nell'app predefinita"
+
+#, fuzzy
+msgid "Waiting for the Keyring"
+msgstr "Già nel tuo portachiavi"
+
+msgid ""
+"Mail stored on this computer is encrypted with a key stored in the keyring. "
+"Unlock the keyring if it asks."
+msgstr ""
+
+msgid ""
+"This happens once and can take a few minutes. If you quit, your mail is left "
+"as it was."
+msgstr ""
+
+#, fuzzy
+msgid "Checking the copy"
+msgstr "Verifica della connessione in corso…"
+
+msgid "Encrypting Stored Mail"
+msgstr ""
+
+#, fuzzy
+msgid "Decrypting Stored Mail"
+msgstr "Controllo nuova posta in corso"
+
+#, fuzzy
+msgid "Store Unencrypted…"
+msgstr "Non decrittografato"
+
+msgid "Reset Cache…"
+msgstr ""
+
+msgid "Try Again"
+msgstr "Riprova"
+
+#, fuzzy
+msgid "Keyring Unavailable"
+msgstr "Nessuna cartella {v1} disponibile"
+
+msgid ""
+"Mail kept on this computer is encrypted with a key stored in the keyring, "
+"and the keyring is locked or did not answer. Unlock it, then try again."
+msgstr ""
+
+msgid "Mail Cache Key Missing"
+msgstr ""
+
+msgid ""
+"Mail kept on this computer is encrypted, and the keyring no longer holds its "
+"key. If the keyring was replaced, restore the old one and try again. "
+"Otherwise reset the cache to download your mail again."
+msgstr ""
+
+msgid "Mail Cache Cannot Be Unlocked"
+msgstr ""
+
+msgid ""
+"The key in the keyring does not open the mail kept on this computer. If the "
+"keyring was replaced, restore the old one and try again. Otherwise reset the "
+"cache to download your mail again."
+msgstr ""
+
+msgid "Mail Cache Not Converted"
+msgstr ""
+
+msgid ""
+"The mail kept on this computer could not be converted, and was left as it "
+"was. Check that the disk has free space, then try again."
+msgstr ""
+
+#, fuzzy
+msgid "Mail Cache Unreadable"
+msgstr "Segna come non letto"
+
+msgid ""
+"The mail kept on this computer could not be read. Try again, or reset the "
+"cache to download your mail again."
+msgstr ""
+
+msgid ""
+"Mail that exists only on this computer is lost: a POP3 account's mail, and "
+"unsent mail in the Outbox."
+msgstr ""
+
+#, fuzzy
+msgid ""
+"Mail kept on this computer is deleted and downloaded again from the server."
+msgstr ""
+"Ogni messaggio e allegato conservato su questo computer viene rimosso e "
+"recuperato di nuovo dal server quando viene aperto. Niente sul server cambia."
+
+msgid "Reset the Mail Cache?"
+msgstr ""
+
+msgid "Reset"
+msgstr ""
+
+msgid ""
+"Anyone who can read your files, or a backup of them, can then read the mail "
+"kept on this computer, including mail that is end-to-end encrypted on the "
+"server."
+msgstr ""
+
+msgid "Encryption can be turned back on in Settings → Privacy."
+msgstr ""
+
+msgid ""
+"The encrypted cache cannot be opened without the keyring, so it is deleted "
+"and your mail is downloaded again."
+msgstr ""
+
+msgid "Store Mail Unencrypted?"
+msgstr ""
+
+#, fuzzy
+msgid "Store Unencrypted"
+msgstr "Non decrittografato"
 
 #, fuzzy
 msgid "New Event"
@@ -3162,10 +3773,6 @@ msgstr "Aggiungi al calendario"
 #, fuzzy
 msgid "Task list"
 msgstr "Questo elenco"
-
-#, fuzzy
-msgid "Notes"
-msgstr "Nota"
 
 #, fuzzy
 msgid "All day"
@@ -3510,6 +4117,91 @@ msgstr "Palette comandi"
 msgid "Type an action, a folder or a tag, or > for actions only"
 msgstr "Digita un'azione, una cartella o un'etichetta, o > solo per le azioni"
 
+msgid "Cc"
+msgstr "Cc"
+
+msgid "Bcc"
+msgstr "Ccn"
+
+msgid ""
+"An AI agent prepared this message. Check who it goes to before you send it."
+msgstr ""
+
+#, fuzzy
+msgid "It has no recipients yet."
+msgstr "Mostra destinatari"
+
+msgid "Bcc, hidden from the others:"
+msgstr ""
+
+msgid "In Bcc: the other recipients will not see this address"
+msgstr ""
+
+msgid "Outside your own domains"
+msgstr ""
+
+#, fuzzy
+msgid "Not now"
+msgstr "Non mostrato"
+
+msgid "Accept or reject the AI agent's suggested changes first."
+msgstr ""
+
+msgid "Wait for the translation to come back, then accept the changes."
+msgstr ""
+
+#, fuzzy
+msgid "Changes suggested by an AI agent"
+msgstr "Nuovo messaggio da un modello"
+
+msgid "Nothing changes until you accept them."
+msgstr ""
+
+#, fuzzy
+msgid "Reject"
+msgstr "Progetto"
+
+msgid "Accept"
+msgstr "Accetta"
+
+msgid "To:"
+msgstr "A:"
+
+msgid "Cc:"
+msgstr "Cc:"
+
+#, fuzzy
+msgid "Subject:"
+msgstr "Oggetto"
+
+msgid "Accepting removes this text's formatting, links and pictures."
+msgstr ""
+
+msgid "Taken out"
+msgstr ""
+
+msgid "Added in Bcc: the other recipients will not see this address"
+msgstr ""
+
+#, fuzzy
+msgid "Added, outside your own domains"
+msgstr "Indirizzo o dominio"
+
+#, fuzzy
+msgid "Added"
+msgstr "Parole aggiunte"
+
+#, fuzzy
+msgid "Send without an attachment?"
+msgstr "Invia come allegato normale"
+
+msgid "The message mentions “{word}”, but nothing is attached."
+msgstr ""
+
+#, fuzzy
+msgid "Send Anyway"
+msgstr "Invia ora"
+
 msgid "The file was moved or deleted. Attach it again from where it is now."
 msgstr ""
 "Il file è stato spostato o eliminato. Allegalo di nuovo da dove si trova ora."
@@ -3666,6 +4358,34 @@ msgid "Show Cc, Bcc and Reply-To"
 msgstr "Mostra Cc, Ccn e Rispondi a"
 
 #, fuzzy
+msgid "They prefer encrypted mail."
+msgstr "Nascondi l'oggetto"
+
+msgid "No OpenPGP key: mail to this recipient cannot be encrypted."
+msgstr ""
+
+msgid ""
+"OpenPGP key from older mail: their recent mail came without it, so they may "
+"no longer read encrypted mail."
+msgstr ""
+
+#, fuzzy
+msgid "OpenPGP key in your keyring."
+msgstr "Già nel tuo portachiavi"
+
+msgid "OpenPGP key sent with their mail (Autocrypt)."
+msgstr ""
+
+msgid "OpenPGP key passed on in someone else's encrypted mail."
+msgstr ""
+
+msgid "OpenPGP key published by their mail domain (WKD)."
+msgstr ""
+
+msgid "OpenPGP key from the keyserver keys.openpgp.org."
+msgstr ""
+
+#, fuzzy
 msgid "Cannot merge an encrypted message"
 msgstr "Messaggio crittografato"
 
@@ -3700,6 +4420,16 @@ msgid ""
 msgstr ""
 "Non esiste nessuna chiave OpenPGP per {addr}. Chiedi loro la chiave "
 "pubblica, o recuperala in Impostazioni, OpenPGP."
+
+msgid "Encrypt to keys you have not checked?"
+msgstr ""
+
+msgid ""
+"Nothing confirms that the keys for {addresses} belong to them. If one is "
+"someone else's, that person can read this message and the recipient cannot. "
+"To check a key, compare its fingerprint with its owner and trust it under "
+"Settings, OpenPGP. Send Anyway does not ask about these keys again."
+msgstr ""
 
 msgid "Send later"
 msgstr "Invia più tardi"
@@ -3867,14 +4597,34 @@ msgstr "Invia ora invece"
 msgid "Download password for {name}: {password}"
 msgstr "Password di download per {name}: {password}"
 
-msgid "Cc"
-msgstr "Cc"
-
-msgid "Bcc"
-msgstr "Ccn"
-
 msgid "Reply-To"
 msgstr "Rispondi a"
+
+#, fuzzy
+msgid "Match a column to a name, an email address or a phone number."
+msgstr "Un contatto necessita di un nome o di un indirizzo e-mail"
+
+msgid "Import Contacts"
+msgstr "Importa contatti"
+
+#, fuzzy
+msgid "Import"
+msgstr "Importa…"
+
+#, fuzzy
+msgid "Import into"
+msgstr "Importa firma"
+
+msgid "Keeps no groups: their names stay on each contact."
+msgstr ""
+
+#, fuzzy
+msgid "Not imported"
+msgstr "Chiave importata"
+
+#, fuzzy
+msgid "vCard files"
+msgstr "File vCard"
 
 msgid "The name used here and in Contacts. Left blank, it is {own}."
 msgstr ""
@@ -4001,13 +4751,14 @@ msgstr ""
 msgid "Contacts in the Hylki book"
 msgstr "Contatti nella rubrica Hylki"
 
-msgid "Import vCard files"
+#, fuzzy
+msgid "Import vCard or CSV files"
 msgstr "Importa file vCard"
 
 #, fuzzy
 msgid ""
-"Adds contacts from .vcf files. Importing a file again updates existing "
-"entries."
+"Adds contacts from .vcf or .csv files. Importing a file again updates "
+"existing entries."
 msgstr ""
 "Aggiunge i contatti nei file .vcf alla rubrica Hylki. Reimportare un file "
 "aggiorna i suoi contatti."
@@ -4144,6 +4895,9 @@ msgstr "Nessun contatto"
 msgid "Saved addresses show the contact's name, not the mail's."
 msgstr ""
 
+msgid "Show the Reply-To sender"
+msgstr ""
+
 msgid "Layout"
 msgstr "Layout"
 
@@ -4260,15 +5014,6 @@ msgstr "Visualizza foto"
 msgid "Add to Contacts"
 msgstr "Aggiungi ai contatti"
 
-msgid "Phone"
-msgstr "Telefono"
-
-msgid "Address"
-msgstr "Indirizzo"
-
-msgid "Birthday"
-msgstr "Compleanno"
-
 #. ---- note ----
 msgid "Note"
 msgstr "Nota"
@@ -4316,7 +5061,8 @@ msgstr "Invia tutti"
 msgid "Members do not see each other's addresses."
 msgstr ""
 
-#. An Apple group (iCloud's) holds cards of its own book.
+#. An Apple group (iCloud's) or a category (Nextcloud's) holds
+#. cards of its own book.
 msgid ""
 "Groups in this address book hold its own contacts: anyone added who is not "
 "in it yet is added to it."
@@ -4328,9 +5074,6 @@ msgstr "Modifica contatto"
 #. ---- identity fields ----
 msgid "Identity"
 msgstr "Identità"
-
-msgid "Nickname"
-msgstr "Soprannome"
 
 msgid "Organization"
 msgstr "Organizzazione"
@@ -4350,18 +5093,6 @@ msgstr "Aggiungi sito web"
 msgid "No label"
 msgstr ""
 
-msgid "Home"
-msgstr ""
-
-msgid "Work"
-msgstr ""
-
-msgid "Mobile"
-msgstr ""
-
-msgid "Fax"
-msgstr ""
-
 #, fuzzy
 msgid "Label"
 msgstr "Etichette"
@@ -4369,21 +5100,6 @@ msgstr "Etichette"
 #, fuzzy
 msgid "Add address"
 msgstr "Indirizzo"
-
-msgid "Street"
-msgstr ""
-
-msgid "City"
-msgstr ""
-
-msgid "State or region"
-msgstr ""
-
-msgid "Postal code"
-msgstr ""
-
-msgid "Country"
-msgstr ""
 
 #, fuzzy
 msgid "No birthday"
@@ -4421,7 +5137,7 @@ msgid "Add to Group"
 msgstr ""
 
 #, fuzzy
-msgid "Move to Address Book"
+msgid "Move to Address Book…"
 msgstr "Rubrica"
 
 msgid "Delete…"
@@ -4464,28 +5180,42 @@ msgstr "Un contatto necessita di un nome o di un indirizzo e-mail"
 msgid "No email address · {book}"
 msgstr "Indirizzo e-mail"
 
-msgid "First name"
-msgstr "Nome"
-
-msgid "Last name"
-msgstr "Cognome"
-
 #, fuzzy
 msgid "Sort and filter contacts"
 msgstr "Messaggi e-mail"
 
 #, fuzzy
-msgid "Groups"
-msgstr "Gruppo sinistra"
-
-msgid "Import Contacts"
-msgstr "Importa contatti"
-
-msgid "vCard files"
+msgid "vCard and CSV files"
 msgstr "File vCard"
 
 msgid "All files"
 msgstr "Tutti i file"
+
+#, fuzzy
+msgid ""
+"{name} leaves {from}, locally and on the server, and any group there that "
+"holds the contact."
+msgstr ""
+"{name} viene rimosso dalla rubrica, e per una rubrica sincronizzata, anche "
+"dal server."
+
+#, fuzzy
+msgid ""
+"{n} contact leaves its address book, locally and on the server, and any "
+"group there that holds it."
+msgid_plural ""
+"{n} contacts leave their address books, locally and on the server, and any "
+"group there that holds them."
+msgstr[0] ""
+"{name} viene rimosso dalla rubrica, e per una rubrica sincronizzata, anche "
+"dal server."
+msgstr[1] ""
+"{name} viene rimosso dalla rubrica, e per una rubrica sincronizzata, anche "
+"dal server."
+
+#, fuzzy
+msgid "Move to Address Book"
+msgstr "Rubrica"
 
 #, fuzzy
 msgid "Directories"
@@ -4615,7 +5345,8 @@ msgstr[1] ""
 "{name} viene rimosso dalla rubrica, e per una rubrica sincronizzata, anche "
 "dal server."
 
-msgid "Import vCard files into the Hylki address book"
+#, fuzzy
+msgid "Import vCard or CSV files into the Hylki address book"
 msgstr "Importa file vCard nella rubrica Hylki"
 
 #, fuzzy
@@ -4625,10 +5356,11 @@ msgstr "Nuovo contatto"
 msgid "Loading Contacts…"
 msgstr "Caricamento contatti in corso…"
 
+#, fuzzy
 msgid ""
-"Add a contact with the + button, or import vCard files. Contacts are kept in "
-"Hylki's own address book, and the address books of GNOME Contacts are listed "
-"here too."
+"Add a contact with the + button, or import vCard or CSV files. Contacts are "
+"kept in Hylki's own address book, and the address books of GNOME Contacts "
+"are listed here too."
 msgstr ""
 "Aggiungi un contatto con il pulsante +, o importa file vCard. I contatti "
 "vengono conservati nella rubrica di Hylki, e le rubriche di GNOME Contatti "
@@ -4778,6 +5510,22 @@ msgstr "Dimensione testo"
 msgid "In {places}"
 msgstr "cartella sconosciuta"
 
+msgid "Takes under a minute"
+msgstr ""
+
+msgid "Takes about a minute"
+msgstr ""
+
+msgid "Takes about {n} minute"
+msgid_plural "Takes about {n} minutes"
+msgstr[0] ""
+msgstr[1] ""
+
+msgid "Takes about {n} hour"
+msgid_plural "Takes about {n} hours"
+msgstr[0] ""
+msgstr[1] ""
+
 msgid "Mail Merge"
 msgstr ""
 
@@ -4805,6 +5553,19 @@ msgstr ""
 #, fuzzy
 msgid "Leave these fields empty"
 msgstr "Salvare il filtro?"
+
+msgid "Limit sending rate"
+msgstr ""
+
+msgid "Messages"
+msgstr "Messaggi"
+
+#, fuzzy
+msgid "per minute"
+msgstr "Ogni minuto"
+
+msgid "per hour"
+msgstr ""
 
 #, fuzzy
 msgid "{n} of {total}"
@@ -4902,6 +5663,10 @@ msgid "Mark All as Unread"
 msgstr "Segna tutto come non letto"
 
 #, fuzzy
+msgid "This Account (Except Trash & Junk)"
+msgstr "Tutto tranne Cestino e Posta indesiderata"
+
+#, fuzzy
 msgid "All folders (except trash & junk)"
 msgstr "Tutto tranne Cestino e Posta indesiderata"
 
@@ -4912,8 +5677,17 @@ msgstr "O dove"
 msgid "This folder"
 msgstr "Questa cartella"
 
+#, fuzzy
+msgid "This Account"
+msgstr "Account e-mail"
+
 msgid "All folders"
 msgstr "Tutte le cartelle"
+
+msgid ""
+"Every folder of this account, except Trash and Junk. A search started in "
+"Trash or Junk looks there too."
+msgstr ""
 
 msgid ""
 "Every folder of every account, except Trash and Junk. A search started in "
@@ -4926,35 +5700,21 @@ msgstr ""
 msgid "Only the folder or view the list is showing."
 msgstr ""
 
+#, fuzzy
+msgid "Every folder of this account, Trash and Junk included."
+msgstr "Tutto tranne Cestino e Posta indesiderata"
+
 msgid "What this searches"
 msgstr ""
 
 msgid "me"
 msgstr "io"
 
-msgid "To:"
-msgstr "A:"
-
 msgid "Show conversation"
 msgstr "Mostra conversazione"
 
 msgid "Drag to resize, double-click for the usual width"
 msgstr "Trascina per ridimensionare, doppio clic per la larghezza normale"
-
-msgid "Mark as read"
-msgstr "Segna come letto"
-
-msgid "Not spam"
-msgstr "Non è spam"
-
-msgid "Add sender to Contacts"
-msgstr "Aggiungi mittente ai contatti"
-
-msgid "Mark as unread"
-msgstr "Segna come non letto"
-
-msgid "Remove star"
-msgstr "Rimuovi contrassegno"
 
 msgid "High importance"
 msgstr "Alta importanza"
@@ -5016,6 +5776,10 @@ msgstr "Scegli una bozza dall'elenco per modificarla qui."
 msgid "Choose a message from the list to read it here."
 msgstr "Scegli un messaggio dall'elenco per leggerlo qui."
 
+#, fuzzy
+msgid "Show Message"
+msgstr "Mostra nel messaggio"
+
 msgid "Remote content (images, trackers) is blocked to protect your privacy."
 msgstr ""
 "Il contenuto remoto (immagini, tracker) è bloccato per proteggere la tua "
@@ -5027,23 +5791,11 @@ msgstr "Carica"
 msgid "Always allow sender"
 msgstr "Autorizza sempre il mittente"
 
-msgid "Find in message"
-msgstr "Trova nel messaggio"
-
 msgid "No matches"
 msgstr "Nessuna corrispondenza"
 
 msgid "{cur} of {total}"
 msgstr "{cur} di {total}"
-
-msgid "Previous match"
-msgstr "Corrispondenza precedente"
-
-msgid "Next match"
-msgstr "Corrispondenza successiva"
-
-msgid "Close find"
-msgstr "Chiudi ricerca"
 
 #, fuzzy
 msgid ""
@@ -5101,48 +5853,6 @@ msgstr "Nascondi destinatari"
 
 msgid "Show recipients"
 msgstr "Mostra destinatari"
-
-msgid "Mark as read or unread"
-msgstr "Segna come letto o non letto"
-
-msgid "Star this message"
-msgstr "Contrassegna questo messaggio"
-
-msgid "View source"
-msgstr "Visualizza sorgente"
-
-msgid "Translate this message"
-msgstr "Traduci questo messaggio"
-
-msgid "Reply to this message"
-msgstr "Rispondi a questo messaggio"
-
-msgid "Reply to everyone on this message"
-msgstr "Rispondi a tutti in questo messaggio"
-
-msgid "Forward this message"
-msgstr "Inoltra questo messaggio"
-
-msgid "Move this message to a folder"
-msgstr "Sposta questo messaggio in una cartella"
-
-msgid "Archive this message"
-msgstr "Archivia questo messaggio"
-
-msgid "Delete this message"
-msgstr "Elimina questo messaggio"
-
-msgid "Back to my fonts and colors"
-msgstr "Torna ai miei caratteri e colori"
-
-msgid "Show the sender's fonts and colors"
-msgstr "Mostra i caratteri e i colori del mittente"
-
-msgid "Show remote content"
-msgstr "Mostra contenuto remoto"
-
-msgid "Block remote content"
-msgstr "Blocca contenuto remoto"
 
 msgid "Click to open this message"
 msgstr "Clicca per aprire questo messaggio"
@@ -5227,9 +5937,6 @@ msgstr "Hai rifiutato questo invito."
 msgid "You declined this invitation on {date}."
 msgstr "Hai rifiutato questo invito il {date}."
 
-msgid "Accept"
-msgstr "Accetta"
-
 msgid "Tells the organiser you will be there"
 msgstr "Comunica all'organizzatore che sarai presente"
 
@@ -5297,9 +6004,6 @@ msgstr ""
 msgid "From:"
 msgstr "Da:"
 
-msgid "Cc:"
-msgstr "Cc:"
-
 msgid "Bcc:"
 msgstr ""
 
@@ -5347,7 +6051,8 @@ msgstr ""
 msgid "Trust"
 msgstr "Rendi attendibile"
 
-msgid "The sender's key was imported from the message."
+#, fuzzy
+msgid "The sender's key was taken from the message."
 msgstr "La chiave del mittente è stata importata dal messaggio."
 
 msgid "The sender's key was fetched and imported."
@@ -5382,14 +6087,17 @@ msgstr "Inizia un nuovo messaggio da una copia del modello"
 msgid "Save…"
 msgstr "Salva…"
 
+#. The translation decides where the address sits; only the text around
+#. it is escaped, and the address goes in as a link of its own.
+#, fuzzy
+msgid "via {sender}"
+msgstr "Cerca mittenti"
+
 msgid "Translating…"
 msgstr "Traduzione in corso…"
 
 msgid "Could not translate: {why}"
 msgstr "Traduzione non riuscita: {why}"
-
-msgid "Try Again"
-msgstr "Riprova"
 
 msgid "Translated from {language} by {service}."
 msgstr "Tradotto da {language} da {service}."
@@ -5459,6 +6167,10 @@ msgid "Status bar ({n})"
 msgstr "Barra di stato ({n})"
 
 #, fuzzy
+msgid "Ask Again"
+msgstr "Riprova"
+
+#, fuzzy
 msgid "All keys"
 msgstr "Tutti i tipi"
 
@@ -5517,6 +6229,26 @@ msgstr ""
 "GnuPG {version} trovato. Hylki legge e scrive il suo portachiavi, lo stesso "
 "usato dal comando gpg e da altri programmi di posta."
 
+#, fuzzy
+msgid "Finding keys"
+msgstr "Trova nel messaggio"
+
+msgid "Keys found here are kept apart from your keyring."
+msgstr ""
+
+#, fuzzy
+msgid "Look up recipients' keys"
+msgstr "Cerca i destinatari in questa directory"
+
+msgid "Each recipient's domain (WKD) learns that you write to them."
+msgstr ""
+
+msgid "Also ask a keyserver"
+msgstr ""
+
+msgid "keys.openpgp.org learns who you write to."
+msgstr ""
+
 msgid "Your keys"
 msgstr "Le tue chiavi"
 
@@ -5551,6 +6283,12 @@ msgid "Fetch by address…"
 msgstr "Recupera per indirizzo…"
 
 msgid "Search by name, address or key ID"
+msgstr ""
+
+msgid "Unchecked keys you encrypt to"
+msgstr ""
+
+msgid "Send Anyway stopped the warning for these keys."
 msgstr ""
 
 msgid "No keys from other people yet."
@@ -5916,14 +6654,8 @@ msgstr "Modalità lettore attiva"
 msgid "Reader View off"
 msgstr "Modalità lettore disattivata"
 
-msgid "Hidden behind a toggle"
-msgstr "Nascosto dietro un interruttore"
-
-msgid "Shown while hovering"
-msgstr "Mostrato al passaggio del mouse"
-
-msgid "Always visible"
-msgstr "Sempre visibile"
+msgid "Needs Sushi, the GNOME file previewer."
+msgstr ""
 
 msgid "Ask each time"
 msgstr "Chiedi ogni volta"
@@ -5977,6 +6709,8 @@ msgstr "Segue l'ordine di lettura"
 msgid "System language"
 msgstr "Lingua di sistema"
 
+#. A group's description is markup: "<code>" would be
+#. read as a tag and the whole line dropped.
 msgid ""
 "No dictionaries found. On Flatpak, add a language with: flatpak config --set "
 "extra-languages <code>"
@@ -6102,6 +6836,9 @@ msgstr "Composizione"
 msgid "Privacy"
 msgstr "Privacy"
 
+msgid "MCP"
+msgstr ""
+
 msgid "Date and Time"
 msgstr "Data e ora"
 
@@ -6127,9 +6864,130 @@ msgstr "Salvare la directory?"
 msgid "Save the account?"
 msgstr "Salvare l'account?"
 
+#, fuzzy
+msgid "See message lists"
+msgstr "Messaggio più recente prima"
+
+msgid "Senders, subjects, dates, previews and folders."
+msgstr ""
+
+#, fuzzy
+msgid "Read message text"
+msgstr "Nuovo messaggio"
+
+#, fuzzy
+msgid "Search on the mail server"
+msgstr "Ricerca in corso…"
+
+#, fuzzy
+msgid "Finds mail not downloaded yet."
+msgstr "Il messaggio non è ancora stato caricato."
+
+#, fuzzy
+msgid "Read attachments"
+msgstr "Ha allegati"
+
+#, fuzzy
+msgid "Prepare messages"
+msgstr "Inoltra questo messaggio"
+
+msgid "Each opens in a window for you to check and send."
+msgstr ""
+
+msgid "Mark as read or unread"
+msgstr "Segna come letto o non letto"
+
+#, fuzzy
+msgid "Add and remove stars"
+msgstr "Rimuovi contrassegno"
+
+#, fuzzy
+msgid "Add and remove tags"
+msgstr "Rimuovi etichetta"
+
+#, fuzzy
+msgid "Move and archive"
+msgstr "Archivia"
+
+#, fuzzy
+msgid "Move to Trash"
+msgstr "Sposta la posta di lista nel Cestino"
+
+#, fuzzy
+msgid "See open conversation"
+msgstr "Mostra conversazione"
+
+msgid "The one you are reading, as you read it."
+msgstr ""
+
+msgid "Read and edit open drafts"
+msgstr ""
+
+msgid "Those agents prepared. You accept each edit."
+msgstr ""
+
+msgid "Include drafts you started"
+msgstr ""
+
+msgid "What you are writing, unsaved text too."
+msgstr ""
+
 msgid ""
-"Accounts, preferences, filters, tags and layout, in one file. Passwords and "
-"OpenPGP keys are not included."
+"Hylki contains no AI agent of its own but you can allow outside agents to "
+"access your mail using MCP (Model Context Protocol)"
+msgstr ""
+
+msgid "Allow AI agent access"
+msgstr ""
+
+msgid "Recent Activity"
+msgstr ""
+
+msgid ""
+"Nothing is shared until you allow it. Agents can't send mail, erase it "
+"permanently (moving to Trash is ok) or read encrypted mail."
+msgstr ""
+
+#, fuzzy
+msgid "Command for the agent"
+msgstr "Palette comandi"
+
+#, fuzzy
+msgid "Address books and directories"
+msgstr "Rubrica"
+
+msgid "People in your mail"
+msgstr ""
+
+#, fuzzy
+msgid "From every account, shared or not."
+msgstr "L'elenco cartelle di ogni account."
+
+#, fuzzy
+msgid "Full access"
+msgstr "Tutti gli account"
+
+msgid "Grant access to entire account (except Trash and Junk)"
+msgstr ""
+
+msgid "Junk and Trash are hidden until you allow them."
+msgstr ""
+
+#, fuzzy
+msgid "Reset to Defaults"
+msgstr "Ripristina predefiniti"
+
+msgid "Reset permissions?"
+msgstr ""
+
+msgid ""
+"The account stays shared, but only for reading and preparing messages. Junk "
+"and Trash are hidden again."
+msgstr ""
+
+msgid ""
+"Accounts, preferences, filters, tags and layout, in one file. Passwords, "
+"OAuth client secrets and OpenPGP keys are not included."
 msgstr ""
 
 msgid "Export settings"
@@ -6204,6 +7062,105 @@ msgstr "Formato data"
 msgid "Clock"
 msgstr "Orologio"
 
+msgid ""
+"While it is on, this page decides the layout in place of the other settings. "
+"Ctrl+Shift+F or the main menu turns it on."
+msgstr ""
+
+msgid "Start in Focus Mode"
+msgstr "Avvia in Modalità focus"
+
+msgid "Fold the sidebar to the icon rail"
+msgstr "Comprimi la barra laterale alla barra icone"
+
+msgid "Unread counts"
+msgstr "Conteggi non letti"
+
+msgid "Unread dots instead of counts"
+msgstr "Punti non letti invece di conteggi"
+
+msgid "Expand the sidebar on hover"
+msgstr "Espandi la barra laterale al passaggio del mouse"
+
+msgid "Hide the accounts in the sidebar"
+msgstr "Nascondi gli account nella barra laterale"
+
+msgid "Only the unified section stays."
+msgstr "Rimane solo la sezione unificata."
+
+#, fuzzy
+msgid "Fold up the accounts"
+msgstr "Sopra gli account"
+
+msgid "Collapses expanded accounts into their avatars"
+msgstr ""
+
+msgid "Fold accounts with one click"
+msgstr ""
+
+msgid "Fold up the unified rows"
+msgstr "Comprimi le righe unificate"
+
+msgid "Unified"
+msgstr "Unificato"
+
+msgid "Inboxes"
+msgstr "Caselle in arrivo"
+
+msgid "Snoozed"
+msgstr ""
+
+#, fuzzy
+msgid "Sections"
+msgstr "Azioni"
+
+msgid "Favorites"
+msgstr "Preferiti"
+
+#, fuzzy
+msgid "Show column headings"
+msgstr "Intestazioni colonne"
+
+msgid "Preview lines"
+msgstr "Righe di anteprima"
+
+msgid "Fold the message list's header"
+msgstr "Comprimi l'intestazione dell'elenco messaggi"
+
+#, fuzzy
+msgid "Everything but the sidebar toggle goes into ⋯."
+msgstr "Ogni pulsante va nel suo menu ⋯."
+
+msgid "Hide sender avatars"
+msgstr "Nascondi gli avatar dei mittenti"
+
+msgid "Hide the subject"
+msgstr "Nascondi l'oggetto"
+
+msgid "Tag chips hide with it."
+msgstr ""
+
+msgid "Tags and labels under the text"
+msgstr ""
+
+#, fuzzy
+msgid "Hide stars"
+msgstr "Nascondi gli avatar dei mittenti"
+
+#, fuzzy
+msgid "Hide attachment icons"
+msgstr "Nascondi gli allegati"
+
+msgid "Fold the reading pane's toolbar"
+msgstr "Comprimi la barra degli strumenti del pannello di lettura"
+
+msgid "Every button goes into its ⋯ menu."
+msgstr "Ogni pulsante va nel suo menu ⋯."
+
+#, fuzzy
+msgid "Open messages in Reader View."
+msgstr "Il messaggio non è ancora stato caricato."
+
 msgid "Instant new mail (push)"
 msgstr "Nuova posta istantanea (push)"
 
@@ -6276,16 +7233,16 @@ msgstr ""
 msgid "Automatic uses single lines in wide windows."
 msgstr ""
 
-msgid "Preview lines"
-msgstr "Righe di anteprima"
+msgid "Resize the list with the window"
+msgstr ""
+
+msgid "Off, it keeps its width and the reader resizes."
+msgstr ""
 
 msgid "Off also stops downloading previews."
 msgstr ""
 
 msgid "Group by date"
-msgstr ""
-
-msgid "Tags and labels under the text"
 msgstr ""
 
 msgid "Gives the subject its full width."
@@ -6305,16 +7262,6 @@ msgstr "Colora i messaggi etichettati"
 msgid "In the color of its first tag."
 msgstr ""
 
-msgid "Actions palette in the message list"
-msgstr "Palette azioni nell'elenco messaggi"
-
-#, fuzzy
-msgid "The ⋯ row under each message."
-msgstr "Allegati su ogni messaggio"
-
-msgid "Open the actions palette on hover"
-msgstr "Apri la palette azioni al passaggio del mouse"
-
 msgid "Swipe actions"
 msgstr "Azioni di scorrimento"
 
@@ -6331,15 +7278,6 @@ msgstr "Sensibilità scorrimento trackpad"
 msgid "Raise it if swipes stop short. Mouse drags are unaffected."
 msgstr ""
 
-msgid "Actions palette timeout"
-msgstr "Timeout palette azioni"
-
-#, fuzzy
-msgid "Seconds it stays open after the pointer leaves."
-msgstr ""
-"Secondi in cui la palette azioni di una scheda rimane aperta dopo che il "
-"cursore l'ha lasciata."
-
 msgid "Columns"
 msgstr "Colonne"
 
@@ -6347,10 +7285,6 @@ msgid ""
 "For the single-line layout. Drag columns to reorder them or out to remove "
 "them. Due Date shows only for Microsoft 365 mail."
 msgstr ""
-
-#, fuzzy
-msgid "Show column headings"
-msgstr "Intestazioni colonne"
 
 #, fuzzy
 msgid "Fit columns to the list"
@@ -6368,14 +7302,12 @@ msgstr ""
 msgid "Always load remote content"
 msgstr "Carica sempre il contenuto remoto"
 
-msgid "Remote content can tell a sender when and where you read."
-msgstr ""
-
 msgid "Pre-load remote content for the next messages"
 msgstr ""
 
-msgid "Their senders can tell they were opened."
-msgstr ""
+#, fuzzy
+msgid "Remove trackers from links"
+msgstr "Rimuovi questo alias"
 
 msgid "Warn when remote content is blocked"
 msgstr "Avvisa quando il contenuto remoto è bloccato"
@@ -6387,11 +7319,6 @@ msgstr "Avvisa quando il contenuto remoto è bloccato"
 msgid "Warn when the addressing doesn't match"
 msgstr "Avvisa quando l'indirizzamento non corrisponde"
 
-msgid ""
-"The badge beside the sender stays. A possible forgery always shows the "
-"banner."
-msgstr ""
-
 msgid "Use Gravatar when a contact has no photo"
 msgstr "Usa Gravatar quando un contatto non ha foto"
 
@@ -6401,16 +7328,32 @@ msgstr ""
 msgid "Show sender logos"
 msgstr "Mostra loghi mittenti"
 
-msgid ""
-"Most are fetched from the sender's domain, which learns your IP address."
-msgstr ""
-
 #, fuzzy
 msgid "Send read receipts"
 msgstr "Nascondi destinatari"
 
-msgid "A receipt tells the sender when you opened the message."
+#. Not "On This Computer": that names an account kind.
+#, fuzzy
+msgid "Stored Mail"
+msgstr "Proton Mail"
+
+#, fuzzy
+msgid "Encrypt stored mail"
+msgstr "Messaggio crittografato"
+
+#, fuzzy
+msgid "Encrypt Stored Mail?"
+msgstr "Crittografato"
+
+msgid ""
+"Mail stored on this computer will be encrypted at the next start which can "
+"take a few minutes. Earlier versions of the app cannot open it. Turn this "
+"setting off and restart before going back to an older version."
 msgstr ""
+
+#, fuzzy
+msgid "Encrypt"
+msgstr "Crittografato"
 
 msgid "Open at startup"
 msgstr "Apri all'avvio"
@@ -6432,9 +7375,6 @@ msgstr ""
 msgid "Chevron placement"
 msgstr "Posizione della freccia"
 
-msgid "Fold accounts with one click"
-msgstr ""
-
 msgid "When off, only its chevron or a double click activates the fold."
 msgstr ""
 
@@ -6444,9 +7384,6 @@ msgstr "Cassetto allegati"
 
 msgid "Browse every account's attachments in one place."
 msgstr ""
-
-msgid "Expand the sidebar on hover"
-msgstr "Espandi la barra laterale al passaggio del mouse"
 
 msgid "Hovering the icon rail floats the full sidebar out."
 msgstr ""
@@ -6466,31 +7403,15 @@ msgstr "Evidenzia solo la nuova posta non letta"
 msgid "A count turns grey once you have looked at the folder."
 msgstr ""
 
-msgid "Unified"
-msgstr "Unificato"
-
 #, fuzzy
 msgid "Shown only with more than one account."
 msgstr "Mostra solo questo account"
 
-msgid "Inboxes"
-msgstr "Caselle in arrivo"
-
-msgid "Snoozed"
-msgstr ""
-
 msgid "Shown only while mail is snoozed."
 msgstr ""
 
-msgid "Unread counts"
-msgstr "Conteggi non letti"
-
 msgid "Shown on the unified rows while they are folded up."
 msgstr ""
-
-#, fuzzy
-msgid "Sections"
-msgstr "Azioni"
 
 #, fuzzy
 msgid "Section style"
@@ -6508,9 +7429,6 @@ msgstr "Posizione filtri"
 
 msgid "Icon rail"
 msgstr "Barra icone"
-
-msgid "Unread dots instead of counts"
-msgstr "Punti non letti invece di conteggi"
 
 msgid "The count stays in the tooltip."
 msgstr ""
@@ -6740,6 +7658,9 @@ msgstr "Inserisci"
 msgid "Show or hide folders"
 msgstr "Mostra o nascondi le cartelle"
 
+msgid "Long-press to expand or collapse"
+msgstr "Tieni premuto per espandere o comprimere"
+
 msgid "Show or hide labels"
 msgstr "Mostra o nascondi le etichette"
 
@@ -6824,9 +7745,6 @@ msgstr "Nessun account ancora"
 msgid "New Message from Template…"
 msgstr "Nuovo messaggio da modello…"
 
-msgid "Favorites"
-msgstr "Preferiti"
-
 msgid "Show each inbox"
 msgstr "Mostra ogni posta in arrivo"
 
@@ -6845,9 +7763,6 @@ msgstr "Mostra ogni cartella smart"
 #, fuzzy
 msgid "Show each address book"
 msgstr "Salvare la directory?"
-
-msgid "Long-press to expand or collapse"
-msgstr "Tieni premuto per espandere o comprimere"
 
 msgid "Show or hide tags"
 msgstr "Mostra o nascondi le etichette"
@@ -6872,9 +7787,6 @@ msgstr "Regione (vuoto per una risorsa globale)"
 #, fuzzy
 msgid "Translates a greeting to test the service."
 msgstr "Traduce un saluto, per verificare che il servizio risponda."
-
-msgid "Messages"
-msgstr "Messaggi"
 
 msgid "Hylki's language ({language})"
 msgstr "La lingua di Hylki ({language})"
@@ -7111,13 +8023,21 @@ msgstr ""
 "Impossibile leggere la password per {email} dal portachiavi ({e}). Hylki "
 "riproverà alla prossima connessione."
 
+#, fuzzy
+msgid "The draft is not an OpenPGP message."
+msgstr "non è un messaggio Outlook"
+
+#, fuzzy
+msgid "The draft could not be decrypted."
+msgstr "Impossibile aprire il file"
+
+msgid "no OpenPGP key for {addr}"
+msgstr "nessuna chiave OpenPGP per {addr}"
+
 msgid ""
 "no OpenPGP key of your own for {addr}; generate one under Settings, OpenPGP"
 msgstr ""
 "nessuna tua chiave OpenPGP per {addr}; generane una in Impostazioni, OpenPGP"
-
-msgid "no OpenPGP key for {addr}"
-msgstr "nessuna chiave OpenPGP per {addr}"
 
 msgid "Could not save template: {e}"
 msgstr "Impossibile salvare il modello: {e}"
@@ -7191,6 +8111,16 @@ msgstr "Rimozione dell'allegato in corso…"
 msgid "Could not remove the attachment: {e}"
 msgstr "Impossibile rimuovere l'allegato: {e}"
 
+msgid ""
+"GNOME Online Accounts could not provide a sign-in token for {email}. Open "
+"Settings → Online Accounts and sign in again."
+msgstr ""
+
+msgid ""
+"Microsoft did not accept the saved sign-in for {email}. Open Hylki's "
+"Settings → Mail Accounts and sign in to it again."
+msgstr ""
+
 msgid "The attachment is no longer in the message on the server"
 msgstr "L'allegato non è più nel messaggio sul server"
 
@@ -7232,6 +8162,10 @@ msgstr ""
 
 msgid "Could not load {path}: {e}"
 msgstr "Impossibile caricare {path}: {e}"
+
+#, fuzzy
+msgid "This message was moved or deleted on the server."
+msgstr "Questo messaggio è troppo lungo per essere inviato per la traduzione."
 
 msgid "Could not load conversation: {e}"
 msgstr "Impossibile caricare la conversazione: {e}"
@@ -7330,6 +8264,14 @@ msgstr "Indicizzazione di {n} messaggi…"
 msgid ""
 "No network connection. The message is in the Outbox and will be sent when "
 "the connection is back."
+msgstr ""
+"Invio non riuscito: {e}. Il messaggio è nella Posta in uscita e verrà "
+"inviato quando la connessione sarà ripristinata."
+
+#. A merge's message the server would not take: retrying will
+#. not help unless it is edited, or the server's limit resets.
+#, fuzzy
+msgid "Send failed: {e}. The message is in the Outbox."
 msgstr ""
 "Invio non riuscito: {e}. Il messaggio è nella Posta in uscita e verrà "
 "inviato quando la connessione sarà ripristinata."
@@ -7605,20 +8547,12 @@ msgstr "Usa iniziali"
 msgid "Send-as aliases"
 msgstr "Alias di invio"
 
-msgid "Extra addresses this account can send as."
-msgstr ""
-
 msgid "Add Alias…"
 msgstr "Aggiungi alias…"
 
 #, fuzzy
 msgid "Signatures"
 msgstr "Firma"
-
-msgid ""
-"With more than one, the composer's signature button allows you to pick "
-"between them."
-msgstr ""
 
 #, fuzzy
 msgid "Add Signature"
@@ -7630,6 +8564,13 @@ msgstr "Importa file…"
 #, fuzzy
 msgid "Delete Signature"
 msgstr "Inserisci firma"
+
+#, fuzzy
+msgid "Sender name"
+msgstr "Nome cartella"
+
+msgid "Replaces the account's name in From. Aliases keep their own."
+msgstr ""
 
 #, fuzzy
 msgid "Start messages with this signature"
@@ -7680,10 +8621,6 @@ msgid ""
 "Downloads copies of every message from every folder of this account to this "
 "computer (except Trash, Junk and Drafts) and stores them in On This Computer."
 msgstr ""
-
-#, fuzzy
-msgid "Import"
-msgstr "Importa…"
 
 msgid "Mail already here is not imported again."
 msgstr ""
@@ -7754,17 +8691,11 @@ msgstr "Salva una copia della posta inviata in"
 msgid "Save a copy of replies in"
 msgstr "Salva una copia della posta inviata in"
 
-msgid "Server saves its own copy of sent mail"
-msgstr "Il server salva la propria copia della posta inviata"
-
 #, fuzzy
 msgid "For Gmail and others that file sent mail themselves."
 msgstr ""
 "Per Gmail e altri che archiviano la posta inviata autonomamente. Disabilita "
 "il salvataggio copia sopra."
-
-msgid "Templates"
-msgstr "Modelli"
 
 msgid "Hidden Folders"
 msgstr "Cartelle nascoste"
@@ -7791,6 +8722,20 @@ msgid "Hide the subject of encrypted mail"
 msgstr "Nascondi l'oggetto"
 
 msgid "Only the recipients see the subject. Others see \"...\"."
+msgstr ""
+
+#, fuzzy
+msgid "Send your key with your mail"
+msgstr "Suono per nuova posta"
+
+msgid "Autocrypt. Keys others send this way are kept too."
+msgstr ""
+
+#, fuzzy
+msgid "Encrypt by default"
+msgstr "Espandi le conversazioni per impostazione predefinita"
+
+msgid "Mail to people who ask for the same is encrypted."
 msgstr ""
 
 #, fuzzy
@@ -7885,61 +8830,6 @@ msgstr ""
 msgid "Always fold the right group into ⋯"
 msgstr ""
 
-msgid ""
-"The parts switched on below hide while Focus Mode is on. Activated by "
-"Ctrl+Shift+F or the main menu."
-msgstr ""
-
-msgid "Start in Focus Mode"
-msgstr "Avvia in Modalità focus"
-
-msgid "Fold the reading pane's toolbar"
-msgstr "Comprimi la barra degli strumenti del pannello di lettura"
-
-msgid "Every button goes into its ⋯ menu."
-msgstr "Ogni pulsante va nel suo menu ⋯."
-
-msgid "Fold the message list's header"
-msgstr "Comprimi l'intestazione dell'elenco messaggi"
-
-#, fuzzy
-msgid "Everything but the sidebar toggle goes into ⋯."
-msgstr "Ogni pulsante va nel suo menu ⋯."
-
-msgid "Hide the accounts in the sidebar"
-msgstr "Nascondi gli account nella barra laterale"
-
-msgid "Only the unified section stays."
-msgstr "Rimane solo la sezione unificata."
-
-msgid "Fold up the unified rows"
-msgstr "Comprimi le righe unificate"
-
-msgid "Hide sender avatars"
-msgstr "Nascondi gli avatar dei mittenti"
-
-msgid "Hide the preview text"
-msgstr "Nascondi il testo di anteprima"
-
-msgid "One line of preview text"
-msgstr "Una riga di testo di anteprima"
-
-msgid "Hide the subject"
-msgstr "Nascondi l'oggetto"
-
-msgid "Tag chips hide with it."
-msgstr ""
-
-msgid "Fold the sidebar to the icon rail"
-msgstr "Comprimi la barra laterale alla barra icone"
-
-msgid "Hovering it slides the full sidebar out."
-msgstr ""
-
-#, fuzzy
-msgid "Open messages in Reader View."
-msgstr "Il messaggio non è ancora stato caricato."
-
 msgid "Compose in the main window"
 msgstr "Componi nella finestra principale"
 
@@ -7993,6 +8883,17 @@ msgstr "Sempre espanso"
 msgid "Start new messages in"
 msgstr "Scrivi i messaggi in"
 
+#, fuzzy
+msgid "Reply in the original's format"
+msgstr "Rispondi con i file"
+
+#, fuzzy
+msgid "Ask before switching to plain text"
+msgstr "Incolla come testo normale"
+
+msgid "Only when formatting, images or links would be removed."
+msgstr ""
+
 msgid "For rich text. Default leaves it to the recipient's own font."
 msgstr ""
 
@@ -8001,13 +8902,6 @@ msgstr ""
 
 msgid "Default zoom"
 msgstr "Zoom predefinito"
-
-#, fuzzy
-msgid "Reply in the original's format"
-msgstr "Rispondi con i file"
-
-msgid "Plain-text mail is answered in plain text."
-msgstr ""
 
 msgid "Signature in replies"
 msgstr "Firma nelle risposte"
@@ -8043,10 +8937,6 @@ msgid "Sent mail shows who read it; the receipt goes here."
 msgstr ""
 
 #, fuzzy
-msgid "Move to Trash"
-msgstr "Sposta la posta di lista nel Cestino"
-
-#, fuzzy
 msgid "Keep in Inbox"
 msgstr "Lascia nella Posta in arrivo"
 
@@ -8065,6 +8955,18 @@ msgstr "Sopra il messaggio citato"
 msgid "Restore Default"
 msgstr "Ripristina predefiniti"
 
+#, fuzzy
+msgid "Attachment Reminder"
+msgstr "Cassetto allegati"
+
+msgid ""
+"Send asks first when the message mentions one of these words and nothing is "
+"attached."
+msgstr ""
+
+msgid "Words, separated by commas"
+msgstr ""
+
 msgid "Spelling"
 msgstr "Ortografia"
 
@@ -8082,6 +8984,9 @@ msgstr "Parole aggiunte"
 
 msgid "Changes apply after a restart."
 msgstr ""
+
+msgid "Mark as read"
+msgstr "Segna come letto"
 
 #, fuzzy
 msgid "Conversations mark each message as it comes into view."
@@ -8143,18 +9048,6 @@ msgid "The system's monospace font unless another is chosen."
 msgstr ""
 "Il carattere monospace del sistema a meno che non ne venga scelto un altro."
 
-msgid "Message card actions palette"
-msgstr "Palette azioni scheda messaggio"
-
-msgid "Message card actions palette timeout"
-msgstr "Timeout palette azioni scheda messaggio"
-
-msgid "Message card actions palette as a menu"
-msgstr "Palette azioni scheda messaggio come menu"
-
-msgid "The ⋯ opens the right-click menu instead."
-msgstr ""
-
 msgid "Single messages as cards"
 msgstr "Messaggi singoli come schede"
 
@@ -8173,6 +9066,9 @@ msgstr ""
 #, fuzzy
 msgid "Find bar position"
 msgstr "Azioni"
+
+msgid "Space shows pictures and PDFs in Sushi"
+msgstr ""
 
 #, fuzzy
 msgid "A message's text alone, without the sender's layout, colors and fonts."
@@ -8371,6 +9267,17 @@ msgstr "Incolla con formattazione"
 msgid "Paste as Plain Text"
 msgstr "Incolla come testo normale"
 
+msgid "Cut"
+msgstr ""
+
+#, fuzzy
+msgid "Select All"
+msgstr "Elimina tutto"
+
+#, fuzzy
+msgid "Insert Emoji"
+msgstr "Inserisci emoji"
+
 msgid "Email Client"
 msgstr "Client e-mail"
 
@@ -8506,6 +9413,101 @@ msgstr "La posta in arrivo unificata in modalità chiara"
 msgid "Hyprlab"
 msgstr "Hyprlab"
 
+#, fuzzy
+#~ msgid "New messages from this account start from it."
+#~ msgstr "Aggiunta ai nuovi messaggi inviati da questo account."
+
+#~ msgid "Sends through this account"
+#~ msgstr "Invia tramite questo account"
+
+#~ msgid "Hide the preview text"
+#~ msgstr "Nascondi il testo di anteprima"
+
+#~ msgid "One line of preview text"
+#~ msgstr "Una riga di testo di anteprima"
+
+#~ msgid "Not spam"
+#~ msgstr "Non è spam"
+
+#~ msgid "Add sender to Contacts"
+#~ msgstr "Aggiungi mittente ai contatti"
+
+#~ msgid "Mark as unread"
+#~ msgstr "Segna come non letto"
+
+#~ msgid "Remove star"
+#~ msgstr "Rimuovi contrassegno"
+
+#~ msgid "Star this message"
+#~ msgstr "Contrassegna questo messaggio"
+
+#~ msgid "View source"
+#~ msgstr "Visualizza sorgente"
+
+#~ msgid "Translate this message"
+#~ msgstr "Traduci questo messaggio"
+
+#~ msgid "Reply to this message"
+#~ msgstr "Rispondi a questo messaggio"
+
+#~ msgid "Reply to everyone on this message"
+#~ msgstr "Rispondi a tutti in questo messaggio"
+
+#~ msgid "Forward this message"
+#~ msgstr "Inoltra questo messaggio"
+
+#~ msgid "Move this message to a folder"
+#~ msgstr "Sposta questo messaggio in una cartella"
+
+#~ msgid "Archive this message"
+#~ msgstr "Archivia questo messaggio"
+
+#~ msgid "Delete this message"
+#~ msgstr "Elimina questo messaggio"
+
+#~ msgid "Show remote content"
+#~ msgstr "Mostra contenuto remoto"
+
+#~ msgid "Block remote content"
+#~ msgstr "Blocca contenuto remoto"
+
+#~ msgid "Hidden behind a toggle"
+#~ msgstr "Nascosto dietro un interruttore"
+
+#~ msgid "Shown while hovering"
+#~ msgstr "Mostrato al passaggio del mouse"
+
+#~ msgid "Always visible"
+#~ msgstr "Sempre visibile"
+
+#~ msgid "Actions palette in the message list"
+#~ msgstr "Palette azioni nell'elenco messaggi"
+
+#, fuzzy
+#~ msgid "The ⋯ row under each message."
+#~ msgstr "Allegati su ogni messaggio"
+
+#~ msgid "Open the actions palette on hover"
+#~ msgstr "Apri la palette azioni al passaggio del mouse"
+
+#~ msgid "Actions palette timeout"
+#~ msgstr "Timeout palette azioni"
+
+#, fuzzy
+#~ msgid "Seconds it stays open after the pointer leaves."
+#~ msgstr ""
+#~ "Secondi in cui la palette azioni di una scheda rimane aperta dopo che il "
+#~ "cursore l'ha lasciata."
+
+#~ msgid "Message card actions palette"
+#~ msgstr "Palette azioni scheda messaggio"
+
+#~ msgid "Message card actions palette timeout"
+#~ msgstr "Timeout palette azioni scheda messaggio"
+
+#~ msgid "Message card actions palette as a menu"
+#~ msgstr "Palette azioni scheda messaggio come menu"
+
 #~ msgid "Could not rename folder: unknown folder"
 #~ msgstr "Impossibile rinominare la cartella: cartella sconosciuta"
 
@@ -8513,19 +9515,11 @@ msgstr "Hyprlab"
 #~ msgstr "Ricevuto"
 
 #, fuzzy
-#~ msgid "Search all folders but Trash and Junk"
-#~ msgstr "Tutto tranne Cestino e Posta indesiderata"
-
-#, fuzzy
 #~ msgid "Search all folders, Trash and Junk too"
 #~ msgstr "Cerca in tutte le cartelle"
 
 #~ msgid "Search this folder"
 #~ msgstr "Cerca in questa cartella"
-
-#, fuzzy
-#~ msgid "Same as messages"
-#~ msgstr "Messaggi e-mail"
 
 #~ msgid "Leave in Inbox to only tag matching mail"
 #~ msgstr ""
@@ -8867,9 +9861,6 @@ msgstr "Hyprlab"
 #~ "Altrimenti il suono viene riprodotto solo con la notifica, quando la "
 #~ "finestra è in background o chiusa."
 
-#~ msgid "Moves the message to Trash."
-#~ msgstr "Sposta il messaggio nel Cestino."
-
 #~ msgid "Opens the message with a reply started."
 #~ msgstr "Apre il messaggio con una risposta avviata."
 
@@ -9077,9 +10068,6 @@ msgstr "Hyprlab"
 #~ "selezionati qui sotto iniziano compressi. Una pressione prolungata nella "
 #~ "barra li espande o comprime ancora, e la barra laterale completa torna "
 #~ "esattamente com'era."
-
-#~ msgid "Every account's folder list."
-#~ msgstr "L'elenco cartelle di ogni account."
 
 #~ msgid "The account list under the unified Inboxes row."
 #~ msgstr "L'elenco account sotto la riga Posta in arrivo unificata."
@@ -9669,10 +10657,6 @@ msgstr "Hyprlab"
 #~ "nel portachiavi di sistema e non vengono mai esportati; le chiavi OpenPGP "
 #~ "rimangono in GnuPG."
 
-#, fuzzy
-#~ msgid "Like the accounts"
-#~ msgstr "Sopra gli account"
-
 #~ msgid "Show or hide filters"
 #~ msgstr "Mostra o nascondi i filtri"
 
@@ -9766,9 +10750,6 @@ msgstr "Hyprlab"
 #~ "{name} viene rimosso dalla rubrica, e per una rubrica sincronizzata, "
 #~ "anche dal server."
 
-#~ msgid "Sort contacts"
-#~ msgstr "Ordina contatti"
-
 #, fuzzy
 #~ msgid "From your mail accounts"
 #~ msgstr "Aggiungi il tuo account e-mail"
@@ -9826,9 +10807,6 @@ msgstr "Hyprlab"
 #~ msgid "Add Directory"
 #~ msgstr "Aggiungi directory"
 
-#~ msgid "Look up recipients in this directory"
-#~ msgstr "Cerca i destinatari in questa directory"
-
 #, fuzzy
 #~ msgid "Save the CardDAV account?"
 #~ msgstr "Salvare l'account?"
@@ -9869,9 +10847,6 @@ msgstr "Hyprlab"
 
 #~ msgid "Apply"
 #~ msgstr "Applica"
-
-#~ msgid "Appended to new messages sent from this account."
-#~ msgstr "Aggiunta ai nuovi messaggi inviati da questo account."
 
 #~ msgid "HTML"
 #~ msgstr "HTML"

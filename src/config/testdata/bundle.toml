@@ -5,6 +5,7 @@ filters = []
 allowed_senders = []
 auto_remote_content = false
 remote_ahead = false
+clean_links = true
 gravatar = false
 avatars = true
 sender_logos = false
@@ -17,8 +18,6 @@ fetch_interval_secs = 300
 push = true
 metered_save_data = true
 blacklist = []
-palette_collapse_secs = 5
-card_palette_collapse_secs = 5
 threading = true
 threads_expanded = false
 thread_expansion = false
@@ -27,6 +26,8 @@ thread_newest_first = false
 fold_messages = "never"
 always_show_recipients = false
 pgp_labels = false
+key_lookup = false
+keyserver_lookup = false
 reader_find_bottom = false
 single_message_card = true
 reader_mode = false
@@ -38,6 +39,7 @@ reader_default = "remember"
 reader_zoom = 100
 card_attachments = true
 attachment_drawer = true
+previewer_pictures = false
 confirm_thread_delete = true
 message_theme = "system"
 override_fonts = false
@@ -54,11 +56,6 @@ notification_buttons = [
 ]
 show_attachments = true
 settings_open_accounts = false
-card_actions_hover = true
-card_actions_auto = false
-list_palette = true
-list_palette_hover = false
-card_palette_menu = true
 swipe_enabled = true
 swipe_reversed = false
 swipe_sensitivity = 3.5
@@ -72,6 +69,7 @@ return_paragraph = false
 toolbar_expanded = false
 compose_plain = false
 follow_plain = false
+ask_plain_switch = true
 reply_position = "top"
 signature_position = "above_quote"
 signature_dashes = false
@@ -89,7 +87,7 @@ app_theme = "system"
 text_scale = 100
 theme = ""
 preview_lines = 1
-list_layout = "cards"
+list_layout = "automatic"
 list_columns = [
     "star",
     "replied",
@@ -103,10 +101,14 @@ list_headings = false
 list_column_scroll = false
 list_group_by_date = true
 list_pills_below = false
+list_follows_window = false
+list_sort = ""
+list_sort_reversed = false
 date_groups_default_applied = true
 list_search_open = false
 contacts_search_open = false
 contact_names = false
+reply_to_sender = false
 list_search_bottom = false
 list_bulk_bar_bottom = false
 toolbar_fold_right = true
@@ -162,6 +164,12 @@ snoozed = true
 filtered = true
 tags = true
 
+[privacy.list_sorts]
+
+[privacy.list_recipients]
+
+[privacy.list_folded_days]
+
 [privacy.list_column_widths]
 
 [privacy.unified_chips]
@@ -181,6 +189,13 @@ archive = true
 junk = false
 trash = false
 snoozed = true
+
+[privacy.assistant]
+enabled = false
+address_books = false
+mail_people = false
+
+[privacy.assistant.accounts]
 
 [privacy.print]
 page_numbers = true

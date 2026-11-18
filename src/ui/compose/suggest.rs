@@ -52,6 +52,7 @@ pub(super) fn merge_loaded_suggestions(current: &mut Vec<Suggestion>, mut loaded
         {
             // The snapshot may already include that send: do not count it twice.
             s.score = s.score.max(recent.score);
+            s.sent = s.sent.max(recent.sent);
             if s.name.trim().is_empty() || s.name == s.email {
                 s.name = recent.name;
             }
@@ -85,11 +86,11 @@ impl Compose {
             .map(|own| &own.addresses)
     }
 
-    /// Suggestions matching `token`, ranked best-first (prefix match, then most
-    /// frequently used), capped to a handful.
+    /// Suggestions matching `token`, ranked best-first (written to, then a
+    /// prefix match, then most used), capped to a handful.
     fn ranked_matches(&self, token: &str) -> Vec<Suggestion> {
         let narrowed = self.narrowed();
-        let mut matches: Vec<Suggestion> = self
+        let matches: Vec<Suggestion> = self
             .suggestions
             .iter()
             .filter(|s| {
@@ -97,30 +98,7 @@ impl Compose {
             })
             .cloned()
             .collect();
-        // A directory matched on attributes the entry may not show (a
-        // surname under a display name), so its answers are not filtered
-        // again; one already known from Contacts or mail is not repeated,
-        // but is marked as in the directory (#307).
-        let in_directory: std::collections::HashSet<String> = self
-            .directory_matches
-            .iter()
-            .map(|s| s.email.to_lowercase())
-            .collect();
-        for s in &mut matches {
-            s.from_directory |= in_directory.contains(&s.email.to_lowercase());
-        }
-        let known: std::collections::HashSet<String> =
-            matches.iter().map(|s| s.email.to_lowercase()).collect();
-        let mut seen = std::collections::HashSet::new();
-        matches.extend(
-            self.directory_matches
-                .iter()
-                .filter(|s| {
-                    !known.contains(&s.email.to_lowercase()) && seen.insert(s.email.to_lowercase())
-                })
-                .cloned(),
-        );
-        crate::contacts::rank(&mut matches, token);
+        let mut matches = crate::contacts::merge_found(matches, &self.directory_matches, token);
         matches.truncate(8);
         matches
     }
@@ -338,22 +316,8 @@ impl Compose {
                 None => self.graph_directories.clone(),
             };
             std::thread::spawn(move || {
-                // Both at once: the slower decides when the list
-                // grows, not the two one after the other.
-                let (matches, failed) = std::thread::scope(|scope| {
-                    let org = (!graph.is_empty()).then(|| {
-                        scope.spawn(|| crate::contacts::graph_directory::search(&token, &graph))
-                    });
-                    let (mut matches, failed) = if narrowed {
-                        Default::default()
-                    } else {
-                        crate::contacts::directory::search(&token)
-                    };
-                    if let Some(found) = org.and_then(|h| h.join().ok()) {
-                        matches.extend(found);
-                    }
-                    (matches, failed)
-                });
+                let (matches, failed) =
+                    crate::contacts::search_directories(&token, &graph, !narrowed);
                 let _ = s.send(ComposeInput::DirectoryResults {
                     field,
                     token,
@@ -415,6 +379,7 @@ impl Compose {
             {
                 Some(s) => {
                     s.score += 1;
+                    s.sent += 1;
                     if s.name.trim().is_empty() || s.name == s.email {
                         s.name = n.name;
                     }
@@ -528,6 +493,7 @@ pub(super) fn wire_recipient_rows(widgets: &ComposeWidgets, sender: &ComponentSe
             row.remove_css_class("error");
             s.input_sender().emit(ComposeInput::Suggest(field));
             s.input_sender().emit(ComposeInput::MarkFieldsDirty);
+            s.input_sender().emit(ComposeInput::RecipientsChanged);
         });
 
         // Close the popover when the field loses focus.

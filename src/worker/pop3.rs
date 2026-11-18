@@ -7,7 +7,7 @@ use crate::cache::Cache;
 use crate::config::AccountConfig;
 use crate::i18n::{i18n, i18n_f};
 use crate::models::{Folder, FolderKind, Message};
-use crate::worker::auth::{load_or_migrate_password, load_smtp_password, sign_in_password};
+use crate::worker::auth::{resolve_keyring_passwords, sign_in_password};
 use crate::worker::compose::build::restore_msgid_case;
 use crate::worker::ids::hash_uid;
 use crate::worker::imap::send::flush_outbox;
@@ -56,10 +56,6 @@ pub(super) async fn run_pop3(
     mut rx: mpsc::UnboundedReceiver<MailRequest>,
     emit: impl Fn(WorkerEvent),
 ) {
-    // Resolve credentials from the keyring (same as the IMAP path).
-    load_or_migrate_password(&mut account);
-    load_smtp_password(&mut account);
-
     let cache = Cache::open()
         .map_err(|e| tracing::warn!("cache unavailable: {e}"))
         .ok();
@@ -73,6 +69,8 @@ pub(super) async fn run_pop3(
         c.save_folders(account_id, &folders);
     }
     emit(WorkerEvent::Folders(folders));
+    // After the account is on screen: a locked keyring may not answer (#573).
+    resolve_keyring_passwords(&mut account, &emit).await;
 
     let mut worker = Pop3Worker {
         account_id,
@@ -128,6 +126,10 @@ impl<E: Fn(WorkerEvent)> Pop3Worker<E> {
                 hits: Vec::new(),
                 done: true,
             }),
+            MailRequest::AskServer(ask) => ask.refuse(
+                account_id,
+                "POP3 servers cannot search: search already finds all that was downloaded",
+            ),
             MailRequest::Locate { message_id } => {
                 // No folders to search here beyond what the cache already
                 // held: answer "not found" so the app can report the miss.
@@ -192,17 +194,24 @@ impl<E: Fn(WorkerEvent)> Pop3Worker<E> {
             }
 
             MailRequest::LoadSource {
-                message_id: _,
+                message_id,
                 path: _,
                 uid,
             } => match pop3_fetch_raw(account, uid).await {
                 Ok(raw) => emit(WorkerEvent::Source {
-                    text: String::from_utf8_lossy(&raw).into_owned(),
+                    message_id,
+                    text: Some(String::from_utf8_lossy(&raw).into_owned()),
                 }),
-                Err(e) => emit(WorkerEvent::net_error(i18n_f(
-                    "Could not load source: {e}",
-                    &[("e", &(e).to_string())],
-                ))),
+                Err(e) => {
+                    emit(WorkerEvent::net_error(i18n_f(
+                        "Could not load source: {e}",
+                        &[("e", &(e).to_string())],
+                    )));
+                    emit(WorkerEvent::Source {
+                        message_id,
+                        text: None,
+                    });
+                }
             },
 
             MailRequest::LoadAttachments {

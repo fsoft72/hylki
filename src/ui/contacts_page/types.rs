@@ -377,7 +377,7 @@ pub(crate) enum ContactsPageInput {
         group: usize,
         person: usize,
     },
-    /// The header's import button: choose `.vcf` files for the Hylki book.
+    /// The header's import button: choose `.vcf` or CSV files to import.
     ImportContacts,
     CancelEdit,
     SaveEdit,
@@ -389,14 +389,10 @@ pub(crate) enum ContactsPageInput {
     /// re-read and re-sorted while the dialog was open.
     DeleteConfirmed(Vec<(String, String)>),
     /// The entries selected together: put the people in the group at this
-    /// index, ask to move them to this book or to delete them all.
+    /// index, or ask to delete them all.
     BulkAddToGroup(usize),
-    BulkMoveRequest(String),
-    /// Ask to move the contact at this index to the book `to`.
-    MoveRequest {
-        idx: usize,
-        to: String,
-    },
+    /// Ask which book the people at these indexes move to.
+    MoveDialog(Vec<usize>),
     /// Move the contact being edited, by book and UID, to the book `to`
     /// as `vcard` (its card with the edits, made for the new book),
     /// confirmed.
@@ -494,8 +490,12 @@ pub(crate) enum ContactsPageOutput {
     Tree(ContactTree),
     /// Name an address book in Hylki (`None`: its own name again).
     RenameBook { uid: String, name: Option<String> },
-    /// `.vcf` files chosen for import into the local Hylki book.
-    ImportContacts(Vec<std::path::PathBuf>),
+    /// Files chosen for import, and the book being looked at, to offer
+    /// first.
+    ImportContacts {
+        paths: Vec<std::path::PathBuf>,
+        book: Option<String>,
+    },
     /// Show the contact's photo in the app lightbox.
     ShowPhoto { name: String, data: Vec<u8> },
     /// Read the composer's suggestions for a group form

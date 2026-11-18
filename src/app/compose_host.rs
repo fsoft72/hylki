@@ -4,6 +4,7 @@ use adw::prelude::*;
 use relm4::prelude::*;
 
 use crate::config;
+use crate::models::Message;
 use crate::ui::compose::{Compose, ComposeInput, ComposePrefill};
 use crate::ui::message_list::MessageListInput;
 use crate::ui::message_view::MessageViewInput;
@@ -23,6 +24,9 @@ pub(super) struct ComposeHost {
     #[allow(dead_code)]
     pub(super) controller: Controller<Compose>,
     pub(super) window: adw::Window,
+    /// An AI assistant prepared it (`assistant.rs`, which limits how many
+    /// of those are open).
+    pub(super) assistant: bool,
 }
 
 /// The reader's inline reply/forward composer. `window` is `Some` only while the
@@ -35,9 +39,13 @@ pub(super) struct ReaderCompose {
     /// The message a split reply answers, by (account, id): its card in the
     /// reader is the one the reply was opened from.
     pub(super) answering: Option<(u32, u32)>,
-    /// A draft opened by selecting its row, which the list keeps selected.
-    pub(super) list_draft: bool,
+    /// A draft opened by selecting its row, which the list keeps selected,
+    /// by (account, id).
+    pub(super) list_draft: Option<(u32, u32)>,
 }
+
+/// A composer's id and its component.
+type OpenComposer<'a> = (u32, &'a Controller<Compose>);
 
 impl AppModel {
     /// A new message with these recipients, from the account being looked at.
@@ -81,7 +89,24 @@ impl AppModel {
             id,
             controller,
             window,
+            assistant: false,
         });
+    }
+
+    /// Every composer open now: in windows of their own, and the reader's
+    /// (inline or popped out). One draining closed is not.
+    pub(super) fn open_composers(&self) -> impl Iterator<Item = OpenComposer<'_>> {
+        self.composers
+            .iter()
+            .map(|h| (h.id, &h.controller))
+            .chain(self.reader_compose.iter().map(|r| (r.id, &r.controller)))
+    }
+
+    /// The open composer with this id.
+    pub(super) fn compose_controller(&self, id: u32) -> Option<&Controller<Compose>> {
+        self.open_composers()
+            .find(|(cid, _)| *cid == id)
+            .map(|(_, c)| c)
     }
 
     /// The revealer the inline composer should slide down in: the reader
@@ -236,6 +261,7 @@ impl AppModel {
                     id: r.id,
                     controller: r.controller,
                     window,
+                    assistant: false,
                 });
             }
             None => {
@@ -252,6 +278,25 @@ impl AppModel {
                 self.draining_composers.push((r.id, r.controller));
             }
         }
+    }
+
+    /// The draft open from its row left its folder (deleted, moved): its
+    /// editor goes without saving, or the save would bring it back (#392).
+    pub(super) fn close_gone_draft(&mut self, m: &Message) {
+        let gone = Some((m.account_id, m.id));
+        let Some(r) = self
+            .reader_compose
+            .take_if(|r| r.window.is_none() && r.list_draft == gone)
+        else {
+            return;
+        };
+        self.compose_history = (None, None);
+        self.refresh_undo_menu();
+        self.animate_cover_close();
+        self.reader_overflow_btn
+            .set_visible(self.reader_overflow_wanted());
+        r.controller.emit(ComposeInput::Discard);
+        self.draining_composers.push((r.id, r.controller));
     }
 
     /// Promote the reader's inline pane to a window, or collapse a window back
@@ -319,7 +364,7 @@ impl AppModel {
                     // over a reader that says no draft is selected, and a
                     // click on it, being no change, opens nothing. Saving
                     // gives the draft a new row anyway.
-                    if r.list_draft {
+                    if r.list_draft.is_some() {
                         self.message_list.emit(MessageListInput::ClearSelection);
                     }
                     // A sent split reply turns into its card; cancel, and

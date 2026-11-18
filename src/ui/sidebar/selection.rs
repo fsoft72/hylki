@@ -433,8 +433,45 @@ impl Sidebar {
         if let Some(label) = self.account_circle_badges.get(&id) {
             label.set_visible(false);
         }
-        if !self.collapsed {
+        // The peek panel follows the rail's selection: what it unfolds to
+        // show a row is its own look, not the account's saved state.
+        if !self.collapsed && !self.mirror {
             let _ = sender.output(SidebarOutput::AccountFolded { id, folded: false });
+        }
+    }
+
+    /// A click on a rail avatar opens the account's inbox; the second of a
+    /// double click opens or folds the account.
+    pub(super) fn on_rail_avatar_clicked(&mut self, id: u32, sender: ComponentSender<Self>) {
+        let window = gtk::Settings::default().map_or(400, |s| s.gtk_double_click_time());
+        let window = std::time::Duration::from_millis(window.max(0) as u64);
+        let second = self
+            .rail_last_click
+            .take()
+            .is_some_and(|(last, at)| last == id && at.elapsed() < window);
+        if second {
+            self.on_toggle_collapse_local(id, sender);
+        } else {
+            self.rail_last_click = Some((id, std::time::Instant::now()));
+            self.open_account_inbox(id);
+        }
+    }
+
+    /// Select an account's inbox, or with none its first folder. Selecting
+    /// its row is enough, folded away or not: the row's handler tells the app.
+    fn open_account_inbox(&self, account_id: u32) {
+        let folders = self
+            .sections
+            .iter()
+            .find(|s| s.account.id == account_id)
+            .map(|s| s.folders.as_slice())
+            .unwrap_or_default();
+        let target = folders
+            .iter()
+            .find(|f| f.kind == FolderKind::Inbox)
+            .or(folders.first());
+        if let Some(folder) = target {
+            self.select_folder(account_id, &folder.path);
         }
     }
 
@@ -492,11 +529,37 @@ impl Sidebar {
 }
 
 impl Sidebar {
-    pub(super) fn on_drop_start(&mut self) {
+    pub(super) fn on_drop_start(&mut self, sender: &ComponentSender<Self>) {
+        self.start_wait = false;
         let waited = self.start.take().is_some() | self.reannounce.take().is_some();
         if waited && self.selected == Sel::None {
+            let _ = sender.output(SidebarOutput::StandIn);
             self.restore_selection();
         }
+    }
+
+    /// Give the launch view's account five seconds to list its folders,
+    /// counted from when the account itself is listed (#642). Its cached
+    /// folders come with it; with none cached they wait on the network,
+    /// which an account offline at launch never reaches. Counted from
+    /// launch, as before, a slow start (a login, a cache brought up to date
+    /// after an upgrade) ran the time out before any account was listed.
+    pub(super) fn wait_for_start(&mut self, sender: &ComponentSender<Self>) {
+        let Some(StartTarget::Inbox(email) | StartTarget::Folder(email, _)) = &self.start else {
+            return;
+        };
+        let bare = self
+            .sections
+            .iter()
+            .any(|s| s.account.email.eq_ignore_ascii_case(email) && s.folders.is_empty());
+        if self.start_wait || !bare {
+            return;
+        }
+        self.start_wait = true;
+        let s = sender.input_sender().clone();
+        gtk::glib::timeout_add_seconds_local_once(5, move || {
+            let _ = s.send(SidebarInput::DropStart);
+        });
     }
 
     pub(super) fn on_reannounce(&mut self, sender: ComponentSender<Self>) {
@@ -596,7 +659,11 @@ impl Sidebar {
             self.quiet.set(false);
         }
         // A highlight inside a folded account shows nothing (#170:
-        // a notification click seemed to land nowhere); unfold it.
-        self.reveal_account(account_id, &sender);
+        // a notification click seemed to land nowhere); unfold it. The rail
+        // lights the avatar instead, and a click on the avatar must not
+        // unfold what it opens (#594).
+        if !self.collapsed {
+            self.reveal_account(account_id, &sender);
+        }
     }
 }

@@ -1,4 +1,4 @@
-user_version 22
+user_version 25
 
 table account_owner
 CREATE TABLE account_owner (
@@ -164,7 +164,7 @@ CREATE TABLE messages (
     starred        INTEGER NOT NULL,
     has_attachment INTEGER NOT NULL,
     message_id     TEXT    NOT NULL DEFAULT '',
-    references_    TEXT    NOT NULL DEFAULT '', preview TEXT NOT NULL DEFAULT '', reply_to TEXT NOT NULL DEFAULT '', keywords TEXT NOT NULL DEFAULT '', importance INTEGER NOT NULL DEFAULT 0, due INTEGER NOT NULL DEFAULT 0, gmail_labels TEXT NOT NULL DEFAULT '', answered INTEGER NOT NULL DEFAULT 0, forwarded INTEGER NOT NULL DEFAULT 0, bcc TEXT NOT NULL DEFAULT '',
+    references_    TEXT    NOT NULL DEFAULT '', preview TEXT NOT NULL DEFAULT '', reply_to TEXT NOT NULL DEFAULT '', keywords TEXT NOT NULL DEFAULT '', importance INTEGER NOT NULL DEFAULT 0, due INTEGER NOT NULL DEFAULT 0, gmail_labels TEXT NOT NULL DEFAULT '', answered INTEGER NOT NULL DEFAULT 0, forwarded INTEGER NOT NULL DEFAULT 0, bcc TEXT NOT NULL DEFAULT '', reply_to_name TEXT NOT NULL DEFAULT '',
     PRIMARY KEY (account_id, folder_path, uid)
 )
 
@@ -198,6 +198,22 @@ CREATE TABLE outbox (
     attempts    INTEGER NOT NULL DEFAULT 0,
     last_error  TEXT    NOT NULL DEFAULT ''
 , send_at INTEGER, forwards TEXT NOT NULL DEFAULT '')
+
+table pgp_peers
+CREATE TABLE pgp_peers (
+    addr                TEXT    PRIMARY KEY,
+    last_seen           INTEGER NOT NULL DEFAULT 0,
+    autocrypt_timestamp INTEGER NOT NULL DEFAULT 0,
+    autocrypt_key       TEXT    NOT NULL DEFAULT '',
+    autocrypt_digest    TEXT    NOT NULL DEFAULT '',
+    prefer_encrypt      INTEGER NOT NULL DEFAULT 0,
+    gossip_timestamp    INTEGER NOT NULL DEFAULT 0,
+    gossip_key          TEXT    NOT NULL DEFAULT '',
+    gossip_digest       TEXT    NOT NULL DEFAULT '',
+    found_key           TEXT    NOT NULL DEFAULT '',
+    found_by            TEXT    NOT NULL DEFAULT '',
+    found_checked       INTEGER NOT NULL DEFAULT 0
+)
 
 table refs_repair
 CREATE TABLE refs_repair (
@@ -263,6 +279,9 @@ index sqlite_autoindex_messages_1
 
 
 index sqlite_autoindex_msgid_case_1
+
+
+index sqlite_autoindex_pgp_peers_1
 
 
 index sqlite_autoindex_refs_repair_1

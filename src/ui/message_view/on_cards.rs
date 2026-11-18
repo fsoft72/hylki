@@ -2,7 +2,7 @@
 //! focus, scroll places and live patches.
 
 use super::snippets::tag_chips_html;
-use super::types::{CardAttachment, MessageViewOutput, SelectMode};
+use super::types::{CardAttachment, ChipAction, MessageViewOutput, SelectMode};
 use super::MessageView;
 use adw::prelude::*;
 use relm4::prelude::*;
@@ -27,6 +27,12 @@ impl MessageView {
         &mut self,
         map: std::collections::HashMap<(u32, u32), Vec<CardAttachment>>,
     ) {
+        // Handed over again with every refresh of the drawer, most often
+        // unchanged: patching the same rows in only lays the page out again.
+        // A page loaded since takes them in on its own (`on_rendered`).
+        if map == self.card_atts {
+            return;
+        }
         self.card_atts = map;
         let keys: Vec<(u32, u32)> = self.thread.iter().map(|m| (m.account_id, m.id)).collect();
         self.patch_card_atts(&keys);
@@ -52,14 +58,14 @@ impl MessageView {
         account_id: u32,
         id: u32,
         index: usize,
-        save: bool,
+        action: ChipAction,
         sender: &ComponentSender<Self>,
     ) {
         let _ = sender.output(MessageViewOutput::AttachmentAction {
             account_id,
             id,
             index,
-            save,
+            action,
         });
     }
 
@@ -208,9 +214,13 @@ impl MessageView {
         self.selected_cards = vec![key];
         self.apply_card_selection();
         let _ = sender.output(MessageViewOutput::SelectCards(vec![key]));
+        // The same 14px gap a reply's focus leaves (on_focus_card): without
+        // it the card stops flush under the bar above, its top border and
+        // selection outline hidden (#587).
         let js = format!(
             "(function(){{var s=document.querySelector('.hylki-msg[data-key=\"{}:{}\"]');\
-             if(s)s.scrollIntoView({{behavior:'smooth',block:'start'}});}})()",
+             if(s){{s.style.scrollMarginTop='14px';\
+             s.scrollIntoView({{behavior:'smooth',block:'start'}});}}}})()",
             key.0, key.1
         );
         self.run_js(&js);
@@ -222,6 +232,9 @@ impl MessageView {
                 Some(page) if self.body_page() == "loading" => {
                     page.grab_focus();
                     self.focus_held.set(true);
+                }
+                _ if self.source_shown() => {
+                    self.source_view.grab_focus();
                 }
                 _ => {
                     self.webview.grab_focus();
@@ -339,8 +352,6 @@ impl MessageView {
         }
         let js = format!(
             "(function(){{\
-             var b=document.querySelector('.hylki-act[data-act=\"star\"][data-key=\"{account_id}:{id}\"]');\
-             if(b)b.classList.{0}('on');\
              var s=document.querySelector('.hylki-msg[data-key=\"{account_id}:{id}\"]');\
              if(s)s.classList.{0}('starred');}})()",
             if starred { "add" } else { "remove" },
@@ -399,6 +410,11 @@ impl MessageView {
     }
 
     pub(super) fn on_scroll_anchor(&mut self, account_id: u32, id: u32, offset: u32) {
+        // A page under the pane's still has not been seen: where it stands
+        // is not the reader's place (a page loading reports the top).
+        if self.swap.held() {
+            return;
+        }
         self.saved_anchor = Some((account_id, id, offset));
         self.anchor_gutter = false;
     }
@@ -408,7 +424,7 @@ impl MessageView {
         self.anchor_gutter = true;
         // The anchor rides only on a document that keeps its place.
         self.did_autoscroll = true;
-        self.skip_fade = true;
+        self.skip_freeze = true;
     }
 
     pub(super) fn on_hold_place(&mut self, account_id: u32, id: u32) {

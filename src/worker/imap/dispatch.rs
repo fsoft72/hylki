@@ -7,6 +7,7 @@ use crate::i18n::i18n;
 use crate::worker::compose::build::restore_msgid_case;
 use crate::worker::lane::{related_from_cache, serve_cached_body, thread_summaries_with_members};
 use crate::worker::outbox::{delete_queued, emit_outbox, schedule_send, send_failed};
+use crate::worker::preempt::yield_to_queued_reader;
 use crate::worker::{offline_text, MailRequest, WorkerEvent};
 
 impl<E: Emit> ImapWorker<E> {
@@ -35,9 +36,16 @@ impl<E: Emit> ImapWorker<E> {
         let Some(pending_bodies) = self.serve_from_cache(&req) else {
             return;
         };
-        let Some(req) = self.ensure_session(req).await else {
+        let had_session = self.session.is_some();
+        let Some(mut req) = self.ensure_session(req).await else {
             return;
         };
+        if !had_session {
+            let Some(r) = yield_to_queued_reader(req, &mut self.rx, &mut self.backlog) else {
+                return;
+            };
+            req = r;
+        }
 
         // A background resync keeps quiet and leaves IDLE/watching alone.
         let background = matches!(req, MailRequest::SyncFolder { .. });
@@ -277,7 +285,11 @@ impl<E: Emit> ImapWorker<E> {
                 uid,
             } => self.on_load_body(message_id, path, uid).await,
             MailRequest::LoadBodies { path, .. } => self.on_load_bodies(path, pending_bodies).await,
-            MailRequest::LoadSource { path, uid, .. } => self.on_load_source(path, uid).await,
+            MailRequest::LoadSource {
+                message_id,
+                path,
+                uid,
+            } => self.on_load_source(message_id, path, uid).await,
             MailRequest::LoadAttachments {
                 message_id,
                 path,
@@ -355,6 +367,10 @@ impl<E: Emit> ImapWorker<E> {
             // Run from the idle ladder, a folder a step.
             MailRequest::FindText { gen, terms, paths } => {
                 self.on_find_text(gen, terms, paths);
+                After::Done
+            }
+            MailRequest::AskServer(ask) => {
+                self.on_ask_server(ask);
                 After::Done
             }
             MailRequest::UndoMove {

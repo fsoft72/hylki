@@ -8,16 +8,21 @@ use crate::i18n::{i18n, i18n_f};
 use crate::ui::recipient_row::RecipientRow;
 use crate::ui::rich_editor::{RichEditor, SourceKind};
 
+mod assistant;
+mod assistant_edit;
+mod attachment_check;
 mod attachments;
 mod cloud;
 mod format;
 mod history;
 mod host;
+mod key_status;
 mod keys;
 mod merge;
 mod merge_fields;
 mod messages;
 mod model;
+mod pgp_check;
 mod send;
 mod send_menu;
 mod setup;
@@ -25,8 +30,10 @@ mod showcase;
 mod signature;
 mod subject;
 mod suggest;
+mod template;
 #[cfg(test)]
 mod tests;
+mod text_diff;
 mod translate;
 mod types;
 
@@ -43,7 +50,7 @@ use showcase::showcase_hooks;
 use signature::sig_html;
 use subject::wire_subject;
 use suggest::{load_suggestions, wire_recipient_rows};
-pub(crate) use types::{ComposeAccount, ComposeInit, ComposePrefill};
+pub(crate) use types::{ComposeAccount, ComposeInit, ComposePrefill, Original};
 
 #[relm4::component(pub(crate))]
 impl Component for Compose {
@@ -399,6 +406,7 @@ impl Component for Compose {
             decorations,
             format,
             signature_position,
+            has_templates,
         } = init;
         let in_reply_to = prefill.in_reply_to.clone();
         let references = prefill.references.clone();
@@ -418,6 +426,8 @@ impl Component for Compose {
             .map(|a| a.signature.clone())
             .unwrap_or_default();
         let sign_default = accounts.get(selected).is_some_and(|a| a.sign_default);
+        // The user's own domains, which the assistant banner does not flag.
+        let own_domains = assistant::own_domains(&accounts);
 
         let completion = gtk::Popover::new();
         completion.set_autohide(false); // don't steal focus from the entry
@@ -432,13 +442,18 @@ impl Component for Compose {
         // another blank line (#349). With Return set to start paragraphs the
         // line is a paragraph too, so the first Return splits it into two.
         let resumed = prefill.resumed || draft_origin.is_some() || outbox_origin.is_some();
-        let mut content = String::from(
-            match (resumed, crate::config::load_privacy().return_paragraph) {
-                (true, _) => "",
-                (false, true) => "<p><br></p>",
-                (false, false) => "<div><br></div>",
-            },
-        );
+        let blank_line = match (resumed, crate::config::load_privacy().return_paragraph) {
+            (true, _) => "",
+            (false, true) => "<p><br></p>",
+            (false, false) => "<div><br></div>",
+        };
+        // Text written for the user (an assistant's) stands where they would
+        // have typed, with the blank line under it to part it from the rest.
+        let mut content = if prefill.typed_html.is_empty() {
+            String::from(blank_line)
+        } else {
+            format!("{}{blank_line}", prefill.typed_html)
+        };
         let sig_dashes = crate::config::load_privacy().signature_dashes;
         let sig = if !resumed && !prefill.no_signature && !current_sig.is_empty() {
             sig_html(&current_sig, sig_dashes)
@@ -514,6 +529,7 @@ impl Component for Compose {
                 accounts
                     .get(selected)
                     .is_some_and(|a| !a.signatures.is_empty()),
+                has_templates,
                 &sender,
             );
 
@@ -563,6 +579,13 @@ impl Component for Compose {
             sign: false,
             sign_touched: false,
             sign_expected: None,
+            encrypt_touched: false,
+            encrypt_expected: None,
+            reply_to_encrypted: prefill_encrypt,
+            key_statuses: Default::default(),
+            key_generation: 0,
+            key_badges: false,
+            peer_keys: Vec::new(),
             format,
             zoom_chip,
             format_btn,
@@ -592,6 +615,14 @@ impl Component for Compose {
             cloud_passwords: Vec::new(),
             undo_stack: Vec::new(),
             redo_stack: Vec::new(),
+            by_assistant: prefill.assistant,
+            from_encrypted: prefill.from_encrypted,
+            own_domains,
+            assistant_banner: None,
+            assistant_edit: None,
+            edit_loss: None,
+            edit_bar: assistant_edit::new_edit_bar(),
+            last_edit: None,
         };
         model.from_account = model
             .accounts
@@ -602,6 +633,7 @@ impl Component for Compose {
         let widgets = view_output!();
         if prefill_encrypt && crate::mail::pgp::available() {
             // Through the buttons, so the toggles and the model agree.
+            model.encrypt_expected = Some(true);
             widgets.encrypt_btn.set_active(true);
         } else if sign_default && crate::mail::pgp::available() {
             // A draft does not record whether it was signed, so a reopened
@@ -610,6 +642,12 @@ impl Component for Compose {
             widgets.sign_btn.set_active(true);
         }
         widgets.editor_holder.append(&model.editor.widget);
+        if prefill.assistant {
+            let banner = assistant::banner(&prefill, &model.own_domains);
+            widgets.toolbar_root.add_top_bar(&banner);
+            model.assistant_banner = Some(banner);
+        }
+        widgets.toolbar_root.add_top_bar(&model.edit_bar);
 
         // The inline/window toggle: only reply/forward panes can toggle. Its icon
         // reflects the current host (fullscreen = "expand to window", restore =
@@ -661,6 +699,8 @@ impl Component for Compose {
         load_suggestions(own_addresses, &sender);
 
         wire_recipient_rows(&widgets, &sender);
+        // The prefilled recipients' keys (a reply's, a draft's).
+        sender.input(ComposeInput::RecipientsChanged);
 
         wire_subject(&widgets, &sender);
 
@@ -803,7 +843,11 @@ impl Component for Compose {
 
                 ComposeInput::CustomFrom(on) => self.on_custom_from(on, widgets),
 
-                ComposeInput::AccountChanged => self.on_account_changed(widgets),
+                ComposeInput::AccountChanged => {
+                    self.on_account_changed(widgets);
+                    // Another From may have another key and preference.
+                    sender.input(ComposeInput::RecipientsChanged);
+                }
 
                 ComposeInput::InsertSignature(place) => self.on_insert_signature(place, widgets),
 
@@ -886,7 +930,7 @@ impl Component for Compose {
 
                 ComposeInput::ApplyFormat(to) => self.on_apply_format(to, &sender),
 
-                ComposeInput::LoadAs { from, to, body } => self.on_load_as(from, to, body),
+                ComposeInput::LoadAs { from, to, body } => self.on_load_as(from, to, body, &sender),
 
                 ComposeInput::TogglePreview(on) => self.on_toggle_preview(on, &sender),
 
@@ -900,14 +944,16 @@ impl Component for Compose {
                     };
                     self.editor.show_preview(Some(&html));
                 }
-                ComposeInput::ToggleEncrypt(on) => {
-                    self.encrypt = on;
-                    self.editor.pause_grammar(on);
-                    if on && !self.sign {
-                        self.sign = true;
-                        widgets.sign_btn.set_active(true);
-                    }
+                ComposeInput::ToggleEncrypt(on) => self.on_toggle_encrypt(on, widgets),
+                ComposeInput::RecipientsChanged => self.on_recipients_changed(widgets, &sender),
+                ComposeInput::LookUpKeys(generation) => {
+                    self.on_look_up_keys(generation, widgets, &sender)
                 }
+                ComposeInput::KeysFound {
+                    generation,
+                    badges,
+                    statuses,
+                } => self.on_keys_found(generation, badges, statuses, widgets),
                 ComposeInput::ToggleReceipt(on) => {
                     self.request_receipt = on;
                     self.fields_dirty = true;
@@ -921,22 +967,32 @@ impl Component for Compose {
                 }
                 ComposeInput::Send => self.on_send(widgets, &sender),
 
-                ComposeInput::SendBody(fields) => self.on_send_body(fields, &sender),
+                ComposeInput::SendBody(fields) => self.on_send_body(fields, widgets, &sender),
+
+                ComposeInput::SendAnyway(fields) => self.finish_send(fields, &sender),
 
                 ComposeInput::MailMerge => self.on_mail_merge(widgets, &sender),
 
-                ComposeInput::MergeFields(target) => {
-                    self.on_merge_fields(target, widgets, &sender)
-                }
+                ComposeInput::MergeFields(target) => self.on_merge_fields(target, widgets),
 
                 ComposeInput::MergeBody(fields) => self.on_merge_body(fields, widgets, &sender),
 
-                ComposeInput::MergeSend { fields, letters } => {
-                    self.on_merge_send(fields, letters, &sender)
-                }
+                ComposeInput::MergeSend {
+                    fields,
+                    letters,
+                    interval,
+                } => self.on_merge_send(fields, letters, interval, &sender),
 
                 ComposeInput::SaveDraft => self.on_save_draft(false, widgets, &sender),
                 ComposeInput::SaveAsTemplate => self.on_save_draft(true, widgets, &sender),
+
+                ComposeInput::InsertTemplate => {
+                    let _ = sender.output(ComposeOutput::PickTemplate {
+                        id: self.compose_id,
+                    });
+                }
+
+                ComposeInput::TemplateBody(html) => self.insert_template(html),
 
                 ComposeInput::SaveDraftBody {
                     fields,
@@ -950,6 +1006,14 @@ impl Component for Compose {
                 ComposeInput::AutoSaveBody(fields) => self.on_auto_save_body(fields, &sender),
 
                 ComposeInput::Autosaved { saved, origin } => self.on_autosaved(saved, origin),
+
+                input @ (ComposeInput::AssistantRead { .. }
+                | ComposeInput::AssistantEdit(_)
+                | ComposeInput::ApplyAssistantEdit
+                | ComposeInput::RejectAssistantEdit
+                | ComposeInput::ReshowAssistantDiff) => {
+                    self.on_assistant_input(input, widgets, root, &sender)
+                }
             }
         }
         // Overriding `update_with_view` takes over relm4's default, which

@@ -37,6 +37,8 @@ macro_rules! pref {
 mod about;
 mod accounts;
 mod actions;
+mod assistant;
+mod assistant_organize;
 mod attachments;
 mod boot;
 mod card_menu;
@@ -69,7 +71,13 @@ mod hierarchy;
 mod identity;
 mod invites;
 mod keymap;
+mod keyring_alert;
+mod list_folds;
 mod list_header;
+mod list_names;
+mod list_sort;
+mod mail_split;
+mod merge_send;
 mod model;
 mod model_new;
 mod move_tag;
@@ -105,6 +113,7 @@ mod settings_store;
 mod settings_window;
 mod shortcuts;
 mod showcase;
+mod source;
 mod sidebar;
 mod sidebar_contents;
 mod sidebar_peek;
@@ -134,6 +143,7 @@ pub(crate) use model::AppModel;
 pub(crate) use msg::AppMsg;
 pub(crate) use uri_queue::{
     is_message_file, queue_attach_files, queue_mailto, queue_message_file, queue_mid,
+    queue_start_view,
 };
 
 use attachments::schedule_download_prune;
@@ -169,7 +179,7 @@ impl SimpleComponent for AppModel {
             // Persist the window size + maximized state on close. (Position and
             // which monitor can't be restored on Wayland — the compositor owns
             // placement — so only the geometry is saved.)
-            connect_close_request[background = model.run_in_background.clone(), outgoing = model.outgoing.clone()] => move |w| {
+            connect_close_request[background = model.run_in_background.clone(), outgoing = model.outgoing.clone(), merges = model.merges.clone()] => move |w| {
                 save_window_geometry(w);
                 // Running in the background: hide the window and stay alive, so
                 // mail keeps arriving and GNOME lists Hylki under Background Apps
@@ -180,7 +190,7 @@ impl SimpleComponent for AppModel {
                     w.set_visible(false);
                     return gtk::glib::Propagation::Stop;
                 }
-                exit_now(&outgoing)
+                exit_now(&outgoing, &merges)
             },
 
             // Send's toasts (#434) float over everything, the status bar
@@ -294,6 +304,10 @@ impl SimpleComponent for AppModel {
                     #[name = "content_stack"]
                     gtk::Stack {
                         set_hexpand: true,
+                        // Only the page on show asks for width: the
+                        // gallery's columns would hold the window wide
+                        // while the mail is showing (#624).
+                        set_hhomogeneous: false,
                         // Swap the mail panes for the attachments gallery or
                         // the contacts view, at once: no transition.
                         #[watch]
@@ -314,49 +328,8 @@ impl SimpleComponent for AppModel {
                         // one it keeps the stock separator.
                         add_css_class: "mail-split",
                         set_wide_handle: false,
-                        // Launch wide enough for a row's actions palette. That is
-                        // also the list's minimum while the avatars are on,
-                        // so `shrink_start_child: false` clamps to the same figure
-                        // either way. With the circles off the minimum drops to what
-                        // the sender and subject need (#29) — a fine width to be
-                        // able to drag down to, but a poor one to open at.
-                        set_position: crate::config::load_list_pane_width(),
-                        // Remember the width the user drags to (#28). Debounced:
-                        // position-notify fires per pixel of a drag (and when the
-                        // window squeezes the pane), one write once it settles.
-                        connect_position_notify[
-                            sender,
-                            pending = std::rc::Rc::new(std::cell::RefCell::new(
-                                None::<gtk::glib::SourceId>,
-                            ))
-                        ] => move |p| {
-                            let pos = p.position();
-                            // With the reader below, the list's height (#475).
-                            let below = p.orientation() == gtk::Orientation::Vertical;
-                            // Automatic layout follows the width as it is
-                            // dragged, not once the drag has settled (#334).
-                            if !below {
-                                sender.input(AppMsg::ListPaneWidth(pos));
-                            }
-                            if let Some(id) = pending.borrow_mut().take() {
-                                id.remove();
-                            }
-                            let armed = pending.clone();
-                            *pending.borrow_mut() = Some(gtk::glib::timeout_add_local_once(
-                                std::time::Duration::from_millis(600),
-                                move || {
-                                    *armed.borrow_mut() = None;
-                                    if below {
-                                        crate::config::save_list_pane_height(pos);
-                                    } else {
-                                        crate::config::save_list_pane_width(pos);
-                                    }
-                                },
-                            ));
-                        },
-                        // The list keeps its width as the window resizes (the
-                        // reader absorbs the change), and can't be dragged narrower
-                        // than its own minimum. The reader has a floor of its own:
+                        // `MailSplit` places the divider (#28, #648). The
+                        // list can't be dragged narrower than its own minimum. The reader has a floor of its own:
                         // its header carries a full row of actions, and squeezing it
                         // pushed them off the right-hand edge of the window.
                         set_resize_start_child: false,
@@ -869,7 +842,7 @@ impl SimpleComponent for AppModel {
                             #[name = "reader_content_box"]
                             set_content = &gtk::Box {
                                 set_orientation: gtk::Orientation::Vertical,
-                                append: model.attachment_drawer.widget(),
+                                append: model.reader_swap.host(),
                             },
                             },
                         },
@@ -918,6 +891,7 @@ impl SimpleComponent for AppModel {
         if model.contact_names {
             model.read_contact_names(&sender);
         }
+        model.apply_reply_to_sender();
         watch_system_events(&sender);
         model.open_wizard_if_needed(&sender);
         model.push_settings_to_children();
@@ -932,7 +906,7 @@ impl SimpleComponent for AppModel {
         let reader_snooze_btn = model.reader_snooze_btn.clone();
         let widgets = view_output!();
         let _ = model.reader_header.set(widgets.reader_header.clone());
-        let _ = model.mail_split.set(widgets.mail_split.clone());
+        model.mail_split.wire(widgets.mail_split.clone(), &sender);
         let _ = model.toasts.set(widgets.toasts.clone());
         model.init_reader_header_menu(&widgets, &sender);
         model.init_reader_toolbar_fold(&widgets, &sender);
@@ -940,6 +914,7 @@ impl SimpleComponent for AppModel {
         model.init_compose_overlay(&widgets);
         model.init_gallery_page(&widgets, &sender);
         model.install_notification_actions(&sender);
+        model.install_view_actions(&sender);
         model.init_window_size(&root, &widgets, &sender);
         model.init_hover_peek(&widgets, &sender);
         model.sidebar_split = Some(widgets.sidebar_split.clone());
@@ -956,6 +931,7 @@ impl SimpleComponent for AppModel {
         root.add_controller(palette_key(&sender));
 
         model.install_key_controller(&root, &sender);
+        model.install_undo_send_key(&root, &sender);
 
         model.show_startup_notices(&sender);
 
@@ -978,6 +954,7 @@ impl SimpleComponent for AppModel {
             .emit(NotifyInput::SetAtTop(model.status_bar_top));
         model.install_showcase_overlays(&sender);
         model.drain_hand_off_queues(&sender);
+        model.start_assistant_if_on(&sender);
 
         model.install_drop_targets(&root, &widgets, &sender);
 

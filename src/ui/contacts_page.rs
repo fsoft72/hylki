@@ -20,13 +20,14 @@ mod forms;
 mod list;
 mod member_editor;
 mod menus;
+mod move_dialog;
 mod rows;
 mod types;
 
-use menus::{book_label_factory, new_menu, FilterMenu};
+use menus::{new_menu, FilterMenu};
 use rows::{row_factory, DragKeys};
 
-pub(crate) use menus::choose_vcf_files;
+pub(crate) use menus::{book_label_factory, choose_contact_files};
 pub(crate) use rows::dragged_contacts;
 pub(crate) use types::*;
 
@@ -74,7 +75,7 @@ impl Component for ContactsPage {
                     },
                     pack_end = &gtk::Button {
                         set_icon_name: "document-open-symbolic",
-                        set_tooltip_text: Some(i18n("Import vCard files into the Hylki address book").as_str()),
+                        set_tooltip_text: Some(i18n("Import vCard or CSV files into the Hylki address book").as_str()),
                         add_css_class: "flat",
                         connect_clicked => ContactsPageInput::ImportContacts,
                     },
@@ -95,7 +96,7 @@ impl Component for ContactsPage {
                     set_description: Some(if model.loading {
                         String::new()
                     } else {
-                        i18n("Add a contact with the + button, or import vCard files. Contacts are kept in Hylki's own address book, and the address books of GNOME Contacts are listed here too.")
+                        i18n("Add a contact with the + button, or import vCard or CSV files. Contacts are kept in Hylki's own address book, and the address books of GNOME Contacts are listed here too.")
                     }.as_str()),
                 },
             },
@@ -179,7 +180,7 @@ impl Component for ContactsPage {
                         },
                         pack_end = &gtk::Button {
                             set_icon_name: "document-open-symbolic",
-                            set_tooltip_text: Some(i18n("Import vCard files into the Hylki address book").as_str()),
+                            set_tooltip_text: Some(i18n("Import vCard or CSV files into the Hylki address book").as_str()),
                             add_css_class: "flat",
                             connect_clicked => ContactsPageInput::ImportContacts,
                         },
@@ -470,11 +471,8 @@ impl Component for ContactsPage {
             }
             ContactsPageInput::SelectFirst(n) => self.on_select_first(n),
             ContactsPageInput::BulkAddToGroup(g) => self.on_bulk_add_to_group(sender.clone(), g),
-            ContactsPageInput::BulkMoveRequest(to) => {
-                self.on_bulk_move_request(widgets, sender.clone(), to)
-            }
-            ContactsPageInput::MoveRequest { idx, to } => {
-                self.on_move_request(widgets, sender.clone(), idx, to)
+            ContactsPageInput::MoveDialog(people) => {
+                self.on_move_dialog(widgets, sender.clone(), people)
             }
             ContactsPageInput::EditMoveConfirmed { to, key, vcard } => {
                 self.on_edit_move_confirmed(widgets, sender.clone(), to, key, vcard)

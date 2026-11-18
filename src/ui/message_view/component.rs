@@ -11,7 +11,8 @@ use relm4::prelude::*;
 
 #[relm4::component(pub(crate))]
 impl Component for MessageView {
-    type Init = ();
+    /// The freeze of the pane the reader is in (with its attachment drawer).
+    type Init = crate::ui::reader_swap::ReaderSwap;
     type Input = MessageViewInput;
     type Output = MessageViewOutput;
     type CommandOutput = ();
@@ -48,6 +49,11 @@ impl Component for MessageView {
 
                 gtk::Revealer {
                     set_transition_type: gtk::RevealerTransitionType::SlideDown,
+                    // A banner that comes with the message opening is just
+                    // there: sliding in, it would push the page down after
+                    // it shows.
+                    #[watch]
+                    set_transition_duration: model.banner_slide_ms(),
                     #[watch]
                     set_reveal_child: model.spoof_alert_shown(),
 
@@ -71,11 +77,38 @@ impl Component for MessageView {
                     },
                 },
 
+                // Source mode (#658): what the body shows, and the way back.
+                gtk::Revealer {
+                    set_transition_type: gtk::RevealerTransitionType::SlideDown,
+                    #[watch]
+                    set_reveal_child: model.source.is_some(),
+
+                    gtk::Box {
+                        add_css_class: "source-bar",
+                        set_spacing: 8,
+
+                        gtk::Image { set_icon_name: Some("code-symbolic") },
+                        gtk::Label {
+                            set_label: &i18n("Message Source"),
+                            set_hexpand: true,
+                            set_halign: gtk::Align::Start,
+                            set_xalign: 0.0,
+                        },
+                        gtk::Button {
+                            set_label: &i18n("Show Message"),
+                            set_valign: gtk::Align::Center,
+                            connect_clicked => MessageViewInput::CloseSource,
+                        },
+                    },
+                },
+
                 #[name = "remote_alert"]
                 gtk::Revealer {
                     set_transition_type: gtk::RevealerTransitionType::SlideDown,
                     #[watch]
-                    set_reveal_child: model.blocked && model.show_banner,
+                    set_transition_duration: model.banner_slide_ms(),
+                    #[watch]
+                    set_reveal_child: model.blocked && model.show_banner && model.source.is_none(),
 
                     gtk::Box {
                         add_css_class: "remote-alert",
@@ -193,6 +226,7 @@ impl Component for MessageView {
                         "under-bar",
                         model.spoof_alert_shown()
                             || (model.blocked && model.show_banner)
+                            || model.source.is_some()
                             || (model.find_open && !model.find_bottom),
                     ),
                     // Under the split reply there is no list row to line up
@@ -349,11 +383,9 @@ impl Component for MessageView {
                     // page sits on it — the spinner box is centred and paints
                     // only its own few square inches.
                     add_css_class: "reader-cover",
-                    // Both pages sit on that same ground, so a short dissolve
-                    // between them reads as the message arriving rather than as
-                    // the hard cut a stack does by default.
-                    set_transition_type: gtk::StackTransitionType::Crossfade,
-                    set_transition_duration: 120,
+                    // A cut: the spinner shows with its message, under the
+                    // pane's still or as the reveal after it, never dissolved
+                    // over the message before.
                     set_vexpand: true,
                     #[watch]
                     set_visible_child_name: model.body_page(),
@@ -388,13 +420,13 @@ impl Component for MessageView {
     }
 
     fn init(
-        _init: Self::Init,
+        swap: Self::Init,
         root: Self::Root,
         sender: ComponentSender<Self>,
     ) -> ComponentParts<Self> {
         let webview = new_webview();
         let link_preview = link_preview_plaque(&webview);
-        let mut model = MessageView::initial(webview, &link_preview);
+        let mut model = MessageView::initial(webview, &link_preview, swap);
         model.faces.input = Some(sender.input_sender().clone());
         model.watch_loads(&sender);
         model.watch_context_menu(&sender);
@@ -414,7 +446,6 @@ impl Component for MessageView {
         model.apply_webview_bg(model.effective_dark());
         let body_overlay = gtk::Overlay::new();
         body_overlay.set_child(Some(&model.webview));
-        body_overlay.add_overlay(&model.page_fade.cover);
         body_overlay.add_overlay(&link_preview);
         let zoom_sender = sender.clone();
         body_overlay.add_controller(crate::ui::ctrl_scroll_zoom(
@@ -424,6 +455,9 @@ impl Component for MessageView {
             },
         ));
         widgets.body_stack.add_named(&body_overlay, Some("body"));
+        widgets
+            .body_stack
+            .add_named(&model.source_scroller(&sender), Some("source"));
         widgets.body_stack.set_visible_child_name("body");
         ComponentParts { model, widgets }
     }
@@ -455,11 +489,9 @@ impl Component for MessageView {
                 folder_labels,
                 instant,
                 sent,
+                &sender,
             ),
             MessageViewInput::LoadRemoteOnce => self.on_load_remote_once(&sender),
-            MessageViewInput::ToggleRemote { account_id, id } => {
-                self.on_toggle_remote(account_id, id, &sender)
-            }
             MessageViewInput::AllowSenderAlways => self.on_allow_sender_always(&sender),
             MessageViewInput::Print => self.on_print(),
             MessageViewInput::PrintPreview => self.on_print_preview(),
@@ -469,7 +501,9 @@ impl Component for MessageView {
                 allow_remote,
                 preview,
             } => self.on_print_messages(*message, thread, allow_remote, preview),
-            MessageViewInput::FacesChanged => self.render(),
+            MessageViewInput::FacesChanged => {
+                self.render();
+            }
 
             MessageViewInput::ThemeChanged => self.on_theme_changed(),
             MessageViewInput::SetAlwaysShowRecipients(on) => {
@@ -502,8 +536,8 @@ impl Component for MessageView {
                 account_id,
                 id,
                 index,
-                save,
-            } => self.on_attachment_action(account_id, id, index, save, &sender),
+                action,
+            } => self.on_attachment_action(account_id, id, index, action, &sender),
             MessageViewInput::SetBannerShown(show) => {
                 self.show_banner = show;
             }
@@ -599,6 +633,7 @@ impl Component for MessageView {
             } => self.on_pgp_done(account_id, id, result, &sender),
             MessageViewInput::Rendered => self.on_rendered(),
             MessageViewInput::FaceFound(answer) => self.on_face_found(*answer),
+            MessageViewInput::LoadingDeadline(generation) => self.on_loading_deadline(generation),
             MessageViewInput::SuppressAutoRead { account_id, id } => {
                 self.on_suppress_auto_read(account_id, id)
             }
@@ -627,11 +662,6 @@ impl Component for MessageView {
             MessageViewInput::MarkSeen { account_id, id } => {
                 self.on_mark_seen(account_id, id, &sender)
             }
-            MessageViewInput::CardAction {
-                action,
-                account_id,
-                id,
-            } => self.on_card_action(action, account_id, id, &sender),
             MessageViewInput::CardMenuAt { key, x, y, hit } => {
                 self.on_card_menu_at(key, x, y, hit, &sender)
             }
@@ -642,19 +672,6 @@ impl Component for MessageView {
                 y,
                 page_width,
             } => self.on_card_menu_from(account_id, id, x, y, page_width, &sender),
-            MessageViewInput::CardMoveAt {
-                account_id,
-                id,
-                x,
-                y,
-                page_width,
-            } => self.on_card_move_at(account_id, id, x, y, page_width, &sender),
-            MessageViewInput::SetCardActionsMode {
-                hover_toggle,
-                hover_auto,
-            } => self.on_set_card_actions_mode(hover_toggle, hover_auto),
-            MessageViewInput::SetPaletteCollapse(secs) => self.on_set_palette_collapse(secs),
-            MessageViewInput::SetCardPaletteMenu(on) => self.on_set_card_palette_menu(on),
             MessageViewInput::ClearDot { account_id, id } => self.on_clear_dot(account_id, id),
             MessageViewInput::SetReadMark(policy) => self.on_set_read_mark(policy),
             MessageViewInput::OpenFind => self.on_open_find(&sender),
@@ -662,8 +679,13 @@ impl Component for MessageView {
             MessageViewInput::SetFindBottom(on) => self.on_set_find_bottom(on),
             MessageViewInput::DragCard(key) => self.on_drag_card(key),
             MessageViewInput::FindChanged(text) => self.on_find_changed(text),
+            MessageViewInput::FindNext if self.source_shown() => self.source_find_step(1),
+            MessageViewInput::FindPrev if self.source_shown() => self.source_find_step(-1),
             MessageViewInput::FindNext => self.eval_find("hylkiFindStep(1)"),
             MessageViewInput::FindPrev => self.eval_find("hylkiFindStep(-1)"),
+            MessageViewInput::SourceLoading(key) => self.on_source_loading(key),
+            MessageViewInput::ShowSource { key, text } => self.on_show_source(key, text),
+            MessageViewInput::CloseSource => self.on_close_source(),
             MessageViewInput::FindCounted { current, total } => {
                 self.find_matches = Some((current, total));
             }
@@ -697,9 +719,11 @@ impl Component for MessageView {
                 edit,
             } => self.on_template_action(account_id, id, edit, &sender),
             MessageViewInput::HoldPlace { account_id, id } => self.on_hold_place(account_id, id),
-            MessageViewInput::CardContact { account_id, id } => {
-                self.on_card_contact(account_id, id, &sender)
-            }
+            MessageViewInput::CardAction {
+                action,
+                account_id,
+                id,
+            } => self.on_card_action(action, account_id, id, &sender),
             MessageViewInput::OpenHeader { account_id, id } => {
                 self.on_open_header(account_id, id, &sender)
             }

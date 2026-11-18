@@ -67,6 +67,7 @@ CREATE TABLE IF NOT EXISTS messages (
     answered       INTEGER NOT NULL DEFAULT 0,
     forwarded      INTEGER NOT NULL DEFAULT 0,
     bcc            TEXT    NOT NULL DEFAULT '',
+    reply_to_name  TEXT    NOT NULL DEFAULT '',
     PRIMARY KEY (account_id, folder_path, uid)
 );
 CREATE INDEX IF NOT EXISTS messages_by_message_id ON messages (message_id);
@@ -197,6 +198,23 @@ CREATE TABLE IF NOT EXISTS draft_copies (
     raw         BLOB    NOT NULL,
     PRIMARY KEY (account_id, folder_path, uid)
 );
+-- OpenPGP correspondents (Autocrypt Level 1 peer state, plus what a WKD or
+-- keyserver lookup found), by lowercased address. Keys are fingerprints in
+-- Hylki's own keyring of discovered keys, never the keys themselves.
+CREATE TABLE IF NOT EXISTS pgp_peers (
+    addr                TEXT    PRIMARY KEY,
+    last_seen           INTEGER NOT NULL DEFAULT 0,
+    autocrypt_timestamp INTEGER NOT NULL DEFAULT 0,
+    autocrypt_key       TEXT    NOT NULL DEFAULT '',
+    autocrypt_digest    TEXT    NOT NULL DEFAULT '',
+    prefer_encrypt      INTEGER NOT NULL DEFAULT 0,
+    gossip_timestamp    INTEGER NOT NULL DEFAULT 0,
+    gossip_key          TEXT    NOT NULL DEFAULT '',
+    gossip_digest       TEXT    NOT NULL DEFAULT '',
+    found_key           TEXT    NOT NULL DEFAULT '',
+    found_by            TEXT    NOT NULL DEFAULT '',
+    found_checked       INTEGER NOT NULL DEFAULT 0
+);
 ";
 
 /// Every table whose rows belong to one account, by `account_id`. An account's
@@ -217,6 +235,22 @@ pub(super) const ACCOUNT_TABLES: [&str; 14] = [
     "attachment_scan",
     "local_copies",
     "draft_copies",
+];
+
+/// The tables of what can be had again from a server, by the folder it is
+/// in, which go with a folder the account no longer has. Not `draft_copies`,
+/// which prune themselves, or `local_copies`, which remembers what has been
+/// copied whichever folder it came from.
+pub(super) const FOLDER_TABLES: [&str; 9] = [
+    "messages",
+    "bodies",
+    "sender_checks",
+    "attachments",
+    "attachments_checked",
+    "attachment_meta",
+    "attachment_scan",
+    "refs_repair",
+    "label_fill",
 ];
 
 /// The tables holding what was downloaded for one message, which are
@@ -272,7 +306,16 @@ pub(super) const DOWNLOADED_TABLES: [&str; 3] = ["bodies", "attachments", "attac
 /// the From: domain, which the reader learns the account's provider from,
 /// and ignores headers from another site than the topmost one. Verdicts
 /// stored earlier have neither, so they are checked again.
-pub(super) const SCHEMA_VERSION: i64 = 22;
+/// v23: the one-click unsubscribe POST goes only to an https handle, and
+/// only for a sender with nothing wrong or a DKIM signature over the header
+/// (#596). Stored routes lose a one-click handle these rules would not give
+/// them, in place: the banner opens the list's page for those instead.
+/// v24: `format=flowed` plain text is shown with its soft line breaks joined
+/// (#606). Plain bodies with a space before a line break are dropped once to
+/// render again; the rest of the cache stays.
+/// v25: plain text links email addresses, Matrix IDs and fediverse handles
+/// (#653). Plain bodies holding an `@` are dropped once to render again.
+pub(super) const SCHEMA_VERSION: i64 = 25;
 
 /// The newest version whose change altered how bodies are *rendered* or how
 /// senders are checked. Opening a database older than this drops `bodies` and

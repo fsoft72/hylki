@@ -16,7 +16,7 @@ use crate::worker::chores::{
 use crate::worker::imap::folders::{is_inbox_path, refresh_folders};
 use crate::worker::imap::mutate::{move_messages, purge_messages};
 use crate::worker::imap::summary::fetched_fields;
-use crate::worker::imap::wire::{exam, fetch_uids, search_uids, sel, uid_set};
+use crate::worker::imap::wire::{exam, fetch_uids, search_count, search_uids, sel, uid_set};
 use crate::worker::imap::ImapSession;
 use crate::worker::{chip_counts_all, MailRequest, WorkerEvent};
 
@@ -262,6 +262,9 @@ pub(super) async fn refresh_unread_counts(
         let Some(unread) = selected_chip_count(session, Some(f.kind)).await else {
             continue;
         };
+        if let Some(c) = cache {
+            c.set_folder_unread(account_id, &f.path, unread);
+        }
         emit(WorkerEvent::FolderUnread {
             folder_id: f.id,
             unread,
@@ -368,8 +371,12 @@ fn body_search_query(set: &str, needle: &str) -> String {
 }
 
 /// Count unseen messages in the currently-selected mailbox via SEARCH (safe on
-/// the selected folder, unlike STATUS on some servers). Downloads only ids.
+/// the selected folder, unlike STATUS on some servers): the count alone
+/// where the server can give one, else the UIDs, counted here.
 pub(super) async fn selected_unseen(session: &mut ImapSession) -> Option<u32> {
+    if let Some(n) = search_count(session, "UNSEEN").await {
+        return Some(n);
+    }
     search_uids(session, "UNSEEN")
         .await
         .ok()

@@ -6,18 +6,17 @@
 use super::wrapper_css::wrapper_css;
 
 use super::frame::{
-    message_frame, CHROME, GROUND, LIVE_ATTS, LIVE_FOLDBAR, LIVE_FOLDED, LIVE_GROUNDS, LIVE_INVITE,
-    LIVE_MARKS, LIVE_READ, LIVE_RECEIPT, LIVE_TAGS, LIVE_TEMPLATES, LIVE_TRANSLATE,
-    LIVE_TRANSLATE_ON, LIVE_UNSUB, PAGE,
+    message_frame, ThemeColors, CHROME, GROUND, LIVE_ATTS, LIVE_COLORS, LIVE_FOLDBAR, LIVE_FOLDED,
+    LIVE_GROUNDS, LIVE_INVITE, LIVE_MARKS, LIVE_READ, LIVE_RECEIPT, LIVE_TAGS, LIVE_TEMPLATES,
+    LIVE_TRANSLATE, LIVE_UNSUB, PAGE,
 };
 use super::html::attr_escape;
 use super::invite::invite_row_html;
 use super::receipt_banner::{read_mark_html, receipt_row_html};
-use super::remote::has_remote_resources;
 use super::size_script::SIZE_SCRIPT;
 use super::snippets::{
-    att_row_html, card_action_button, inline_icon_svg, paints_own_background, recipient_count,
-    recipients_html, tag_chips_html, template_row_html, unsub_row_html,
+    att_row_html, inline_icon_svg, paints_own_background, recipient_count, recipients_html,
+    sender_addr_html, tag_chips_html, template_row_html, unsub_row_html,
 };
 use super::MessageView;
 use crate::encoding::escape_html;
@@ -90,6 +89,15 @@ fn grounds(dark: bool) -> (String, String, String) {
             };
             (g.to_string(), p.to_string(), c.to_string())
         })
+}
+
+/// The chrome's foreground and the colors of the marks and verdicts (#619):
+/// the live theme's when the reader set them, stock libadwaita otherwise
+/// (tests).
+fn theme_colors(dark: bool) -> ThemeColors {
+    LIVE_COLORS
+        .with(|s| s.borrow().clone())
+        .unwrap_or_else(|| ThemeColors::stock(dark))
 }
 
 /// What every card of one document shares.
@@ -182,6 +190,7 @@ impl MessageView {
         // Paint the wrapper and the (still-loading) iframes in the theme color so
         // there's no white flash before each message's content renders.
         let (bg, deep, chrome) = grounds(dark);
+        let colors = theme_colors(dark);
         // Each message card only reads as a card against a slightly deeper
         // ground than its own; a full-bleed single message sits on its own
         // ground — the chrome ground when it paints no background (see
@@ -233,6 +242,7 @@ impl MessageView {
                 &bg,
                 &chrome,
                 accent,
+                &colors,
                 toggle_color,
                 &plain_css
             ),
@@ -282,6 +292,16 @@ fn card_body(cards: &Cards<'_>, m: &Message) -> String {
             zoom,
         )
     };
+    // A folded card hides its frame, but a hidden frame still loads and
+    // renders its whole document: a long conversation folded down to its
+    // newest card held every message in memory at once, and one of 83
+    // quoted replies took the app past 14 GB. Folded, the frame keeps its
+    // document aside and gets it when the card opens (`wake` in the
+    // wrapper script). The document is attribute-escaped, so the only
+    // `srcdoc="` in the markup is the frame's own.
+    if LIVE_FOLDED.with(|f| f.borrow().contains(&(m.account_id, m.id))) {
+        return body.replacen(" srcdoc=\"", " data-hylki-srcdoc=\"", 1);
+    }
     body
 }
 
@@ -339,20 +359,18 @@ fn circle_html(m: &Message, dark: bool) -> String {
         }
     });
     let face = || {
-        super::faces::known_face(&m.from_addr)
+        super::faces::known_face(m.shown_from_addr())
             .map(|uri| format!("<img class=\"hylki-ava\" src=\"{uri}\" alt=\"\">"))
     };
     own.or_else(face).unwrap_or_else(|| {
-        let initial = m
-            .shown_from_name()
-            .trim()
-            .chars()
-            .next()
-            .or_else(|| m.from_addr.trim().chars().next())
+        let initial = crate::ui::initials::word_initials(&m.shown_from_name())
+            .first()
+            .copied()
+            .or_else(|| m.shown_from_addr().trim().chars().next())
             .map(|c| c.to_uppercase().to_string())
             .unwrap_or_else(|| "?".to_string());
         let hue = m
-            .from_addr
+            .shown_from_addr()
             .to_ascii_lowercase()
             .bytes()
             .fold(0u32, |h, b| h.wrapping_mul(31).wrapping_add(b as u32))
@@ -414,7 +432,7 @@ fn card_html(cards: &Cards<'_>, m: &Message, ava_html: &str, body: String) -> St
                    <span class=\"hylki-tags\" data-key=\"{aid}:{id}\">{tags}</span>\
                    <span class=\"hylki-hdr-meta\">{folder}{rcpt_toggle}{marks}{read}\
                      <span class=\"hylki-date\">{date}</span></span>\
-                   {acts_toggle}{acts}\
+                   {acts_toggle}\
                  </div>{rcpt}\
                </header>{fbar}{tpl}{invite}{receipt}{unsub}{tr}{body}{atts}</section>",
         aid = m.account_id,
@@ -489,9 +507,9 @@ fn card_html(cards: &Cards<'_>, m: &Message, ava_html: &str, body: String) -> St
         }),
         hdr_title = gtk::glib::markup_escape_text(&i18n("Double-click to open in a new window")),
         tags = LIVE_TAGS.with(|t| tag_chips_html(&t.borrow(), &m.keywords, &m.labels)),
-        // The ⋯ toggle that expands/collapses the action row when
-        // the hidden-until-hover preference is on; CSS keeps it
-        // display:none otherwise, so it costs nothing when off.
+        // The ⋯ opens the card's right-click menu: the reader toolbar
+        // carries no per-message icons, so this and the right click are
+        // where a message is acted on.
         acts_toggle = if !thread.is_empty() {
             format!(
                 "<button type=\"button\" class=\"hylki-acts-toggle\" \
@@ -499,18 +517,8 @@ fn card_html(cards: &Cards<'_>, m: &Message, ava_html: &str, body: String) -> St
                 aid = m.account_id,
                 id = m.id,
                 acts_title = gtk::glib::markup_escape_text(&i18n("Actions")),
-                // The same ⋯ the list's actions palette toggle uses.
                 svg = inline_icon_svg("view-more-horizontal-symbolic"),
             )
-        } else {
-            String::new()
-        },
-        // Per-card actions, on every message — single messages
-        // included: the reader toolbar carries no per-message
-        // icons any more, so the card's own row (and the overflow
-        // menu) is where a message is acted on.
-        acts = if !thread.is_empty() {
-            card_actions(cards, m)
         } else {
             String::new()
         },
@@ -554,20 +562,7 @@ fn card_html(cards: &Cards<'_>, m: &Message, ava_html: &str, body: String) -> St
         // could reach for, and the initial is escaped like every
         // other header field.
         ava = ava_html,
-        addr = if m.from_addr.is_empty() {
-            String::new()
-        } else {
-            // `data-addr` feeds the hover reveal's ::after overlay;
-            // `data-mail` (the bare address) drives click-to-compose
-            // and the copy menu. Fully entity-escaped (&<>"), so an
-            // attacker-controlled address can't smuggle markup
-            // through the attributes.
-            format!(
-                "<span class=\"hylki-addr hylki-mail\" data-mail=\"{0}\" \
-                     data-addr=\"&lt;{0}&gt;\">&lt;{0}&gt;</span>",
-                escape_html(&m.from_addr).replace('"', "&quot;")
-            )
-        },
+        addr = sender_addr_html(m),
         date = escape_html(&m.datetime_full()),
         // Everyone the message went to, tucked behind a small chip so
         // a card's header stays one line tall until asked. Escaped
@@ -609,159 +604,6 @@ fn card_html(cards: &Cards<'_>, m: &Message, ava_html: &str, body: String) -> St
             format!(
                 "<span class=\"hylki-dot\" data-key=\"{}:{}\"></span>",
                 m.account_id, m.id
-            )
-        } else {
-            String::new()
-        },
-    )
-}
-
-/// A card's action buttons, in the reader toolbar's order.
-fn card_actions(cards: &Cards<'_>, m: &Message) -> String {
-    let Cards {
-        style,
-        reader,
-        sender_style,
-        restrict,
-        ..
-    } = *cards;
-    let key = (m.account_id, m.id);
-    // Action-showing icon (read envelope = "mark as
-    // read"), like the menus and toolbar. Both icons
-    // are baked in; the section's `unread` class picks
-    // one, so marking read/unread flips in place.
-    let toggle_read = format!(
-        "<button type=\"button\" class=\"hylki-act\" data-act=\"toggleread\" \
-             data-key=\"{aid}:{id}\" title=\"{title}\">\
-             <span class=\"tr-when-unread\">{read_svg}</span>\
-             <span class=\"tr-when-read\">{unread_svg}</span></button>",
-        aid = key.0,
-        id = key.1,
-        title = gtk::glib::markup_escape_text(&i18n("Mark as read or unread")),
-        read_svg = inline_icon_svg("hylki-mail-read-symbolic"),
-        unread_svg = inline_icon_svg("mail-unread-symbolic"),
-    );
-    // The star keeps one glyph; the starred state is
-    // color alone (`.on`, toggled optimistically on
-    // click too).
-    let star = format!(
-        "<button type=\"button\" class=\"hylki-act{on}\" data-act=\"star\" \
-             data-key=\"{aid}:{id}\" title=\"{title}\">{svg}</button>",
-        on = if m.starred { " on" } else { "" },
-        title = gtk::glib::markup_escape_text(&i18n("Star this message")),
-        aid = key.0,
-        id = key.1,
-        svg = inline_icon_svg("hylki-non-starred-symbolic"),
-    );
-    let source_and_translate = format!(
-        "{}{}",
-        card_action_button(key, "viewsource", "code-symbolic", &i18n("View source")),
-        if LIVE_TRANSLATE_ON.with(|on| on.get()) {
-            card_action_button(
-                key,
-                "translate",
-                "translate-symbolic",
-                &i18n("Translate this message"),
-            )
-        } else {
-            String::new()
-        },
-    );
-    format!(
-        "<span class=\"hylki-acts\">{}{}{}{}{}{}{}{}{}{}{}{}{}</span>",
-        // Same order as the reader toolbar and the list's
-        // actions palette, View Source closing the line.
-        card_action_button(
-            key,
-            "reply",
-            "mail-reply-sender-symbolic",
-            &i18n("Reply to this message")
-        ),
-        card_action_button(
-            key,
-            "replyall",
-            "mail-reply-all-symbolic",
-            &i18n("Reply to everyone on this message")
-        ),
-        card_action_button(
-            key,
-            "forward",
-            "mail-forward-symbolic",
-            &i18n("Forward this message")
-        ),
-        toggle_read,
-        star,
-        card_action_button(
-            key,
-            "moveto",
-            "folder-symbolic",
-            &i18n("Move this message to a folder")
-        ),
-        card_action_button(
-            key,
-            "archive",
-            "mail-archive-symbolic",
-            &i18n("Archive this message")
-        ),
-        card_action_button(
-            key,
-            "delete",
-            "user-trash-symbolic",
-            &i18n("Delete this message")
-        ),
-        card_action_button(
-            key,
-            "spam",
-            "mail-mark-junk-symbolic",
-            &i18n("Mark as Spam")
-        ),
-        card_action_button(
-            key,
-            "contact",
-            "contact-new-symbolic",
-            &i18n("Add sender to Contacts")
-        ),
-        source_and_translate,
-        // The escape from the reader's own fonts and
-        // colors (#56): only offered while an override
-        // is on, lit while this card shows the sender's.
-        if style.active() && !reader {
-            let on = sender_style.contains(&key);
-            format!(
-                "<button type=\"button\" class=\"hylki-act{on_cls}\" data-act=\"senderfmt\" \
-                     data-key=\"{aid}:{id}\" title=\"{title}\">{svg}</button>",
-                on_cls = if on { " on" } else { "" },
-                aid = key.0,
-                id = key.1,
-                title = gtk::glib::markup_escape_text(&if on {
-                    i18n("Back to my fonts and colors")
-                } else {
-                    i18n("Show the sender's fonts and colors")
-                }),
-                svg = inline_icon_svg("format-text-rich-symbolic"),
-            )
-        } else {
-            String::new()
-        },
-        // Remote content, per message. The banner offers
-        // the same thing, but it can be switched off
-        // (Settings → Privacy) and then there is nothing to
-        // click — and it only ever lets content in, where
-        // this puts the block back too. Offered only on a
-        // card that actually has something to load.
-        if has_remote_resources(&m.body) {
-            format!(
-                "<button type=\"button\" class=\"hylki-act{on_cls}\" data-act=\"remote\" \
-                     data-key=\"{aid}:{id}\" title=\"{title}\">{svg}</button>",
-                on_cls = if restrict { "" } else { " on" },
-                aid = key.0,
-                id = key.1,
-                title = gtk::glib::markup_escape_text(&if restrict {
-                    i18n("Show remote content")
-                } else {
-                    i18n("Block remote content")
-                }),
-                svg = inline_icon_svg("image-x-generic-symbolic"),
             )
         } else {
             String::new()

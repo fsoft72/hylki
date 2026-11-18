@@ -19,7 +19,7 @@ use crate::worker::outbox::{
     current_sent_copy_path, due_outbox_items, emit_outbox, note_answered, outbox_envelope,
     raw_in_reply_to,
 };
-use crate::worker::smtp::send_raw_smtp;
+use crate::worker::smtp::{send_raw_smtp, smtp_refused};
 use crate::worker::{answered_copies, reply_copy_path, WorkerEvent};
 
 /// Mark what a sent message answered (#454): `\Answered` on the original
@@ -126,17 +126,21 @@ pub(in crate::worker) async fn flush_outbox(
                     emit,
                 )
                 .await;
+                // Who it left as decides whether the server kept a copy (#640).
+                let from = envelope.from().map(|f| f.to_string());
                 let dest = current_sent_copy_path(
                     account,
                     account_id,
                     Some(cache),
                     item.sent_path.as_deref(),
+                    from.as_deref(),
                 );
                 let reply = reply_copy_path(
                     account,
                     account_id,
                     Some(cache),
                     &raw_in_reply_to(&item.raw),
+                    from.as_deref(),
                 );
                 if let Some(sess) = session.as_mut() {
                     let copy = queued_with_bcc(&item.raw, &item.rcpts);
@@ -171,7 +175,12 @@ pub(in crate::worker) async fn flush_outbox(
                 }
                 // A failure now will almost certainly repeat for the rest of the
                 // queue (the connection is down), so stop rather than hammering.
-                break;
+                // A message the server refused says nothing about the rest:
+                // a merge's message with a bad address must not hold up the
+                // others behind it (#447).
+                if !smtp_refused(&e) {
+                    break;
+                }
             }
         }
     }

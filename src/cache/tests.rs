@@ -27,12 +27,12 @@ fn smart_scan_reads_only_what_it_is_asked_for() {
     let none = crate::config::SmartPrefilter::default();
     let trash = vec!["Trash".to_string()];
     assert_eq!(
-        uids(c.smart_scan(1, None, &trash, none, 10, |_| true)),
+        uids(c.smart_scan(1, None, &trash, none, 10, |_, _| true)),
         [2, 3, 1]
     );
     let sent = vec!["Sent".to_string()];
     assert_eq!(
-        uids(c.smart_scan(1, Some(&sent), &[], none, 10, |_| true)),
+        uids(c.smart_scan(1, Some(&sent), &[], none, 10, |_, _| true)),
         [3]
     );
     let starred = crate::config::SmartPrefilter {
@@ -40,18 +40,21 @@ fn smart_scan_reads_only_what_it_is_asked_for() {
         ..none
     };
     assert_eq!(
-        uids(c.smart_scan(1, None, &trash, starred, 10, |_| true)),
+        uids(c.smart_scan(1, None, &trash, starred, 10, |_, _| true)),
         [3, 1]
     );
     assert_eq!(
-        uids(c.smart_scan(1, None, &trash, none, 10, |m| m.subject.ends_with("one"))),
+        uids(c.smart_scan(1, None, &trash, none, 10, |_, m| m.subject.ends_with("one"))),
         [1]
     );
-    assert_eq!(uids(c.smart_scan(1, None, &[], none, 2, |_| true)), [4, 2]);
+    assert_eq!(
+        uids(c.smart_scan(1, None, &[], none, 2, |_, _| true)),
+        [4, 2]
+    );
     assert!(c
-        .smart_scan(1, Some(&[]), &[], none, 10, |_| true)
+        .smart_scan(1, Some(&[]), &[], none, 10, |_, _| true)
         .is_empty());
-    assert!(c.smart_scan(2, None, &[], none, 10, |_| true).is_empty());
+    assert!(c.smart_scan(2, None, &[], none, 10, |_, _| true).is_empty());
 }
 
 /// An account that suggests only its own (#410) gets the addresses in
@@ -174,19 +177,108 @@ fn cached_rows_follow_their_accounts() {
     assert_eq!(body(2), None);
 }
 
+/// Rows of a folder the account does not have go, in every table of what can
+/// be had again, and only those.
+#[test]
+fn rows_of_folders_an_account_does_not_have_go() {
+    let c = Cache::in_memory().unwrap();
+    let folder = |account: u32, path: &str| {
+        c.conn
+            .execute(
+                "INSERT INTO folders (account_id, path, name, kind, unread, ord) \
+                 VALUES (?1, ?2, ?2, 0, 0, 0)",
+                params![account, path],
+            )
+            .unwrap();
+    };
+    let mail = |account: u32, path: &str, uid: u32| {
+        let m = Message {
+            id: uid,
+            uid,
+            subject: format!("{account} {path} {uid}"),
+            message_id: format!("{account}-{path}-{uid}@example.org"),
+            ..Message::blank()
+        };
+        c.upsert_messages(account, path, &[m]);
+        c.save_body(account, path, uid, "<p>words</p>");
+    };
+    let count = |table: &str, account: u32, path: &str| -> i64 {
+        c.conn
+            .query_row(
+                &format!("SELECT COUNT(*) FROM {table} WHERE account_id = ?1 AND folder_path = ?2"),
+                params![account, path],
+                |r| r.get(0),
+            )
+            .unwrap()
+    };
+    folder(1, "INBOX");
+    mail(1, "INBOX", 1);
+    mail(1, "[Gmail]/All Mail", 2);
+    mail(1, "Hidden", 3);
+    // No folder list yet: nothing known about these.
+    mail(2, "INBOX", 4);
+    // Not on a server, so not for tidying.
+    folder(3, "INBOX");
+    mail(3, "Saved", 5);
+    c.conn
+        .execute(
+            "INSERT INTO local_copies (account_id, folder_path, uid, message_id) \
+             VALUES (1, '[Gmail]/All Mail', 2, 'x')",
+            [],
+        )
+        .unwrap();
+
+    let gone = c
+        .drop_rows_of_missing_folders(&[(1, vec!["Hidden".into()]), (2, Vec::new())])
+        .unwrap();
+
+    assert_eq!(gone, 1);
+    assert_eq!(count("messages", 1, "[Gmail]/All Mail"), 0);
+    assert_eq!(count("bodies", 1, "[Gmail]/All Mail"), 0);
+    assert_eq!(count("local_copies", 1, "[Gmail]/All Mail"), 1);
+    for (account, path) in [(1, "INBOX"), (1, "Hidden"), (2, "INBOX"), (3, "Saved")] {
+        assert_eq!(count("messages", account, path), 1, "{account} {path}");
+        assert_eq!(count("bodies", account, path), 1, "{account} {path}");
+    }
+    // A hidden folder with no list of hidden ones, and the search index.
+    assert_eq!(
+        c.drop_rows_of_missing_folders(&[(1, Vec::new())]).unwrap(),
+        1
+    );
+    assert_eq!(c.find_body_text("words", 10).len(), 3);
+    assert_eq!(
+        c.drop_rows_of_missing_folders(&[(1, Vec::new())]).unwrap(),
+        0
+    );
+}
+
 /// How long the conversation lookups take on a real cache (#259):
 /// `HYLKI_CACHE_TIMING=<copy of cache.db> cargo test --release --bin hylki
 /// cache::tests::thread_lookup_timing -- --ignored --nocapture`. Takes
 /// each account's newest 256 Message-IDs as one page of badges, and the
-/// newest reply's ids as one opened conversation.
+/// newest reply's ids as one opened conversation. An encrypted copy also
+/// needs its key in `HYLKI_CACHE_TIMING_KEY`, from
+/// `secret-tool lookup service co.hyprlab.Hylki username cache-key`.
 #[test]
 #[ignore]
 fn thread_lookup_timing() {
     let Ok(path) = std::env::var("HYLKI_CACHE_TIMING") else {
         return;
     };
+    let protection = match std::env::var("HYLKI_CACHE_TIMING_KEY") {
+        Ok(hex) => super::at_rest::Protection::Encrypted(
+            super::at_rest::Key::from_hex(&hex).expect("a 64-digit hex key"),
+        ),
+        Err(_) => super::at_rest::Protection::Plain,
+    };
     let c = Cache {
-        conn: Connection::open(path).unwrap(),
+        conn: super::at_rest::connect(
+            std::path::Path::new(&path),
+            rusqlite::OpenFlags::default(),
+            &protection,
+        )
+        .unwrap(),
+        protection,
     };
     let accounts: Vec<u32> = c
         .conn
@@ -238,6 +330,7 @@ fn background_reader_sees_wal_updates_without_writing() {
         .unwrap();
     let cache = Cache {
         conn: Connection::open(&path).unwrap(),
+        protection: super::at_rest::Protection::Plain,
     };
     cache.conn.execute_batch(SCHEMA).unwrap();
     cache
@@ -287,6 +380,9 @@ fn the_cache_is_not_world_readable() {
     std::fs::write(dir.join("cache.db"), b"").unwrap();
     std::fs::set_permissions(dir.join("cache.db"), std::fs::Permissions::from_mode(0o644)).unwrap();
 
+    super::at_rest::unlock(super::at_rest::Protection::Encrypted(
+        super::at_rest::Key::generate().unwrap(),
+    ));
     let cache = Cache::open().expect("cache opens");
     drop(cache);
 
@@ -473,6 +569,7 @@ fn a_folder_saved_whole_keeps_its_previews() {
         from_name: "Ada".into(),
         from_addr: "ada@example.com".into(),
         reply_to: String::new(),
+        reply_to_name: String::new(),
         to: String::new(),
         cc: String::new(),
         bcc: String::new(),
@@ -510,6 +607,7 @@ fn replied_and_forwarded_round_trip_through_the_cache() {
         from_name: "Ada".into(),
         from_addr: "ada@example.com".into(),
         reply_to: String::new(),
+        reply_to_name: String::new(),
         to: String::new(),
         cc: String::new(),
         bcc: String::new(),
@@ -567,6 +665,7 @@ fn a_sent_copys_bcc_round_trips_through_the_cache() {
         from_name: "Me".into(),
         from_addr: "me@example.com".into(),
         reply_to: String::new(),
+        reply_to_name: String::new(),
         to: "ada@example.com".into(),
         cc: String::new(),
         bcc: "hidden@example.com, other@example.com".into(),
@@ -638,6 +737,7 @@ fn gmail_labels_round_trip_through_the_cache() {
         from_name: "Ada".into(),
         from_addr: "ada@example.com".into(),
         reply_to: String::new(),
+        reply_to_name: String::new(),
         to: String::new(),
         cc: String::new(),
         bcc: String::new(),
@@ -756,6 +856,54 @@ fn recheck_suspicious_senders_drops_only_those_verdicts_and_bodies() {
     );
 }
 
+/// v24: plain bodies that may hold a flowed soft break go, to render again
+/// with their lines joined; HTML and other plain bodies stay.
+#[test]
+fn drop_soft_broken_plain_bodies_keeps_html_and_fixed_text() {
+    use crate::worker::wrap_plain;
+    let c = Cache::in_memory().unwrap();
+    c.save_body(1, "INBOX", 1, &wrap_plain("soft \r\nbreak"));
+    c.save_body(1, "INBOX", 2, &wrap_plain("hard\r\nbreak"));
+    c.save_body(1, "INBOX", 3, "<p>html \n</p>");
+    c.save_body(
+        1,
+        "INBOX",
+        4,
+        "<div class=\"hylki-plain\">soft \nbreak</div>",
+    );
+
+    Cache::drop_soft_broken_plain_bodies(&c.conn);
+
+    assert!(c.load_body(1, "INBOX", 1).is_none());
+    assert!(c.load_body(1, "INBOX", 2).is_some());
+    assert!(c.load_body(1, "INBOX", 3).is_some());
+    assert!(c.load_body(1, "INBOX", 4).is_none());
+}
+
+/// v25: plain bodies with an `@` go, to render again with their addresses
+/// linked; HTML and other plain bodies stay.
+#[test]
+fn drop_plain_bodies_with_addresses_keeps_html_and_other_text() {
+    use crate::worker::wrap_plain;
+    let c = Cache::in_memory().unwrap();
+    c.save_body(1, "INBOX", 1, &wrap_plain("mail ann@example.com"));
+    c.save_body(1, "INBOX", 2, &wrap_plain("no address"));
+    c.save_body(1, "INBOX", 3, "<p>ann@example.com</p>");
+    c.save_body(
+        1,
+        "INBOX",
+        4,
+        "<div class=\"hylki-plain\">@ann@example.org</div>",
+    );
+
+    Cache::drop_plain_bodies_with_addresses(&c.conn);
+
+    assert!(c.load_body(1, "INBOX", 1).is_none());
+    assert!(c.load_body(1, "INBOX", 2).is_some());
+    assert!(c.load_body(1, "INBOX", 3).is_some());
+    assert!(c.load_body(1, "INBOX", 4).is_none());
+}
+
 #[test]
 fn clean_quoted_names_strips_the_escapes_in_place() {
     let c = Cache::in_memory().unwrap();
@@ -788,5 +936,42 @@ fn clean_quoted_names_strips_the_escapes_in_place() {
     assert_eq!(
         row(2),
         ("Plain Name".to_string(), "Already fine".to_string())
+    );
+}
+
+/// A chip number the server gave since the last full listing is what the
+/// next launch starts from: a connect keeps the cached numbers (#370), and
+/// a Drafts chip of 1 came back at every start after the draft was gone.
+#[test]
+fn a_folders_fresh_chip_number_outlasts_the_session() {
+    let c = Cache::in_memory().unwrap();
+    let folder = |path: &str, kind: FolderKind, unread: u32| crate::models::Folder {
+        id: 0,
+        account_id: 1,
+        name: path.to_string(),
+        path: path.to_string(),
+        kind,
+        unread,
+        childless: false,
+    };
+    c.save_folders(
+        1,
+        &[
+            folder("INBOX", FolderKind::Inbox, 3),
+            folder("Drafts", FolderKind::Drafts, 1),
+        ],
+    );
+    c.set_folder_unread(1, "Drafts", 0);
+    // A folder the cache does not hold, or another account's, changes nothing.
+    c.set_folder_unread(1, "Gone", 5);
+    c.set_folder_unread(2, "INBOX", 9);
+    let counts: Vec<(String, u32)> = c
+        .load_folders(1)
+        .into_iter()
+        .map(|f| (f.path, f.unread))
+        .collect();
+    assert_eq!(
+        counts,
+        vec![("INBOX".to_string(), 3), ("Drafts".to_string(), 0)]
     );
 }

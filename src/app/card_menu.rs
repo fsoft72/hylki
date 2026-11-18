@@ -12,6 +12,7 @@ use crate::ui::message_window::MessageWindowInput;
 
 use super::model::AppModel;
 use super::msg::AppMsg;
+use super::uri_queue::FILE_FOLDER;
 
 /// One entry of a card's menu that does what a list row's action does.
 ///
@@ -131,6 +132,61 @@ fn fold_entries(hit: &crate::ui::message_view::MenuHit) -> Option<Vec<MenuEntry>
     ])
 }
 
+/// The sender's fonts and colors for this message, or back to the reader's
+/// (#56): offered only while the reader's own are on.
+fn sender_style_entry(hit: &crate::ui::message_view::MenuHit, m: &Message) -> Option<MenuEntry> {
+    let (showing, reader) = hit.sender_style.clone()?;
+    let (account_id, id) = (m.account_id, m.id);
+    let label = if showing {
+        i18n("Back to My Fonts and Colors")
+    } else {
+        i18n("Show Sender's Fonts and Colors")
+    };
+    Some(
+        MenuEntry::new(label, move || {
+            reader.emit(
+                crate::ui::message_view::MessageViewInput::ToggleSenderStyle { account_id, id },
+            );
+        })
+        .icon("format-text-rich-symbolic"),
+    )
+}
+
+/// Create Event and Create Task from the text selected in the card (#637):
+/// the item starts from the date and times written in it.
+fn selection_calendar_entries(
+    m: &Message,
+    text: &str,
+    sender: &ComponentSender<AppModel>,
+) -> Vec<MenuEntry> {
+    use crate::calendar::ItemKind;
+    let entry = |kind: ItemKind, label: String, icon: &str| {
+        let (s, message, text) = (sender.input_sender().clone(), m.clone(), text.to_string());
+        MenuEntry::new(label, move || {
+            let _ = s.send(AppMsg::ToCalendar(
+                super::to_calendar::ToCalendar::FromSelection {
+                    message: Box::new(message.clone()),
+                    kind,
+                    text: text.clone(),
+                },
+            ));
+        })
+        .icon(icon)
+    };
+    vec![
+        entry(
+            ItemKind::Event,
+            i18n("Create Event from Selection…"),
+            "x-office-calendar-symbolic",
+        ),
+        entry(
+            ItemKind::Task,
+            i18n("Create Task from Selection…"),
+            "task-due-symbolic",
+        ),
+    ]
+}
+
 /// Translate (when the reader offers it), View Source and Save as File.
 fn source_entries(
     item: &impl Fn(RowAction, String, &str) -> MenuEntry,
@@ -187,11 +243,17 @@ impl AppModel {
             sections.push(here);
         }
         sections.push(answer_entries(&item, kind));
-        sections.push(flag_entries(&item, &m));
-        if let Some(tags) = self.card_tags_entry(&m, sender) {
-            sections.push(vec![tags]);
+        if m.folder_id == FILE_FOLDER {
+            // A message open from a file (#398) has no server to star,
+            // tag, file or delete it on: it can only be copied into one.
+            sections.push(vec![self.copy_to_entry(&m, popout, (x, y), sender)]);
+        } else {
+            sections.push(flag_entries(&item, &m));
+            if let Some(tags) = self.card_tags_entry(&m, sender) {
+                sections.push(vec![tags]);
+            }
+            sections.push(self.card_place_entries(&item, &m, kind, popout, (x, y), sender));
         }
-        sections.push(self.card_place_entries(&item, &m, kind, popout, (x, y), sender));
         sections.push(vec![
             item(
                 RowAction::AddContact,
@@ -204,21 +266,55 @@ impl AppModel {
                 "filter-folder",
             ),
         ]);
-        sections.push(vec![
-            item(
-                RowAction::CreateEvent,
-                i18n("Create Event…"),
-                "x-office-calendar",
-            ),
-            item(RowAction::CreateTask, i18n("Create Task…"), "task-due"),
-        ]);
-        sections.push(vec![self.card_remote_entry(&m, sender)]);
+        sections.push(match &hit.selection {
+            Some(text) => selection_calendar_entries(&m, text, sender),
+            None => vec![
+                item(
+                    RowAction::CreateEvent,
+                    i18n("Create Event…"),
+                    "x-office-calendar",
+                ),
+                item(RowAction::CreateTask, i18n("Create Task…"), "task-due"),
+            ],
+        });
+        let mut content = vec![self.card_remote_entry(&m, sender)];
+        content.extend(sender_style_entry(&hit, &m));
+        sections.push(content);
         if let Some(folds) = fold_entries(&hit) {
             sections.push(folds);
         }
         sections.push(source_entries(&item, &m, &hit));
         sections.push(self.card_print_entries(popout, sender));
         show_context_menu(&parent, x, y, sections);
+    }
+
+    /// Copy To…, its picker over the window the menu is in.
+    fn copy_to_entry(
+        &self,
+        m: &Message,
+        popout: Option<(u32, u32)>,
+        (x, y): (f64, f64),
+        sender: &ComponentSender<Self>,
+    ) -> MenuEntry {
+        let s = sender.input_sender().clone();
+        let message = m.clone();
+        MenuEntry::new(i18n("Copy To…"), move || {
+            let _ = s.send(match popout {
+                Some(key) => AppMsg::PopoutCopyTo {
+                    key,
+                    message: Box::new(message.clone()),
+                    x,
+                    y,
+                },
+                None => AppMsg::ListCopyTo {
+                    messages: vec![message.clone()],
+                    offer_whole: false,
+                    x,
+                    y,
+                },
+            });
+        })
+        .icon("edit-copy-symbolic")
     }
 
     /// The Tags submenu, when there are tags.
@@ -293,20 +389,8 @@ impl AppModel {
                 .icon("folder-symbolic")
                 .keys(MessageAction::MoveTo.keys(KeysOf::Main)),
             );
-            let s = sender.input_sender().clone();
-            let message = m.clone();
-            acts.push(
-                MenuEntry::new(i18n("Copy To…"), move || {
-                    let _ = s.send(AppMsg::ListCopyTo {
-                        messages: vec![message.clone()],
-                        offer_whole: false,
-                        x,
-                        y,
-                    });
-                })
-                .icon("edit-copy-symbolic"),
-            );
         }
+        acts.push(self.copy_to_entry(m, popout, (x, y), sender));
         acts.push(item(RowAction::Archive, i18n("Archive"), "mail-archive"));
         // Snooze (#527): the card's message alone, as its other actions.
         if let Some(snoozed) = self.snooze_offer(m.account_id, kind) {

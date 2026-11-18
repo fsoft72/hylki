@@ -32,9 +32,10 @@ impl<E: Fn(WorkerEvent)> JmapWorker<E> {
         if autosave.is_none() {
             emit(WorkerEvent::Status(saving_text(template)));
         }
+        // Never signed; encrypted to the user when it is to be sent
+        // encrypted (see `build_draft`).
         let mut message = OutgoingMessage {
             sign: false,
-            encrypt: false,
             ..*message
         };
         restore_msgid_case(cache.as_ref(), &mut message);
@@ -113,6 +114,7 @@ impl<E: Fn(WorkerEvent)> JmapWorker<E> {
             Some(id) => emit(WorkerEvent::DraftSaved {
                 autosave,
                 message_id: Some(id),
+                template,
             }),
             None => draft_not_saved(autosave, template, why, message, emit),
         }

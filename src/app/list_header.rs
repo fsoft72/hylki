@@ -31,6 +31,30 @@ pub(super) struct ListHeaderWidgets {
     sort: gtk::gio::SimpleAction,
 }
 
+impl ListHeaderWidgets {
+    /// Show the open view's sort. Setting the action's state moves the
+    /// radios without activating it, so nothing is sorted again.
+    pub(super) fn show_sort(&self, key: &str, any_kept: bool) {
+        self.sort.set_state(&key.to_variant());
+        self.filter.sort_for_all.set_sensitive(any_kept);
+    }
+
+    /// Show whether the open view names the sender or the recipients,
+    /// without taking the move for a choice.
+    pub(super) fn show_names(&self, recipients: bool) {
+        let names = &self.filter.names;
+        names.quiet.set(true);
+        names.radios[usize::from(recipients)].set_active(true);
+        names.quiet.set(false);
+    }
+}
+
+/// The popover's Sender and Recipients radios (#657), in that order.
+struct NamesRadios {
+    radios: [gtk::CheckButton; 2],
+    quiet: Rc<Cell<bool>>,
+}
+
 /// The orders the list header offers, by their keys in `SortOrder`. The
 /// column headings can set more (#443); none of these is ticked then.
 const SORT_ORDERS: [(&str, &str); 6] = [
@@ -47,6 +71,8 @@ const SORT_ORDERS: [(&str, &str); 6] = [
 /// the last.
 struct SortFilterPopover {
     button: gtk::MenuButton,
+    sort_for_all: gtk::Button,
+    names: NamesRadios,
     filters: Vec<(QuickFilter, gtk::CheckButton)>,
     dates: Rc<DateRange>,
     clear: gtk::Button,
@@ -284,7 +310,28 @@ impl SortFilterPopover {
             col
         };
 
-        let sort_col = column(&i18n("Sort by"));
+        // Whom the rows name heads the first column: a folder of mail you
+        // sent that is not your Sent folder reads better by recipient (#657).
+        let sort_col = column(&i18n("Show"));
+        let quiet = Rc::new(Cell::new(false));
+        let radios = [i18n("Sender"), i18n("Recipients")].map(|l| gtk::CheckButton::with_label(&l));
+        radios[1].set_group(Some(&radios[0]));
+        for (recipients, radio) in [false, true].into_iter().zip(&radios) {
+            let (s, quiet) = (sender.clone(), quiet.clone());
+            radio.connect_toggled(move |r| {
+                if r.is_active() && !quiet.get() {
+                    s.emit(AppMsg::ListShowRecipients(recipients));
+                }
+            });
+            sort_col.append(radio);
+        }
+        let names = NamesRadios { radios, quiet };
+        let caption = gtk::Label::new(Some(&i18n("Sort by")));
+        caption.set_xalign(0.0);
+        caption.add_css_class("dim-label");
+        caption.add_css_class("caption-heading");
+        caption.add_css_class("sort-filter-caption-next");
+        sort_col.append(&caption);
         let mut radios: Vec<(&'static str, gtk::CheckButton)> = Vec::new();
         for (label, key) in SORT_ORDERS {
             let radio = gtk::CheckButton::with_label(&i18n(label));
@@ -314,6 +361,13 @@ impl SortFilterPopover {
         sort.connect_state_notify(move |a| {
             show_sort(a.state().and_then(|v| v.str().map(String::from)))
         });
+        let sort_for_all = gtk::Button::with_label(&i18n("Use for All Folders"));
+        sort_for_all.add_css_class("flat");
+        sort_for_all.set_halign(gtk::Align::Start);
+        sort_for_all.set_sensitive(false);
+        let s = sender.clone();
+        sort_for_all.connect_clicked(move |_| s.emit(AppMsg::ListSortForAll));
+        sort_col.append(&sort_for_all);
 
         let filter_col = column(&i18n("Show only"));
         let mut filters = Vec::new();
@@ -363,6 +417,8 @@ impl SortFilterPopover {
         button.set_popover(Some(&popover));
         Self {
             button,
+            sort_for_all,
+            names,
             filters,
             dates: range,
             clear,
@@ -465,7 +521,17 @@ impl AppModel {
             .collect();
         let sort =
             MenuEntry::submenu(i18n("Sort"), vec![orders]).icon("view-sort-descending-symbolic");
-        let sections = vec![vec![search], vec![filter, sort]];
+        let shown = self.view_names_recipients();
+        let names: Vec<MenuEntry> = [(i18n("Sender"), false), (i18n("Recipients"), true)]
+            .into_iter()
+            .map(|(label, recipients)| {
+                let s = sender.input_sender().clone();
+                MenuEntry::new(label, move || s.emit(AppMsg::ListShowRecipients(recipients)))
+                    .selected(shown == recipients)
+            })
+            .collect();
+        let names = MenuEntry::submenu(i18n("Show"), vec![names]).icon("avatar-default-symbolic");
+        let sections = vec![vec![search], vec![filter, sort, names]];
         // The message count heads the menu, where the header showed it.
         let header = (!self.list_count.is_empty()).then(|| self.list_count.clone());
         let btn = lh.overflow.clone();
@@ -487,14 +553,16 @@ impl AppModel {
     }
 
     /// Tell the list whether to lay messages out on one line (#334): the
-    /// Layout setting, or for Automatic, the width of the pane.
+    /// Layout setting, or for Automatic, the width of the pane. `list_wide`
+    /// only follows the split beside the reader; with the reader below or
+    /// off the list has the window's width, so Automatic counts it as wide.
     pub(super) fn push_single_line(&self) {
-        // With the reader below or off the list is a table (#475).
-        let on = match self.list_layout {
-            _ if self.reading_pane != config::ReadingPane::Right => true,
+        let on = match self.list_layout_now() {
             config::ListLayout::Cards => false,
             config::ListLayout::SingleLine => true,
-            config::ListLayout::Automatic => self.list_wide,
+            config::ListLayout::Automatic => {
+                self.list_wide || self.reading_pane != config::ReadingPane::Right
+            }
         };
         self.message_list.emit(MessageListInput::SetSingleLine(on));
     }
@@ -508,29 +576,71 @@ impl AppModel {
             subject: self.list_show_subject(),
             animate,
         });
+        self.push_list_marks();
         // A folded card in a conversation shows what a list row does (#326).
         self.message_view.emit(MessageViewInput::SetFoldLook {
             preview_lines: self.list_preview_lines(),
         });
     }
 
-    /// The avatars the list draws: the setting, unless Focus Mode hides them.
-    pub(super) fn list_avatars(&self) -> bool {
-        self.avatars && !self.focus.active(config::FocusPart::HideAvatars)
+    /// The marks the list's rows wear: all of them, unless Focus Mode's parts
+    /// are in force.
+    pub(super) fn push_list_marks(&self) {
+        self.message_list.emit(MessageListInput::SetMarks {
+            stars: !self.focus.active(config::FocusPart::HideStars),
+            attachments: !self.focus.active(config::FocusPart::HideAttachmentIcons),
+        });
     }
 
-    /// The preview lines the list shows: the setting, hidden outright or
-    /// capped at one by Focus Mode (previews switched off stay off).
+    /// Whether the single-line layout has column headings: Focus Mode's switch
+    /// while it is on, else the setting.
+    pub(super) fn list_headings_now(&self) -> bool {
+        if self.focus.enabled {
+            self.focus.column_headings
+        } else {
+            self.list_headings
+        }
+    }
+
+    /// The avatars the list draws: Focus Mode's switch while it is on, else
+    /// the setting.
+    pub(super) fn list_avatars(&self) -> bool {
+        if self.focus.enabled {
+            !self.focus.hide_avatars
+        } else {
+            self.avatars
+        }
+    }
+
+    /// The layout the list uses: Focus Mode's while it is on, else the setting.
+    fn list_layout_now(&self) -> config::ListLayout {
+        if self.focus.enabled {
+            self.focus.layout
+        } else {
+            self.list_layout
+        }
+    }
+
+    /// Whether a card's tags go under its text: Focus Mode's switch while it
+    /// is on, else the setting.
+    pub(super) fn list_pills_below_now(&self) -> bool {
+        if self.focus.enabled {
+            self.focus.tags_below
+        } else {
+            self.list_pills_below
+        }
+    }
+
+    /// The preview lines the list shows: Focus Mode's while it is on, else
+    /// the setting.
     ///
     /// Only what is *drawn* changes — the setting itself, and with it what
     /// the workers fetch, is left alone. So the preview text is in hand the
     /// moment Focus Mode ends, rather than waiting for the next sync the way
     /// switching previews off in Settings does.
     pub(super) fn list_preview_lines(&self) -> u32 {
-        if self.focus.active(config::FocusPart::HidePreview) {
-            0
-        } else if self.focus.active(config::FocusPart::OnePreviewLine) {
-            self.preview_lines.min(1)
+        if self.focus.enabled {
+            self.focus.preview_line_count()
         } else {
             self.preview_lines
         }
@@ -556,7 +666,7 @@ impl AppModel {
                 };
                 if wide != self.list_wide {
                     self.list_wide = wide;
-                    if self.list_layout == config::ListLayout::Automatic {
+                    if self.list_layout_now() == config::ListLayout::Automatic {
                         self.push_single_line();
                     }
                 }
@@ -566,11 +676,10 @@ impl AppModel {
             AppMsg::ListColumnWidths(widths) => {
                 pref!(self.list_column_widths = widths);
             }
-            AppMsg::ListSortChanged(key) => {
-                if let Some(lh) = self.list_header_widgets.get() {
-                    lh.sort.set_state(&key.to_variant());
-                }
-            }
+            AppMsg::ListSortChanged(key, reversed) => self.keep_view_sort(key, reversed),
+            AppMsg::ListSortForAll => self.use_view_sort_for_all(),
+            AppMsg::ListShowRecipients(on) => self.keep_view_names(on),
+            AppMsg::ListFoldedDays(days) => self.keep_view_folds(days),
             _ => unreachable!("not routed to on_list_header"),
         }
     }
@@ -587,13 +696,16 @@ impl AppModel {
         let sort_action = gtk::gio::SimpleAction::new_stateful(
             "order",
             Some(gtk::glib::VariantTy::STRING),
-            &"date_newest".to_variant(),
+            &self.view_sort().0.key().to_variant(),
         );
         let list = self.message_list.sender().clone();
         sort_action.connect_activate(move |action, param| {
             if let Some(key) = param.and_then(|v| v.str()) {
                 action.set_state(&key.to_variant());
-                let _ = list.send(MessageListInput::SetSort(SortOrder::from_key(key)));
+                let _ = list.send(MessageListInput::SetSort {
+                    order: SortOrder::from_key(key),
+                    reversed: false,
+                });
             }
         });
         sort_group.add_action(&sort_action);
@@ -615,6 +727,9 @@ impl AppModel {
             ),
             sort: sort_action,
         });
+        self.show_view_sort();
+        self.apply_view_names();
+        self.apply_view_folds();
         // Focus Mode's chrome as saved: nothing is mapped yet, so the
         // revealers jump to their state without animating.
         self.sync_focus_chrome();

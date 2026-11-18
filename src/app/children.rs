@@ -13,7 +13,8 @@ use crate::ui::message_list::{MessageList, MessageListOutput};
 use crate::ui::message_view::{MessageView, MessageViewOutput};
 use crate::ui::notifications::{NotificationCenter, NotifyOutput};
 use crate::ui::preferences::PrefOutput;
-use crate::ui::sidebar::{Sidebar, SidebarInput, SidebarOutput};
+use crate::ui::reader_swap::ReaderSwap;
+use crate::ui::sidebar::{Sidebar, SidebarOutput};
 
 use super::attachments::AttachmentTarget;
 use super::boot::{sidebar_init, start_target, Boot};
@@ -38,6 +39,7 @@ fn message_list_output_msg(out: MessageListOutput) -> AppMsg {
         MessageListOutput::SelectionKeys(keys) => AppMsg::SelectionKeys(keys),
         MessageListOutput::Checked(count) => AppMsg::ListChecked(count),
         MessageListOutput::ViewMissed => AppMsg::EmitUnifiedNow,
+        MessageListOutput::FoldedDays(keys) => AppMsg::ListFoldedDays(keys),
         MessageListOutput::MoveMessages {
             account_id,
             dest,
@@ -115,7 +117,7 @@ fn message_list_output_msg(out: MessageListOutput) -> AppMsg {
         MessageListOutput::SearchActive(active) => AppMsg::SearchActive(active),
         MessageListOutput::FindInBodies { terms } => AppMsg::FindInBodies { terms },
         MessageListOutput::FindOnServers { terms, scope } => AppMsg::FindOnServers { terms, scope },
-        MessageListOutput::SortChanged(key) => AppMsg::ListSortChanged(key),
+        MessageListOutput::SortChanged(key, reversed) => AppMsg::ListSortChanged(key, reversed),
         MessageListOutput::ColumnWidths(widths) => AppMsg::ListColumnWidths(widths),
         MessageListOutput::CustomizeColumns => AppMsg::CustomizeColumns,
     }
@@ -139,17 +141,16 @@ fn message_view_output_msg(out: MessageViewOutput) -> AppMsg {
             thread: Vec::new(),
         },
         MessageViewOutput::CardAction { action, message } => AppMsg::CardAction { action, message },
-        MessageViewOutput::ContactSender(m) => AppMsg::CardContact(m),
         MessageViewOutput::AttachmentAction {
             account_id,
             id,
             index,
-            save,
+            action,
         } => AppMsg::CardAttachment {
             account_id,
             id,
             index,
-            save,
+            action,
         },
         MessageViewOutput::CardMenu { message, x, y, hit } => AppMsg::CardMenu {
             message,
@@ -157,12 +158,6 @@ fn message_view_output_msg(out: MessageViewOutput) -> AppMsg {
             y,
             hit,
             popout: None,
-        },
-        MessageViewOutput::CardMoveTo { message, x, y } => AppMsg::ListMoveTo {
-            messages: vec![*message],
-            offer_whole: false,
-            x,
-            y,
         },
         MessageViewOutput::MarkSeen { account_id, id } => {
             AppMsg::ThreadMessageSeen { account_id, id }
@@ -285,7 +280,9 @@ fn contacts_page_output_msg(out: ContactsPageOutput) -> AppMsg {
         ContactsPageOutput::CopyContacts { to, cards } => AppMsg::CopyContacts { to, cards },
         ContactsPageOutput::RenameBook { uid, name } => AppMsg::RenameBook { uid, name },
         ContactsPageOutput::Tree(tree) => AppMsg::ContactTree(tree),
-        ContactsPageOutput::ImportContacts(paths) => AppMsg::ImportContacts(paths),
+        ContactsPageOutput::ImportContacts { paths, book } => {
+            AppMsg::ImportContacts { paths, book }
+        }
         ContactsPageOutput::WantSuggestions => AppMsg::ContactSuggestions,
         ContactsPageOutput::ShowPhoto { name, data } => {
             // The lightbox routes by extension — a bare contact
@@ -293,7 +290,10 @@ fn contacts_page_output_msg(out: ContactsPageOutput) -> AppMsg {
             // hung the UI trying to parse it. Name it by content.
             let name = format!("{name}.{}", crate::models::image_ext(&data));
             AppMsg::ShowLightbox {
-                items: vec![crate::models::Attachment { name, data }],
+                items: vec![crate::models::Attachment {
+                    name,
+                    data: data.into(),
+                }],
                 start: 0,
             }
         }
@@ -316,6 +316,7 @@ pub(super) fn sidebar_output_msg(out: SidebarOutput) -> AppMsg {
         SidebarOutput::UnifiedSelected => {
             AppMsg::UnifiedSelected(UnifiedView::Kind(FolderKind::Inbox))
         }
+        SidebarOutput::StandIn => AppMsg::StandInView,
         SidebarOutput::UnifiedKindSelected(kind) => {
             AppMsg::UnifiedSelected(UnifiedView::Kind(kind))
         }
@@ -447,6 +448,7 @@ pub(super) struct Children {
     pub(super) message_list: Controller<MessageList>,
     pub(super) message_view: Controller<MessageView>,
     pub(super) attachment_drawer: Controller<AttachmentDrawer>,
+    pub(super) reader_swap: ReaderSwap,
     pub(super) lightbox: Controller<crate::ui::lightbox::Lightbox>,
     pub(super) gallery: Controller<AttachmentsGallery>,
     pub(super) contacts_compose_revealer: gtk::Revealer,
@@ -457,9 +459,12 @@ pub(super) struct Children {
 impl Children {
     /// Launches every child with its output forwarded to the root.
     pub(super) fn launch(boot: &Boot, sender: &ComponentSender<AppModel>) -> Self {
-        let show_attachments = boot.prefs.show_attachments;
-        let start = start_target(boot.prefs.start_view);
-        let start_pending = start.is_some();
+        let show_attachments = if boot.focus.enabled {
+            boot.focus.show_attachments
+        } else {
+            boot.prefs.show_attachments
+        };
+        let start = start_target(boot.prefs.start_view, &boot.config);
         let sidebar = Sidebar::builder()
             .launch(sidebar_init(
                 &boot.sidebar_state,
@@ -469,14 +474,6 @@ impl Children {
                 start,
             ))
             .forward(sender.input_sender(), sidebar_output_msg);
-        // The sidebar waits for the launch view's account to list its
-        // folders; one that is offline with nothing cached never does.
-        if start_pending {
-            let s = sidebar.sender().clone();
-            gtk::glib::timeout_add_seconds_local_once(5, move || {
-                let _ = s.send(SidebarInput::DropStart);
-            });
-        }
         // The peek panel's rows: a second, always-expanded instance.
         let peek_sidebar = Sidebar::builder()
             .launch(sidebar_init(
@@ -492,8 +489,10 @@ impl Children {
             .launch(())
             .forward(sender.input_sender(), message_list_output_msg);
 
+        // Opening a message freezes the reader and its drawer as one pane.
+        let reader_swap = ReaderSwap::new();
         let message_view = MessageView::builder()
-            .launch(())
+            .launch(reader_swap.clone())
             .forward(sender.input_sender(), message_view_output_msg);
 
         // The drawer owns a Paned whose top pane is the reader body, so hand it
@@ -504,6 +503,7 @@ impl Children {
                 reader: message_view.widget().clone().upcast(),
             })
             .forward(sender.input_sender(), attachment_drawer_output_msg);
+        reader_swap.set_pane(attachment_drawer.widget());
 
         let lightbox = crate::ui::lightbox::Lightbox::builder().launch(()).detach();
 
@@ -534,6 +534,7 @@ impl Children {
             message_list,
             message_view,
             attachment_drawer,
+            reader_swap,
             lightbox,
             gallery,
             contacts_compose_revealer,

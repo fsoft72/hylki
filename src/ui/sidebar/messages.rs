@@ -18,6 +18,9 @@ pub(crate) enum SidebarInput {
         /// A click anywhere on an account's header folds it.
         account_click_folds: bool,
         rail_dots: bool,
+        /// Off, no unread count shows anywhere in the sidebar (Settings →
+        /// Focus Mode → Unread counts).
+        unread_counts: bool,
         rail_fold: crate::config::RailFold,
         unified_unread: u32,
         /// Filter-rule folders to list inside All Inboxes (already
@@ -129,6 +132,9 @@ pub(crate) enum SidebarInput {
     /// Each smart folder's unread count, by id.
     SetSmartUnread(HashMap<String, u32>),
     ToggleCollapseLocal(u32),
+    /// A click on a rail avatar: show that account's inbox, or with a second
+    /// click straight after it, open or fold the account.
+    RailAvatarClicked(u32),
     /// Set icon-only mode outright (the app's narrow-window breakpoint) —
     /// unlike ToggleCollapsed this never reports CollapsedChanged, so it can't
     /// overwrite the user's own persisted choice.
@@ -191,6 +197,10 @@ pub(crate) enum SidebarInput {
 
 #[derive(Debug)]
 pub(crate) enum SidebarOutput {
+    /// The launch view could not be shown, and the view picked next is a
+    /// stand-in: the app must not remember it as the one to open next
+    /// time (#642).
+    StandIn,
     /// The unified sections' open state changed (a click, or the rail's
     /// fold-up) — for persistence.
     SectionsOpen {

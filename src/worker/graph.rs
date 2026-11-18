@@ -40,6 +40,7 @@ mod messages;
 mod offline;
 mod ops;
 mod send;
+mod server_search;
 mod snooze;
 mod text_search;
 use crate::worker::outbox::{delete_queued, emit_outbox};
@@ -197,6 +198,7 @@ impl<E: Fn(WorkerEvent)> GraphWorker<E> {
         let cache = &self.cache;
         let emit = &|ev| name_labels(&self.account, &self.emit, ev);
         match req {
+            MailRequest::AskServer(ask) => self.on_ask_server(ask).await,
             MailRequest::FindText { gen, terms, paths } => {
                 self.on_find_text(gen, terms, paths).await
             }
@@ -260,17 +262,24 @@ impl<E: Fn(WorkerEvent)> GraphWorker<E> {
             } => self.on_load_body(message_id, path, uid).await,
             MailRequest::LoadBodies { items, path } => self.on_load_bodies(items, path).await,
             MailRequest::LoadSource {
-                message_id: _,
+                message_id,
                 path,
                 uid,
             } => match graph_fetch_raw(&self.account, &mut self.state, &path, uid, emit).await {
                 Ok(raw) => emit(WorkerEvent::Source {
-                    text: String::from_utf8_lossy(&raw).into_owned(),
+                    message_id,
+                    text: Some(String::from_utf8_lossy(&raw).into_owned()),
                 }),
-                Err(e) => emit(WorkerEvent::net_error(i18n_f(
-                    "Could not load source: {e}",
-                    &[("e", &(e).to_string())],
-                ))),
+                Err(e) => {
+                    emit(WorkerEvent::net_error(i18n_f(
+                        "Could not load source: {e}",
+                        &[("e", &(e).to_string())],
+                    )));
+                    emit(WorkerEvent::Source {
+                        message_id,
+                        text: None,
+                    });
+                }
             },
             MailRequest::LoadAttachments {
                 message_id,

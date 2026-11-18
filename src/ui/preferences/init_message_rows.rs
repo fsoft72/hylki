@@ -130,6 +130,15 @@ impl Preferences {
             .attachment_drawer_row
             .set_active(init.attachment_drawer);
         widgets
+            .reading
+            .previewer_pictures_row
+            .set_active(init.previewer_pictures);
+        if !crate::desktop::previewer::available() {
+            let row = &widgets.reading.previewer_pictures_row;
+            row.set_sensitive(false);
+            row.set_subtitle(&i18n("Needs Sushi, the GNOME file previewer."));
+        }
+        widgets
             .conversations
             .thread_expansion_row
             .set_active(init.thread_expansion);
@@ -141,33 +150,6 @@ impl Preferences {
             .conversations
             .confirm_thread_delete_row
             .set_active(init.confirm_thread_delete);
-        widgets
-            .reading
-            .card_actions_row
-            .set_model(Some(&gtk::StringList::new(&[
-                i18n("Hidden behind a toggle").as_str(),
-                i18n("Shown while hovering").as_str(),
-                i18n("Always visible").as_str(),
-            ])));
-        widgets
-            .reading
-            .card_actions_row
-            .set_selected(if init.card_actions_hover {
-                0
-            } else if init.card_actions_auto {
-                1
-            } else {
-                2
-            });
-        widgets.list.list_palette_row.set_active(init.list_palette);
-        widgets
-            .list
-            .list_palette_hover_row
-            .set_active(init.list_palette_hover);
-        widgets
-            .reading
-            .card_palette_menu_row
-            .set_active(init.card_palette_menu);
         widgets
             .list
             .swipe_enabled_row
@@ -391,6 +373,10 @@ impl Preferences {
             .set_active(init.follow_plain);
         widgets
             .composing
+            .ask_plain_switch_row
+            .set_active(init.ask_plain_switch);
+        widgets
+            .composing
             .signature_position_row
             .set_model(Some(&gtk::StringList::new(&[
                 &i18n("Above the quoted message"),
@@ -405,11 +391,11 @@ impl Preferences {
             .composing
             .signature_dashes_row
             .set_active(init.signature_dashes);
+        widgets.composing.fold_quote_row.set_active(init.fold_quote);
+        widgets.composing.set_reply_header(&init.reply_header);
         widgets
             .composing
-            .fold_quote_row
-            .set_active(init.fold_quote);
-        widgets.composing.set_reply_header(&init.reply_header);
+            .set_attachment_keywords(&init.attachment_keywords);
         let undo_labels: Vec<String> = crate::config::UNDO_SEND_CHOICES
             .iter()
             .map(|&secs| match secs {
@@ -484,9 +470,11 @@ impl Preferences {
                 rows.show(&current);
                 if dicts.is_empty() {
                     rows.expander.set_sensitive(false);
-                    spelling_group.set_description(Some(&i18n(
+                    // A group's description is markup: "<code>" would be
+                    // read as a tag and the whole line dropped.
+                    spelling_group.set_description(Some(&gtk::glib::markup_escape_text(&i18n(
                         "No dictionaries found. On Flatpak, add a language with: flatpak config --set extra-languages <code>",
-                    )));
+                    ))));
                 }
                 // Connected after the switches show the saved choice, and
                 // guarded besides, so showing it never saves it again.

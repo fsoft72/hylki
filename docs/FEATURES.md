@@ -151,7 +151,8 @@ The full list. The [README](../README.md) carries a shorter one.
 - **Events and tasks from mail:** Create Event and Create Task in a
   message's menu fill in a title, a time and notes from the message, and
   write it to a calendar or task list of GNOME Online Accounts or
-  Evolution.
+  Evolution. Made from selected text, they take the date and times
+  written in it.
 - **Folding conversations:** a click on a message's header folds it to its
   sender and first lines, and earlier messages can start folded, so
   a long conversation opens on what is new.
@@ -180,13 +181,18 @@ The full list. The [README](../README.md) carries a shorter one.
 
 ## The app
 
+- **AI agents:** an agent reads and organizes mail and prepares messages
+  through the Model Context Protocol, as far as you allow it per account, per
+  action and per folder. It cannot send, erase mail for good or read encrypted
+  mail. See [Configuration](DOCUMENTATION.md#ai-agents).
 - **GNOME-native:** adaptive three-pane layout, per-account colours and
   emoji, picture or Gravatar avatars, light and dark following the system.
 - **Appearance themes:** five palettes (Rose, Forest, Tidal, Earth and
   Midnight), each with its own light and dark version, or the stock GNOME
   colours.
 - **Focus Mode:** Ctrl+Shift+F folds the toolbars, sidebar and list down to
-  what you are reading, and puts it back afterwards.
+  what you are reading, and puts it back afterwards. All of it is set on its
+  own page in Settings.
 - **A customizable reader toolbar:** reorder its buttons, or drag them in and
   out, in Settings → Appearance.
 - **A single-line message list:** sender, subject and the start of the
@@ -205,7 +211,7 @@ The full list. The [README](../README.md) carries a shorter one.
   Mark as Spam, and a sound if you want one: built in, or a file of your own.
 - **GNOME Contacts:** names and photos from your address book, optional.
 - **Hylki address book:** a book of your own, beside the ones Evolution Data
-  Server keeps, with vCard (`.vcf`) import. It works without GNOME.
+  Server keeps, with vCard (`.vcf`) and CSV import. It works without GNOME.
 - **CardDAV accounts:** the address books of Nextcloud, iCloud, Fastmail or
   any CardDAV server, set up in Hylki, through Evolution Data Server. See
   [CardDAV accounts](DOCUMENTATION.md#carddav-accounts).

@@ -1,9 +1,11 @@
 //! Talking to Microsoft Graph: the access token, requests with throttling
 //! honoured, error text, paging, and the request log for the console.
 
+use std::sync::OnceLock;
 use std::time::Duration;
 
 use crate::config::AccountConfig;
+use crate::i18n::i18n_f;
 use crate::services::graph_api::bearer;
 use crate::worker::auth::fetch_oauth_token;
 use crate::worker::WorkerEvent;
@@ -12,6 +14,36 @@ pub(super) use crate::services::graph_api::GRAPH_BASE;
 
 /// How many times a throttled request waits and tries again.
 const GRAPH_THROTTLE_TRIES: u32 = 4;
+
+/// How long a request may wait to connect, or for the next bytes of an
+/// answer, before it fails.
+const GRAPH_CONNECT_TIMEOUT: Duration = Duration::from_secs(20);
+const GRAPH_IO_TIMEOUT: Duration = Duration::from_secs(60);
+
+/// What every request here goes through. ureq's default agent waits on a
+/// read forever: a download whose connection died under a suspend left the
+/// worker blocked in it, every poll and Refresh queued behind, until the
+/// account was switched off and on (#618). A read that hears nothing for a
+/// minute fails instead, and the next poll dials again.
+///
+/// No connection is kept for the next request. ureq 2 clears a socket's
+/// timeouts when it goes back to the pool and sets them again only on a new
+/// connection, so a request sent on a kept one that died over a suspend
+/// waited for its answer with no deadline at all. A new connection each time
+/// is what Graph did before the shared agent, through `ureq::get`.
+fn agent() -> &'static ureq::Agent {
+    static AGENT: OnceLock<ureq::Agent> = OnceLock::new();
+    AGENT.get_or_init(|| build_agent(GRAPH_IO_TIMEOUT))
+}
+
+fn build_agent(io: Duration) -> ureq::Agent {
+    ureq::AgentBuilder::new()
+        .timeout_connect(GRAPH_CONNECT_TIMEOUT)
+        .timeout_read(io)
+        .timeout_write(io)
+        .max_idle_connections(0)
+        .build()
+}
 
 /// Read a ureq error into something a user can act on (status + body snippet).
 pub(super) fn graph_err(e: ureq::Error) -> String {
@@ -65,7 +97,7 @@ pub(super) fn graph_throttle_wait(e: &ureq::Error) -> Option<Duration> {
 fn graph_get(token: &str, url: &str) -> Result<ureq::Response, String> {
     let mut tries = 0;
     loop {
-        match ureq::get(url).set("Authorization", &bearer(token)).call() {
+        match agent().get(url).set("Authorization", &bearer(token)).call() {
             Err(e) if tries < GRAPH_THROTTLE_TRIES => {
                 let Some(wait) = graph_throttle_wait(&e) else {
                     return Err(graph_err(e));
@@ -122,7 +154,8 @@ pub(super) fn graph_send_json(
     body: &serde_json::Value,
 ) -> Result<serde_json::Value, String> {
     graph_wire(method, url);
-    let resp = ureq::request(method, url)
+    let resp = agent()
+        .request(method, url)
         .set("Authorization", &bearer(token))
         .send_json(body.clone())
         .map_err(graph_err);
@@ -143,7 +176,8 @@ pub(super) fn graph_post_mime(
 ) -> Result<serde_json::Value, String> {
     let b64 = crate::encoding::base64_encode(raw);
     graph_wire("POST(mime)", url);
-    let resp = ureq::post(url)
+    let resp = agent()
+        .post(url)
         .set("Authorization", &bearer(token))
         .set("Content-Type", "text/plain")
         .send_string(&b64)
@@ -158,7 +192,8 @@ pub(super) fn graph_post_mime(
 
 pub(super) fn graph_delete_req(token: &str, url: &str) -> Result<(), String> {
     graph_wire("DELETE", url);
-    let r = ureq::delete(url)
+    let r = agent()
+        .delete(url)
         .set("Authorization", &bearer(token))
         .call()
         .map_err(graph_err)
@@ -217,20 +252,88 @@ pub(super) async fn graph_token(
         None => {
             // Signed in through Hylki's own Microsoft app (#329) rather than
             // GNOME Online Accounts: it is Hylki's sign-in to renew.
+            let email = [("email", account.email.as_str())];
             emit(WorkerEvent::net_error(if account.goa_id.is_some() {
-                format!(
-                    "GNOME Online Accounts could not provide a sign-in token for {}. Open \
-                     Settings → Online Accounts and sign in again.",
-                    account.email
+                i18n_f(
+                    "GNOME Online Accounts could not provide a sign-in token for {email}. Open Settings → Online Accounts and sign in again.",
+                    &email,
                 )
             } else {
-                format!(
-                    "Microsoft did not accept the saved sign-in for {}. Open Hylki's Settings → \
-                     Mail Accounts and sign in to it again.",
-                    account.email
+                i18n_f(
+                    "Microsoft did not accept the saved sign-in for {email}. Open Hylki's Settings → Mail Accounts and sign in to it again.",
+                    &email,
                 )
             }));
             None
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// A server that takes the request and never answers (#618): the read
+    /// fails at its deadline rather than holding the worker for good.
+    #[test]
+    fn a_silent_server_times_out_instead_of_hanging() {
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let addr = listener.local_addr().unwrap();
+        let held = std::thread::spawn(move || {
+            let (conn, _) = listener.accept().unwrap();
+            std::thread::sleep(Duration::from_secs(3));
+            drop(conn);
+        });
+        let started = std::time::Instant::now();
+        let r = build_agent(Duration::from_millis(300))
+            .get(&format!("http://{addr}/"))
+            .call();
+        assert!(r.is_err());
+        assert!(started.elapsed() < Duration::from_secs(2));
+        held.join().unwrap();
+    }
+
+    /// The request after a successful one, to a server that stops answering:
+    /// it fails at the read deadline too, rather than riding a kept
+    /// connection whose timeouts ureq has cleared (#618).
+    #[test]
+    fn the_next_request_times_out_too() {
+        use std::io::{Read, Write};
+        fn read_head(conn: &mut std::net::TcpStream) {
+            let mut head = Vec::new();
+            let mut byte = [0];
+            while !head.ends_with(b"\r\n\r\n") {
+                conn.read_exact(&mut byte).unwrap();
+                head.push(byte[0]);
+            }
+        }
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let addr = listener.local_addr().unwrap();
+        let server = std::thread::spawn(move || {
+            let (mut first, _) = listener.accept().unwrap();
+            read_head(&mut first);
+            first
+                .write_all(b"HTTP/1.1 200 OK\r\nContent-Length: 2\r\nConnection: keep-alive\r\n\r\n{}")
+                .unwrap();
+            // Whatever comes next, on this connection or a new one, gets
+            // no answer.
+            listener.set_nonblocking(true).unwrap();
+            let mut held = vec![first];
+            let until = std::time::Instant::now() + Duration::from_secs(3);
+            while std::time::Instant::now() < until {
+                if let Ok((conn, _)) = listener.accept() {
+                    held.push(conn);
+                }
+                std::thread::sleep(Duration::from_millis(20));
+            }
+        });
+        let agent = build_agent(Duration::from_millis(300));
+        let url = format!("http://{addr}/");
+        let first: serde_json::Value = agent.get(&url).call().unwrap().into_json().unwrap();
+        assert!(first.is_object());
+        let started = std::time::Instant::now();
+        assert!(agent.get(&url).call().is_err());
+        assert!(started.elapsed() < Duration::from_secs(2));
+        server.join().unwrap();
     }
 }

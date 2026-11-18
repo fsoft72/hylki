@@ -8,6 +8,7 @@ use super::*;
 pub(crate) struct PrefInit {
     pub(crate) auto_remote_content: bool,
     pub(crate) remote_ahead: bool,
+    pub(crate) clean_links: bool,
     pub(crate) show_remote_banner: bool,
     pub(crate) show_spoof_banner: bool,
     /// Answering requests for read receipts, and asking for them (#520).
@@ -28,10 +29,6 @@ pub(crate) struct PrefInit {
     pub(crate) fetch_interval_secs: u64,
     pub(crate) push: bool,
     pub(crate) metered_save_data: bool,
-    pub(crate) palette_collapse_secs: u64,
-    /// Seconds a message card's actions palette stays open — its own, not
-    /// the message list's.
-    pub(crate) card_palette_collapse_secs: u64,
     pub(crate) threading: bool,
     pub(crate) threads_expanded: bool,
     /// Reading pane shows conversations newest-message-first.
@@ -62,6 +59,8 @@ pub(crate) struct PrefInit {
     pub(crate) card_attachments: bool,
     /// The attachment drawer beneath the reader is shown (#213).
     pub(crate) attachment_drawer: bool,
+    /// Space sends pictures and PDFs to the file previewer too (#625).
+    pub(crate) previewer_pictures: bool,
     /// Conversation rows may expand into their members in the message list.
     pub(crate) thread_expansion: bool,
     /// A conversation's row speaks for the newest message anywhere in the
@@ -69,17 +68,6 @@ pub(crate) struct PrefInit {
     pub(crate) thread_row_newest: bool,
     /// Deleting a whole selected conversation asks for confirmation.
     pub(crate) confirm_thread_delete: bool,
-    /// Conversation card actions hide until the card is hovered.
-    pub(crate) card_actions_hover: bool,
-    /// With the ⋯ toggle off: card actions appear automatically on hover.
-    pub(crate) card_actions_auto: bool,
-    /// The list rows carry an actions palette line at all.
-    pub(crate) list_palette: bool,
-    /// The list's actions palette opens on row hover (no ⋯ click).
-    pub(crate) list_palette_hover: bool,
-    /// A message card's ⋯ opens the card menu instead of sliding its
-    /// actions palette out.
-    pub(crate) card_palette_menu: bool,
     /// Message rows take a sideways swipe to archive / delete (#92).
     pub(crate) swipe_enabled: bool,
     /// The message list's swipe-gesture sides are swapped (#swipe).
@@ -128,6 +116,8 @@ pub(crate) struct PrefInit {
     pub(crate) compose_format: crate::config::ComposeFormat,
     /// Replies and forwards to plain-text mail are written in plain text (#436).
     pub(crate) follow_plain: bool,
+    /// Switching to plain text asks first when something would be lost.
+    pub(crate) ask_plain_switch: bool,
     /// Where the split reply opens in the reading pane (#212).
     pub(crate) reply_position: crate::config::ReplyPosition,
     /// Where the signature sits in a reply or forward (#237).
@@ -138,6 +128,8 @@ pub(crate) struct PrefInit {
     pub(crate) reply_header: String,
     /// Undo Send delay in seconds, 0 for off (#434).
     pub(crate) undo_send_secs: u32,
+    /// The words that make Send ask when nothing is attached, "" for never.
+    pub(crate) attachment_keywords: String,
     pub(crate) app_theme: AppTheme,
     pub(crate) text_scale: u32,
     /// The appearance theme's id ("system" for the stock GNOME colors).
@@ -182,9 +174,11 @@ pub(crate) struct PrefInit {
     pub(crate) list_column_scroll: bool,
     pub(crate) list_group_by_date: bool,
     pub(crate) list_pills_below: bool,
+    pub(crate) list_follows_window: bool,
     pub(crate) list_search_open: bool,
     pub(crate) contacts_search_open: bool,
     pub(crate) contact_names: bool,
+    pub(crate) reply_to_sender: bool,
     pub(crate) list_search_bottom: bool,
     pub(crate) list_bulk_bar_bottom: bool,
     pub(crate) single_key_shortcuts: bool,
@@ -197,6 +191,11 @@ pub(crate) struct PrefInit {
     pub(crate) tray_icon: TrayIcon,
     pub(crate) tray_mail: bool,
     pub(crate) launcher_badge: LauncherBadge,
+    /// What AI assistants may reach, what the connection is doing, and what
+    /// they did, newest first: (title, subtitle).
+    pub(crate) assistant_policy: crate::config::AssistantPolicy,
+    pub(crate) assistant_status: String,
+    pub(crate) assistant_activity: Vec<(String, String)>,
     /// The chosen app icon (an `app_icon::catalog` id).
     pub(crate) app_icon: String,
     /// The accounts panel (built by the AccountsWindow component), shown
@@ -222,6 +221,12 @@ pub(crate) enum PrefInput {
     SetContactBooks(Vec<crate::contacts::Book>),
     /// The Hylki book's size changed (an import, a deletion).
     SetLocalContactCount(usize),
+    /// What the assistant connection is doing and has done, as the app saw
+    /// it change.
+    SetAssistantActivity {
+        status: String,
+        lines: Vec<(String, String)>,
+    },
     ToggleAvatars(bool),
     ChangeDateStyle(u32),
     ChangeClockStyle(u32),
@@ -261,8 +266,6 @@ pub(crate) enum PrefInput {
     ChangeReaderDefault(u32),
     ChangeReaderZoom(u32),
     ToggleThreadExpansion(bool),
-    ChangeCardActionsMode(u32),
-    ToggleListPalette(bool),
     ToggleSwipeEnabled(bool),
     /// The "Send new messages from" combo: 0 = the open folder's account,
     /// then `identities` in order.
@@ -299,6 +302,10 @@ pub(crate) enum PrefInput {
     ToggleShowAccounts(bool),
     /// One of Focus Mode's switches.
     ToggleFocus(crate::config::FocusPart, bool),
+    /// Focus Mode's list layout, by its row in the combo.
+    SetFocusLayout(u32),
+    /// Focus Mode's preview lines: the row in the combo is the number of lines.
+    SetFocusPreviewLines(u32),
     /// The app's Focus Mode changed elsewhere (menu, shortcut): follow.
     SetFocusMode(crate::config::FocusMode),
     /// The main menu flipped "Show Accounts": the switch follows.
@@ -418,6 +425,7 @@ pub(crate) enum PrefOutput {
     PageShown(String),
     SetAutoRemoteContent(bool),
     SetRemoteAhead(bool),
+    SetCleanLinks(bool),
     SetShowRemoteBanner(bool),
     SetShowSpoofBanner(bool),
     SetReceipts(crate::config::ReceiptPolicy),
@@ -450,16 +458,10 @@ pub(crate) enum PrefOutput {
     SetReaderZoom(u32),
     SetCardAttachments(bool),
     SetAttachmentDrawer(bool),
+    SetPreviewerPictures(bool),
     SetThreadExpansion(bool),
     SetThreadRowNewest(bool),
     SetConfirmThreadDelete(bool),
-    SetCardActionsMode {
-        hover_toggle: bool,
-        hover_auto: bool,
-    },
-    SetListPalette(bool),
-    SetListPaletteHover(bool),
-    SetCardPaletteMenu(bool),
     SetSwipeEnabled(bool),
     SetSwipeReversed(bool),
     SetSwipeSensitivity(f64),
@@ -533,12 +535,16 @@ pub(crate) enum PrefOutput {
     SetGroupByDate(bool),
     /// A card's tags and labels on a line under its text (#374).
     SetPillsBelow(bool),
+    /// The list keeps its share of the window, not its width (#648).
+    SetListFollowsWindow(bool),
     /// Keep the list's search field open (#446).
     SetListSearchOpen(bool),
     /// Keep Contacts' search field open.
     SetContactsSearchOpen(bool),
     /// Saved contacts go by their address-book names (#541).
     SetContactNames(bool),
+    /// Mail is named by its Reply-To sender (#641).
+    SetReplyToSender(bool),
     /// The list's search field under the rows, not above them (#496).
     SetListSearchBottom(bool),
     /// The list's bulk bar under the rows, not above them (#496).
@@ -556,9 +562,9 @@ pub(crate) enum PrefOutput {
     SetTrayIcon(TrayIcon),
     SetTrayMail(bool),
     SetLauncherBadge(LauncherBadge),
+    /// What AI assistants may reach changed (`crate::mcp`).
+    SetAssistantPolicy(Box<crate::config::AssistantPolicy>),
     SetAppIcon(String),
-    SetPaletteCollapse(u64),
-    SetCardPaletteCollapse(u64),
     SetMessageTheme(MessageTheme),
     SetOverrideFonts(bool),
     SetReaderFont(String),
@@ -567,11 +573,13 @@ pub(crate) enum PrefOutput {
     SetPlainFont(String),
     SetComposeFormat(crate::config::ComposeFormat),
     SetFollowPlain(bool),
+    SetAskPlainSwitch(bool),
     SetReplyPosition(crate::config::ReplyPosition),
     SetSignaturePosition(crate::config::SignaturePosition),
     SetSignatureDashes(bool),
     SetFoldQuote(bool),
     SetReplyHeader(String),
+    SetAttachmentKeywords(String),
     SetUndoSend(u32),
     Closed,
 }

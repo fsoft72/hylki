@@ -12,6 +12,8 @@ use rusqlite::Connection;
 use crate::models::Message;
 
 mod addresses;
+mod assistant;
+pub(crate) mod at_rest;
 mod bodies;
 mod draft_copies;
 mod flags;
@@ -21,18 +23,24 @@ mod messages;
 mod offline;
 mod open;
 mod outbox;
+mod pgp_peers;
 mod schema;
 mod smart;
 mod text_index;
+mod thread_members;
 mod threads;
 
+pub(crate) use assistant::{MailScope, ScopedFolder};
 pub(crate) use gallery::*;
 pub(crate) use local_copies::CopyKey;
 pub(crate) use messages::*;
+pub(crate) use text_index::body_text;
 
 #[cfg(test)]
 use schema::*;
 
+#[cfg(all(test, unix))]
+mod at_rest_tests;
 #[cfg(test)]
 mod gallery_tests;
 #[cfg(test)]
@@ -70,7 +78,7 @@ fn message_columns() -> String {
     format!(
         "uid, from_name, from_addr, subject, date, ts, unread, starred, has_attachment, \
          recipients, cc, message_id, references_, preview, reply_to, {KEYWORDS_COL}, \
-         importance, due, gmail_labels, answered, forwarded, bcc"
+         importance, due, gmail_labels, answered, forwarded, bcc, reply_to_name"
     )
 }
 
@@ -92,6 +100,7 @@ fn message_from_row(
         from_name: row.get(col(1))?,
         from_addr: row.get(col(2))?,
         reply_to: row.get(col(14))?,
+        reply_to_name: row.get(col(22))?,
         to: row.get(col(9))?,
         cc: row.get(col(10))?,
         bcc: row.get(col(21))?,
@@ -137,4 +146,6 @@ fn split_labels(col: String) -> Vec<String> {
 /// the methods live in the child modules by what they touch.
 pub(crate) struct Cache {
     conn: Connection,
+    /// How the file is keyed, for the readers opened from this connection.
+    protection: at_rest::Protection,
 }

@@ -10,10 +10,12 @@
 //! view had them.
 
 mod appearance;
+mod assistants;
 mod backup;
 mod composing;
 mod conversations;
 mod datetime;
+mod focus;
 mod general;
 mod list;
 mod privacy;
@@ -22,10 +24,12 @@ mod sidebar;
 mod system;
 
 pub(super) use appearance::AppearancePage;
+pub(super) use assistants::AssistantsPage;
 pub(super) use backup::BackupPage;
 pub(super) use composing::ComposingPage;
 pub(super) use conversations::ConversationsPage;
 pub(super) use datetime::DateTimePage;
+pub(super) use focus::FocusPage;
 pub(super) use general::GeneralPage;
 pub(super) use list::ListPage;
 pub(super) use privacy::PrivacyPage;

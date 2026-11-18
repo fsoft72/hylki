@@ -19,7 +19,7 @@ use crate::worker::imap::ladder::Idle;
 use crate::worker::imap::send::flush_outbox;
 use crate::worker::imap::stream::ImapIo;
 use crate::worker::imap::watch::{watch_folder, FolderWatch};
-use crate::worker::preempt::reorder_reader_loads;
+use crate::worker::preempt::{reorder_reader_loads, superseded};
 use crate::worker::{MailRequest, WorkerEvent};
 
 pub(super) mod backfill;
@@ -39,6 +39,8 @@ mod ladder;
 #[cfg(test)]
 mod live_copy_tests;
 #[cfg(test)]
+mod live_count_tests;
+#[cfg(test)]
 mod live_hierarchy_tests;
 #[cfg(test)]
 mod live_receipt_tests;
@@ -51,6 +53,7 @@ mod prefetch;
 mod preview_fetch;
 mod retry;
 pub(super) mod send;
+mod server_search;
 mod setup;
 mod snooze;
 mod stream;
@@ -234,6 +237,8 @@ struct ImapWorker<E> {
     offline: crate::worker::offline::Offline,
     /// A search of the server's text under way (#509).
     text_search: Option<text_search::TextSearch>,
+    /// Assistants' searches of the server, oldest first.
+    server_searches: VecDeque<server_search::ServerJob>,
     /// Folders queued for the one-time References repair (see
     /// [`run_one_refs_repair`]). Every folder gets one: a message indexed by
     /// an older build carries only its In-Reply-To, and threading reads
@@ -333,6 +338,9 @@ impl<E: Emit> ImapWorker<E> {
                 },
             };
             let req = reorder_reader_loads(req, &mut self.rx, &mut self.backlog);
+            if superseded(&req, &self.backlog) {
+                continue;
+            }
             self.handle(req).await;
         }
 

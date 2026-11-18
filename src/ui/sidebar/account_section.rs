@@ -6,8 +6,8 @@ use super::menus::{attach_folder_context_menu, folder_sort_menu, show_sidebar_me
 use super::tree::{hidden_by_collapse, is_main_row, nests_in_inbox, path_is_under};
 use super::types::chevron_icon;
 use super::widgets::{
-    account_gravatar, build_folder_row, filter_icon, heading_chevron, section_heading,
-    with_unread_overlay, wrap_row_in_revealer, ROW_LEFT_INSET,
+    account_gravatar, build_folder_row, filter_icon, fold_on_double_click, heading_chevron,
+    section_heading, with_unread_overlay, wrap_row_in_revealer, ROW_LEFT_INSET,
 };
 use super::*;
 
@@ -95,6 +95,10 @@ impl Sidebar {
         }
         revealer.set_child(Some(&wrap));
         accounts_box.append(&revealer);
+
+        if self.collapsed {
+            mark_folded_selection(&header, &revealer, &list, &custom_list);
+        }
 
         self.revealers.insert(id, revealer);
         self.chevrons.insert(id, chevron);
@@ -184,7 +188,12 @@ impl Sidebar {
         if self.collapsed {
             hbox.append(&circle_overlay);
             hbox.set_halign(gtk::Align::Center);
-            header.set_tooltip_text(Some(&name_str));
+            if self.account_click_folds {
+                header.set_tooltip_text(Some(&name_str));
+            } else {
+                let tip = format!("{name_str}\n{}", i18n("Long-press to expand or collapse"));
+                header.set_tooltip_text(Some(&tip));
+            }
         } else {
             hbox.append(&circle_overlay);
             let vbox = gtk::Box::new(gtk::Orientation::Vertical, 0);
@@ -223,13 +232,33 @@ impl Sidebar {
         if header.child().is_none() {
             header.set_child(Some(&hbox));
         }
-        if self.collapsed || self.account_click_folds {
-            // The rail's avatar, or every header by choice: a click
-            // anywhere opens or folds the account.
+        if self.account_click_folds {
+            // By choice: a click anywhere opens or folds the account.
             let s = sender.input_sender().clone();
             header.connect_clicked(move |_| {
                 let _ = s.send(SidebarInput::ToggleCollapseLocal(id));
             });
+        } else if self.collapsed {
+            // The rail's avatar has no chevron, and stands in for the inbox
+            // row folded away under it (#594): a click opens that inbox, and
+            // a long press or a double click folds, as on the rail's unified
+            // rows. The double click is counted from the clicks themselves:
+            // the gesture the full header uses never reached two here.
+            let s = sender.input_sender().clone();
+            header.connect_clicked(move |_| {
+                let _ = s.send(SidebarInput::RailAvatarClicked(id));
+            });
+            let hold = gtk::GestureLongPress::new();
+            hold.set_touch_only(false);
+            // In the capture phase, where the button takes its click:
+            // claiming there is what stops the release counting as one.
+            hold.set_propagation_phase(gtk::PropagationPhase::Capture);
+            let s = sender.input_sender().clone();
+            hold.connect_pressed(move |g, _, _| {
+                g.set_state(gtk::EventSequenceState::Claimed);
+                let _ = s.send(SidebarInput::ToggleCollapseLocal(id));
+            });
+            header.add_controller(hold);
         } else {
             // As the unified rows: the chevron opens or folds the account,
             // and so does a double click anywhere else on the header; a
@@ -338,6 +367,15 @@ impl Sidebar {
                 icon,
                 &section.hierarchy,
             );
+            if has_children {
+                if let Some(lead) = &lead {
+                    let msg = SidebarInput::ToggleFolderNode {
+                        account_id: id,
+                        path: folder.path.clone(),
+                    };
+                    fold_on_double_click(&row, lead, msg, sender);
+                }
+            }
             if nested {
                 // Hidden while the Inbox or a parent is folded, as in
                 // the Folders section.
@@ -393,6 +431,11 @@ impl Sidebar {
         let mut folders_heading: Option<gtk::Widget> = None;
         if !custom.is_empty() {
             for folder in custom {
+                // A container (`tree::container_ancestors`) draws like a
+                // folder but takes no folder work: nothing to select, and
+                // nothing to pick up. Its chevron still folds it, and its
+                // children's depths come from it.
+                let inert = section.containers.contains(&folder.path);
                 let depth = folder_depth(folder, custom, &section.hierarchy);
                 // The expander slot (#51): a chevron for folders with
                 // sub-folders, an equal-width spacer for leaves so names
@@ -415,6 +458,10 @@ impl Sidebar {
                     filter_icon(section, folder),
                     &section.hierarchy,
                 );
+                if inert {
+                    row.set_selectable(false);
+                    row.set_focusable(false);
+                }
                 // Hidden while any ancestor is collapsed; the row still
                 // exists, so selection indices stay stable. Its content
                 // sits in a revealer so user toggles slide open/closed —
@@ -428,9 +475,18 @@ impl Sidebar {
                 row.set_visible(!hidden);
                 // Custom folders can be picked up and dropped on a new
                 // parent (#51), or on a sibling's edge to reorder them.
-                if !self.collapsed {
+                if !self.collapsed && !inert {
                     let payload = format!("vireo-folder\t{id}\t{}", folder.path);
                     row.add_controller(folder_drag_source(&row, payload));
+                }
+                if has_children {
+                    if let Some(lead) = &lead {
+                        let msg = SidebarInput::ToggleFolderNode {
+                            account_id: id,
+                            path: folder.path.clone(),
+                        };
+                        fold_on_double_click(&row, lead, msg, sender);
+                    }
                 }
                 custom_list.append(&row);
                 if let Some(badge) = badge {
@@ -648,6 +704,7 @@ impl Sidebar {
             id,
             folders.iter().map(|f| (*f).clone()).collect(),
             section.filtered.iter().map(|f| f.path.clone()).collect(),
+            section.containers.clone(),
             self.favorite_paths(id),
             section.has_filters,
             section.hierarchy.nests(),
@@ -797,4 +854,42 @@ fn attach_drop_hover(header: &gtk::Button, id: u32, sender: &ComponentSender<Sid
         }
     });
     header.add_controller(motion);
+}
+
+/// Light a rail avatar while the folder open in the list is one of its
+/// account's and folded out of sight, so the rail still shows where the list
+/// came from.
+fn mark_folded_selection(
+    header: &gtk::Button,
+    revealer: &gtk::Revealer,
+    list: &gtk::ListBox,
+    custom_list: &gtk::ListBox,
+) {
+    let (head, rev, main, custom) = (
+        header.downgrade(),
+        revealer.downgrade(),
+        list.downgrade(),
+        custom_list.downgrade(),
+    );
+    let sync = std::rc::Rc::new(move || {
+        let (Some(head), Some(rev), Some(main), Some(custom)) = (
+            head.upgrade(),
+            rev.upgrade(),
+            main.upgrade(),
+            custom.upgrade(),
+        ) else {
+            return;
+        };
+        let here = main.selected_row().is_some() || custom.selected_row().is_some();
+        if here && !rev.reveals_child() {
+            head.add_css_class("rail-current");
+        } else {
+            head.remove_css_class("rail-current");
+        }
+    });
+    for l in [list, custom_list] {
+        let sync = sync.clone();
+        l.connect_row_selected(move |_, _| sync());
+    }
+    revealer.connect_reveal_child_notify(move |_| sync());
 }

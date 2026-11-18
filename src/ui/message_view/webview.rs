@@ -1,7 +1,7 @@
 //! Building the reader's WebView and the WebContext it shares with print
 //! preview and the composer.
 
-use super::links::{decode_data_uri, default_image_name, is_launchable_uri};
+use super::links::{default_image_name, is_launchable_uri, link_to_open, own_picture};
 use super::menu::strip_navigation_items;
 use super::MessageView;
 use crate::i18n::i18n;
@@ -39,6 +39,7 @@ thread_local! {
         // With WebKit's HTTP cache off, remote content comes through the
         // app's own cache instead (#474).
         crate::services::remote_content::register(&ctx);
+        crate::services::inline_images::register(&ctx);
         ctx
     };
 }
@@ -46,6 +47,19 @@ thread_local! {
 /// The shared document-viewer web context (see [`WEB_CONTEXT`]).
 pub(crate) fn shared_web_context() -> webkit6::WebContext {
     WEB_CONTEXT.with(|c| c.clone())
+}
+
+/// WebKit settings every view of mail starts from: no developer tools, and
+/// no DNS prefetching. Prefetching resolves the host of every link in a
+/// document as it loads, which tells the sender's DNS server the message
+/// was opened even with remote content blocked. Recent WebKitGTK (2.54 in
+/// the GNOME 50 runtime) has deprecated the switch and keeps prefetching
+/// off; setting it costs nothing there and covers a release that reads it.
+pub(crate) fn private_settings() -> webkit6::Settings {
+    let settings = webkit6::Settings::new();
+    settings.set_enable_developer_extras(false);
+    settings.set_enable_dns_prefetching(false);
+    settings
 }
 
 /// Keep Tab and Shift+Tab moving through the window after they leave a
@@ -87,14 +101,19 @@ fn build_webview(role: &'static str) -> webkit6::WebView {
         .build();
     crate::desktop::memory_report::register_web_view(&webview, role);
     keep_tab_out_of_key_translator(&webview);
-    crate::services::remote_content::allow_in(&webview);
+    // Setting the allowlist replaces it: every scheme the reader's pages load
+    // from goes in at once.
+    let allowed: Vec<&str> = crate::services::remote_content::CORS_PATTERNS
+        .into_iter()
+        .chain([crate::services::inline_images::CORS_PATTERN])
+        .collect();
+    webview.set_cors_allowlist(&allowed);
 
-    let settings = webkit6::Settings::new();
+    let settings = private_settings();
     // JavaScript runs only in our own (trusted) wrapper document — it sizes each
     // message's iframe to its content. Every email body is embedded in a
     // `sandbox`ed iframe WITHOUT `allow-scripts`, so message scripts never run.
     settings.set_enable_javascript(true);
-    settings.set_enable_developer_extras(false);
     // JS console output lands on stdout, where the tracing/console-mode
     // pipeline can pick it up — a silent script error in the wrapper document
     // otherwise kills card interactions with no trace at all.
@@ -110,9 +129,9 @@ fn build_webview(role: &'static str) -> webkit6::WebView {
 /// "Save Image As…" on a right-clicked image. WebKit's own item hands the
 /// image to a download, which needs a `WebKitNetworkSession` destination
 /// handler we don't have — so it silently did nothing. Every image the reader
-/// shows inline (attached photos, and `cid:` images since 1.7.1) is a `data:`
-/// URI whose bytes are already in the document, so swap in our own item that
-/// decodes them and opens a real save dialog.
+/// shows inline (attached photos, and `cid:` images since 1.7.1) has its
+/// bytes in hand, in a `data:` URI or lifted out of the body, so swap in our
+/// own item that decodes them and opens a real save dialog.
 fn offer_save_image(webview: &webkit6::WebView) {
     webview.connect_context_menu(|view, menu, hit| {
         strip_navigation_items(menu);
@@ -122,7 +141,7 @@ fn offer_save_image(webview: &webkit6::WebView) {
         let Some(uri) = hit.image_uri() else {
             return false;
         };
-        let Some((mime, data)) = decode_data_uri(&uri) else {
+        let Some((mime, data)) = own_picture(&uri) else {
             // A remote image: WebKit's own download-backed item is the only way
             // to save it, so leave the menu untouched.
             return false;
@@ -194,7 +213,7 @@ fn launch_links(webview: &webkit6::WebView) {
                             // app on a single click.
                             if is_launchable_uri(&uri) {
                                 let window = view.root().and_downcast::<gtk::Window>();
-                                crate::ui::launch::open_link(&uri, window.as_ref());
+                                crate::ui::launch::open_link(&link_to_open(&uri), window.as_ref());
                             } else {
                                 tracing::warn!(
                                     "refused to open a link with an unsupported scheme: {}",

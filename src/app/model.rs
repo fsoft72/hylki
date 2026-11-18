@@ -43,6 +43,10 @@ type PendingTagKey = (u32, String, u32, String);
 /// subject).
 type TrayMailRow = (u32, u32, String, String);
 
+/// A template picker waiting on Templates folders' lists, by (account,
+/// folder): with a composer's id when the template goes into its message.
+type TemplatePick = (Option<u32>, HashSet<(u32, u32)>);
+
 /// The root component's state: the accounts and their workers, what the
 /// list and the reader show, the session caches, every setting the app
 /// applies, and the child components.
@@ -129,6 +133,8 @@ pub(crate) struct AppModel {
     /// Messages on their way out (#434), shared with the quit paths, which
     /// park any still waiting out the Undo Send delay in the Outbox.
     pub(super) outgoing: super::outgoing::OutgoingList,
+    /// Mail merges under way (#447), shared with the quit paths too.
+    pub(super) merges: super::merge_send::MergeRuns,
     /// The last ticket handed to a send; 0 is never used.
     pub(super) send_ticket: u64,
     /// Same idea over the contacts view's detail pane: composing from a
@@ -164,6 +170,11 @@ pub(crate) struct AppModel {
     pub(super) attachments: Vec<Attachment>,
     /// True while the current message's attachments are downloading.
     pub(super) attachments_loading: bool,
+    /// The messages whose attachments the reader has asked for since the
+    /// open message or conversation was selected: opening one asks from
+    /// several places (the message, its conversation, the related lookup),
+    /// and each answer otherwise came back, megabytes and all, once per ask.
+    pub(super) attachments_asked: HashSet<BodyKey>,
     /// The reader header's right-hand actions are collapsed into the overflow menu
     /// (pane squeezed under READER_ACTIONS_BREAKPOINT).
     pub(super) reader_actions_collapsed: bool,
@@ -178,7 +189,7 @@ pub(crate) struct AppModel {
     pub(super) list_fold: std::rc::Rc<super::reading_pane::ListFold>,
     /// The list and the reader's split, turned on its side for the reader
     /// below the list (#475).
-    pub(super) mail_split: std::cell::OnceCell<gtk::Paned>,
+    pub(super) mail_split: std::rc::Rc<super::mail_split::MailSplit>,
     /// A print with the reading pane off, waiting for its bodies.
     pub(super) pending_print: Option<super::reading_pane::PendingPrint>,
     /// The right group stays in the ⋯ menu at every width.
@@ -291,6 +302,10 @@ pub(crate) struct AppModel {
     /// Ids for messages opened from files (#398), counting down from the
     /// top so they never meet a server's UIDs.
     pub(super) next_local_id: u32,
+    /// The bytes of each message open from a file, by (account, id), kept
+    /// while its window is open: Save as File, View Source and Copy To
+    /// have no server to ask (#398).
+    pub(super) file_raws: HashMap<(u32, u32), Vec<u8>>,
     /// The `ExportRaw` tokens of Save as File, with the name to offer.
     pub(super) pending_saves: HashMap<u64, String>,
     /// How the moves to other accounts under way are going, for the status
@@ -316,8 +331,8 @@ pub(crate) struct AppModel {
     /// Whether the sidebar is in icon-only (collapsed) mode.
     pub(super) sidebar_collapsed: bool,
     /// The narrow-window breakpoint is currently applied (window is too narrow
-    /// for the expanded sidebar + a full-width actions palette — e.g. tiled to
-    /// half of a 1920px screen).
+    /// for the expanded sidebar + the list's floor — e.g. tiled to half of a
+    /// 1920px screen).
     pub(super) auto_rail: bool,
     /// The rail's current on-screen state — the user's choice OR'd with the
     /// breakpoint, tracked so apply/unapply only animate real changes.
@@ -402,6 +417,8 @@ pub(crate) struct AppModel {
     pub(super) auto_remote_content: bool,
     /// Whether the next messages' remote content is fetched ahead (#474).
     pub(super) remote_ahead: bool,
+    /// Whether links opened from a message lose their trackers first.
+    pub(super) clean_links: bool,
     /// Whether the blocked-remote-content banner is shown at all. Hiding it changes nothing about what
     /// is blocked — only whether the reader says so.
     pub(super) show_remote_banner: bool,
@@ -423,11 +440,6 @@ pub(crate) struct AppModel {
     pub(super) receipts_filed: HashSet<BodyKey>,
     /// Addresses/domains whose incoming inbox mail is auto-deleted (lowercased).
     pub(super) blacklist: Vec<String>,
-    /// Seconds the message-list actions palette stays open after the cursor leaves.
-    pub(super) palette_collapse_secs: u64,
-    /// Seconds a message card's actions palette stays open — the cards' own,
-    /// separate from the list's above.
-    pub(super) card_palette_collapse_secs: u64,
     /// Whether to load sender avatars from Gravatar.
     pub(super) gravatar: bool,
     /// Whether the colored avatars are drawn at all (#29).
@@ -480,12 +492,24 @@ pub(crate) struct AppModel {
     pub(super) list_group_by_date: bool,
     /// A card's pills on a line under its text (#374).
     pub(super) list_pills_below: bool,
+    /// The list's sort key and whether it is reversed, kept (#574).
+    pub(super) list_sort: (&'static str, bool),
+    /// The sorts views keep for themselves, by `list_view_name`; any other
+    /// view uses `list_sort`.
+    pub(super) list_sorts: std::collections::BTreeMap<String, config::ListSort>,
+    /// The views that name the sender or the recipients against their
+    /// default, by `list_view_name` (#657).
+    pub(super) list_recipients: std::collections::BTreeMap<String, bool>,
+    /// The date sections each view keeps folded, by `list_view_name` (#659).
+    pub(super) list_folded_days: std::collections::BTreeMap<String, Vec<String>>,
     /// The list's search field stays open (#446).
     pub(super) list_search_open: bool,
     /// Contacts' search field stays open.
     pub(super) contacts_search_open: bool,
     /// Saved contacts go by their address-book names (#541).
     pub(super) contact_names: bool,
+    /// Mail is named by its Reply-To sender (#641).
+    pub(super) reply_to_sender: bool,
     /// The list's search field and bulk bar open under the rows (#496).
     pub(super) list_search_bottom: bool,
     pub(super) list_bulk_bar_bottom: bool,
@@ -506,6 +530,12 @@ pub(crate) struct AppModel {
     pub(super) start_fullscreen: bool,
     /// The reader beside the list (#475); off, messages open in windows.
     pub(super) reading_pane: config::ReadingPane,
+    /// What AI assistants may reach (Settings → MCP), and the
+    /// connection while they may connect: see `assistant.rs`.
+    pub(super) assistant_policy: config::AssistantPolicy,
+    pub(super) assistant: super::assistant::Assistant,
+    /// What assistants lately changed on messages (`assistant_organize.rs`).
+    pub(super) assistant_flags: super::assistant_organize::RecentFlags,
     /// Tray icon (issue #116): the setting, the icon choice, and the running
     /// item while the setting is on.
     pub(super) tray_enabled: bool,
@@ -536,8 +566,9 @@ pub(crate) struct AppModel {
     pub(super) keep_downloads_days: u32,
     /// Whether messages are grouped into conversation threads.
     pub(super) threading: bool,
-    /// A conversation re-render is already scheduled, so further bodies arriving
-    /// in the same burst don't each queue one of their own.
+    /// A conversation re-render is wanted and scheduled, so further bodies
+    /// arriving in the same burst don't each queue one of their own. Taken by
+    /// the render, so a second call scheduled for it does nothing.
     pub(super) thread_render_queued: bool,
     /// When the conversation on screen was opened. Its bodies arrive one at a
     /// time, and painting each arrival meant a stack of half-built renders
@@ -616,6 +647,9 @@ pub(crate) struct AppModel {
     pub(super) account_click_folds: bool,
     /// What the window shows at launch (#256).
     pub(super) start_view: config::StartView,
+    /// The view about to open stands in for a launch view that could not
+    /// be shown, and is not remembered as the last one (#642).
+    pub(super) stand_in: bool,
     /// How accounts' folders are sorted, unless an account chooses
     /// (Settings → Sidebar).
     pub(super) folder_sort: config::FolderSort,
@@ -625,6 +659,9 @@ pub(crate) struct AppModel {
     pub(super) status_bar_top: bool,
     /// Read-marking policy (#100).
     pub(super) read_mark: config::ReadMark,
+    /// The lone message opened unread before its body came, to be marked
+    /// read by `read_mark` once it does (#638).
+    pub(super) read_mark_waiting: Option<Box<Message>>,
     /// Mail filter rules (#47), applied to inbox syncs.
     pub(super) filters: Vec<config::FilterRule>,
     /// The saved contacts' addresses, for rules on whether a sender is in
@@ -734,6 +771,8 @@ pub(crate) struct AppModel {
     pub(super) card_attachments: bool,
     /// The attachment drawer beneath the reader is shown at all (#213).
     pub(super) drawer_enabled: bool,
+    /// Space sends pictures and PDFs to the file previewer too (#625).
+    pub(super) previewer_pictures: bool,
     /// Whether conversation rows may expand into their members in the list
     /// (the row keeps its chip and chevron either way).
     pub(super) thread_expansion: bool,
@@ -747,17 +786,6 @@ pub(crate) struct AppModel {
     /// selection over an open conversation stands for the whole thread when
     /// deleting; a lone picked card never does.
     pub(super) selection_from_cards: bool,
-    /// Conversation card actions hide until hovered (preference).
-    pub(super) card_actions_hover: bool,
-    /// With the ⋯ toggle off: card actions appear automatically on hover.
-    pub(super) card_actions_auto: bool,
-    /// Whether the message list rows carry an actions palette at all.
-    pub(super) list_palette: bool,
-    /// The list's actions palette opens on row hover (no ⋯ click).
-    pub(super) list_palette_hover: bool,
-    /// A message card's ⋯ opens the card menu instead of sliding its
-    /// actions palette out.
-    pub(super) card_palette_menu: bool,
     /// Message rows take a sideways swipe to archive / delete (#92).
     pub(super) swipe_enabled: bool,
     /// The message list's swipe-gesture sides are swapped (#swipe).
@@ -789,6 +817,8 @@ pub(crate) struct AppModel {
     pub(super) compose_format: crate::config::ComposeFormat,
     /// Replies and forwards to plain-text mail open in plain text (#436).
     pub(super) follow_plain: bool,
+    /// Switching to plain text asks first when something would be lost.
+    pub(super) ask_plain_switch: bool,
     /// Where the split reply opens in the reading pane (#212).
     pub(super) reply_position: config::ReplyPosition,
     /// Where the signature sits in a reply or forward (#237).
@@ -801,6 +831,9 @@ pub(crate) struct AppModel {
     pub(super) reply_header: String,
     /// Undo Send delay in seconds, 0 for off (#434).
     pub(super) undo_send_secs: u32,
+    /// The words that make Send ask when nothing is attached, "" for never,
+    /// `None` for the default list.
+    pub(super) attachment_keywords: Option<String>,
     pub(super) spellcheck: bool,
     pub(super) spellcheck_langs: String,
     /// How email content is themed (message content only, not the app UI).
@@ -838,6 +871,8 @@ pub(crate) struct AppModel {
     pub(super) message_view: Controller<MessageView>,
     /// In-message attachment thumbnail drawer, docked below the reader body.
     pub(super) attachment_drawer: Controller<AttachmentDrawer>,
+    /// The reader and its drawer frozen as one pane while a message opens.
+    pub(super) reader_swap: crate::ui::reader_swap::ReaderSwap,
     pub(super) gallery: Controller<AttachmentsGallery>,
     /// The in-app contacts view behind the sidebar's Contacts row.
     pub(super) contacts_page: Controller<ContactsPage>,
@@ -891,6 +926,8 @@ pub(crate) struct AppModel {
     pub(super) gallery_scan_left: HashMap<(u32, String), u32>,
     /// Messages popped out into their own windows, keyed by (account, message).
     pub(super) popouts: HashMap<(u32, u32), PopOut>,
+    /// Sources asked for and not here yet, with where each goes (#658).
+    pub(super) sources_wanted: Vec<((u32, u32), super::source::SourceTarget)>,
     /// The conversation currently shown in the reader (newest first), with bodies
     /// filled in as they arrive. More than one entry = conversation/thread mode.
     pub(super) current_thread: Vec<Message>,
@@ -901,6 +938,9 @@ pub(crate) struct AppModel {
     /// The next message opened takes the keyboard into the reader (Gmail's
     /// o and Enter, #392).
     pub(super) reader_focus_pending: bool,
+    /// A draft selected in the list without o or Enter: its editor opens
+    /// with the keyboard left on the list, for the next key (#392).
+    pub(super) draft_keeps_list: Option<(u32, u32)>,
     /// Every message currently selected (list rows or reader cards), newest
     /// report wins. Lets the toolbar's Delete act on the whole multi-selection.
     pub(super) list_selection: Vec<(u32, u32)>,
@@ -964,6 +1004,9 @@ pub(crate) struct AppModel {
     /// The `ExportRaw` token the pending draft's bytes come back under.
     /// While it is set, the draft waits for those and not for its body.
     pub(super) pending_draft_token: Option<u64>,
+    /// An encrypted draft being decrypted before its editor opens: the
+    /// token its `DraftDecrypted` comes back under, and what to open.
+    pub(super) pending_sealed_draft: Option<(u64, Message, bool, HandOffFiles)>,
     /// Drafts and templates being fetched ahead of time, by `ExportRaw`
     /// token, so they open at once (see `draft_copies`).
     pub(super) draft_fetches: std::collections::HashMap<u64, super::draft_copies::DraftFetch>,
@@ -973,8 +1016,11 @@ pub(crate) struct AppModel {
     /// A draft picker waiting for Drafts folders never listed this run
     /// (the hand-off, and the folders still to answer).
     pub(super) pending_draft_pick: Option<(FileHandOff, HashSet<(u32, u32)>)>,
-    /// The template picker, waiting on these Templates folders' lists.
-    pub(super) pending_template_pick: Option<HashSet<(u32, u32)>>,
+    /// The template picker, waiting on these Templates folders' lists; with
+    /// a composer's id when the template goes into that message.
+    pub(super) pending_template_pick: Option<TemplatePick>,
+    /// The composer and template whose body is being fetched for insertion.
+    pub(super) pending_template_insert: Option<(u32, Message)>,
     /// Settings → System → GNOME Files: what handed-in files open into and
     /// what happens over the size limit.
     pub(super) files_prefs: config::FilesPrefs,

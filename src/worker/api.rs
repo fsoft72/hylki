@@ -271,6 +271,49 @@ pub(crate) enum MailRequest {
         terms: Vec<String>,
         paths: Vec<String>,
     },
+    /// An assistant's search of the server: unlike [`Self::FindText`], which
+    /// marks what the list already holds, it brings in mail the index does
+    /// not have yet, says when a server could not answer, and runs beside
+    /// the user's own search without taking its place.
+    AskServer(ServerSearch),
+}
+
+/// What an assistant asks a server, and where the answer goes. It answers
+/// with [`ServerFound`] on `answer` and lets it go when done, so a search no
+/// one waits for any more can be seen and given up.
+#[derive(Debug)]
+pub(crate) struct ServerSearch {
+    pub(crate) terms: Vec<String>,
+    pub(crate) paths: Vec<String>,
+    /// The newest this many of each folder are kept.
+    pub(crate) keep: usize,
+    pub(crate) answer: tokio::sync::mpsc::UnboundedSender<ServerFound>,
+}
+
+/// One part of a server's answer to a [`ServerSearch`].
+#[derive(Debug, Default)]
+pub(crate) struct ServerFound {
+    pub(crate) account_id: u32,
+    /// (folder path, uid), each one in the cache by now.
+    pub(crate) hits: Vec<(String, u32)>,
+    /// How many the server found, kept or not.
+    pub(crate) found: usize,
+    /// What could not be searched, in words for the assistant.
+    pub(crate) trouble: Option<String>,
+    /// The last part for this account.
+    pub(crate) done: bool,
+}
+
+impl ServerSearch {
+    /// Say that this account's server cannot be asked, and why.
+    pub(crate) fn refuse(self, account_id: u32, why: impl Into<String>) {
+        let _ = self.answer.send(ServerFound {
+            account_id,
+            trouble: Some(why.into()),
+            done: true,
+            ..Default::default()
+        });
+    }
 }
 
 /// The newest text search the app asked for (#509).
@@ -351,6 +394,14 @@ pub(crate) struct OutgoingMessage {
     /// A read receipt (#520): the fields of its report, sent with `body` as
     /// the words beside them in a `multipart/report`.
     pub(crate) receipt_report: Option<String>,
+    /// One of a mail merge's messages (#447): a server's refusal puts it in
+    /// the Outbox with the reason, rather than opening it in a composer,
+    /// which for a merge could be a window for each of hundreds.
+    pub(crate) merged: bool,
+    /// Keys for recipients that are not in the user's keyring, found by
+    /// Hylki (Autocrypt, gossip, WKD): (address, fingerprint in Hylki's own
+    /// keyring), as the composer showed them. Read only to encrypt.
+    pub(crate) peer_keys: Vec<(String, String)>,
 }
 
 /// The calendar half of an outgoing message (#223).
@@ -362,6 +413,18 @@ pub(crate) struct CalendarPart {
     /// well as in the document: a recipient's calendar reads it there
     /// first, and Exchange ignores a part that does not carry it.
     pub(crate) method: String,
+}
+
+/// A keyring read worth telling the user about (#573).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum KeyringRead {
+    /// No answer yet. The read goes on: a locked keyring answers once it
+    /// is unlocked.
+    Silent,
+    /// The answer, after a [`KeyringRead::Silent`].
+    Answered,
+    /// An error instead of the password.
+    Failed(String),
 }
 
 /// An event pushed from the worker back to the UI.
@@ -593,8 +656,11 @@ pub(crate) enum WorkerEvent {
         message_id: u32,
         check: crate::models::SenderCheck,
     },
+    /// A message's raw source, `None` when it could not be loaded (the
+    /// error is reported apart): a reader waiting on it stops waiting.
     Source {
-        text: String,
+        message_id: u32,
+        text: Option<String>,
     },
     Attachments {
         path: String,
@@ -647,11 +713,16 @@ pub(crate) enum WorkerEvent {
     DraftSaved {
         autosave: Option<u32>,
         message_id: Option<String>,
+        /// Saved as a template, in the Templates folder (#360).
+        template: bool,
     },
     /// A bulk MoveMessages request finished (success or failure) — drives the
     /// bulk-action spinner in the UI.
     BulkComplete,
     Status(String),
+    /// How a read of the account's password from the keyring went, when
+    /// that is news for the user (#573).
+    Keyring(KeyringRead),
     /// `connectivity` marks connection/sync errors that should auto-clear once
     /// a later connect or sync succeeds.
     Error {

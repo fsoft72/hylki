@@ -25,7 +25,7 @@ use tokio::sync::mpsc;
 
 use crate::cache::Cache;
 use crate::config::AccountConfig;
-use crate::worker::auth::load_or_migrate_password;
+use crate::worker::auth::resolve_keyring_passwords;
 use crate::worker::index_queue::index_pause;
 use crate::worker::jmap::folders::refresh_jmap_folders;
 use crate::worker::jmap::index::{jmap_backfill_step, JmapState, JMAP_BACKFILL_BACKOFF};
@@ -48,6 +48,7 @@ mod offline;
 mod ops;
 mod push;
 mod send;
+mod server_search;
 mod snooze;
 mod text_search;
 mod wire;
@@ -89,7 +90,7 @@ pub(super) async fn run_jmap(
 }
 
 impl<E: Fn(WorkerEvent)> JmapWorker<E> {
-    /// Read the password, show the account and its cached folders, then open
+    /// Show the account and its cached folders, read the password, then open
     /// the session, list the mailboxes and start push.
     async fn start(
         account_id: u32,
@@ -97,9 +98,6 @@ impl<E: Fn(WorkerEvent)> JmapWorker<E> {
         rx: mpsc::UnboundedReceiver<MailRequest>,
         emit: E,
     ) -> Self {
-        // The password lives in the keyring, like an IMAP account's.
-        load_or_migrate_password(&mut account);
-
         let cache = Cache::open()
             .map_err(|e| tracing::warn!("cache unavailable: {e}"))
             .ok();
@@ -118,6 +116,8 @@ impl<E: Fn(WorkerEvent)> JmapWorker<E> {
         if !cached_folders.is_empty() {
             emit(WorkerEvent::Folders(cached_folders));
         }
+        // After the account is on screen: a locked keyring may not answer (#573).
+        resolve_keyring_passwords(&mut account, &emit).await;
 
         let state = JmapState::new(&account);
         let (push_tx, push_rx) = mpsc::unbounded_channel::<()>();
@@ -238,6 +238,7 @@ impl<E: Fn(WorkerEvent)> JmapWorker<E> {
         let emit = &self.emit;
         match req {
             MailRequest::Locate { message_id } => self.on_locate(message_id).await,
+            MailRequest::AskServer(ask) => self.on_ask_server(ask).await,
             MailRequest::FindText { gen, terms, paths } => {
                 self.on_find_text(gen, terms, paths).await
             }
@@ -284,10 +285,10 @@ impl<E: Fn(WorkerEvent)> JmapWorker<E> {
             } => self.on_load_body(message_id, path, uid).await,
             MailRequest::LoadBodies { items, path } => self.on_load_bodies(items, path).await,
             MailRequest::LoadSource {
-                message_id: _,
+                message_id,
                 path,
                 uid,
-            } => self.on_load_source(path, uid).await,
+            } => self.on_load_source(message_id, path, uid).await,
             MailRequest::LoadAttachments {
                 message_id,
                 path,

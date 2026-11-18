@@ -4,7 +4,7 @@ use adw::prelude::*;
 use relm4::prelude::*;
 use tokio::sync::mpsc::UnboundedSender;
 
-use crate::config::AccountConfig;
+use crate::config::{AccountConfig, Protocol};
 use crate::models::FolderKind;
 use crate::ui::message_list::MessageListInput;
 use crate::ui::message_view::MessageViewInput;
@@ -228,7 +228,11 @@ fn map_event(account_id: u32, event: WorkerEvent) -> AppMsg {
             message_id,
             check: Box::new(check),
         },
-        WorkerEvent::Source { text, .. } => AppMsg::Source { text },
+        WorkerEvent::Source { message_id, text } => AppMsg::Source {
+            account_id,
+            message_id,
+            text,
+        },
         WorkerEvent::Attachments {
             path,
             message_id,
@@ -265,13 +269,16 @@ fn map_event(account_id: u32, event: WorkerEvent) -> AppMsg {
         WorkerEvent::DraftSaved {
             autosave,
             message_id,
+            template,
         } => AppMsg::DraftSaved {
             account_id,
             autosave,
             message_id,
+            template,
         },
         WorkerEvent::Status(text) => AppMsg::Status { account_id, text },
         WorkerEvent::CopyProgress { left } => AppMsg::CopyProgress { left },
+        WorkerEvent::Keyring(read) => AppMsg::KeyringRead { account_id, read },
         WorkerEvent::Error { text, connectivity } => AppMsg::Error {
             account_id,
             text,
@@ -423,6 +430,37 @@ impl AppModel {
         }
     }
 
+    /// Once at start, with no worker writing yet: rows of folders the accounts
+    /// do not have go (see `Cache::drop_rows_of_missing_folders`).
+    fn tidy_cached_folders(&self) {
+        if demo_mode() {
+            return;
+        }
+        let on_a_server: Vec<(u32, Vec<String>)> = self
+            .config
+            .iter()
+            .enumerate()
+            .filter(|(_, a)| {
+                matches!(
+                    a.protocol,
+                    Protocol::Imap | Protocol::Graph | Protocol::Jmap
+                )
+            })
+            .map(|(i, a)| (i as u32 + 1, a.hidden_folders.clone()))
+            .collect();
+        let started = std::time::Instant::now();
+        match crate::cache::Cache::open()
+            .and_then(|cache| cache.drop_rows_of_missing_folders(&on_a_server))
+        {
+            Ok(0) => {}
+            Ok(gone) => tracing::info!(
+                "cache: dropped {gone} messages of folders the accounts do not have, in {:?}",
+                started.elapsed()
+            ),
+            Err(e) => tracing::warn!("cache: could not drop rows of missing folders: {e}"),
+        }
+    }
+
     /// Paint the mail panes straight from the disk cache, before any worker
     /// has spoken: every enabled account's folder list and inbox slice is
     /// loaded synchronously at startup, so "All Inboxes" (the launch view) is
@@ -431,8 +469,13 @@ impl AppModel {
     /// the app last ran.
     fn prime_from_cache(&mut self) {
         self.claim_cached_accounts();
-        let Ok(cache) = crate::cache::Cache::open() else {
-            return;
+        self.tidy_cached_folders();
+        let cache = match crate::cache::Cache::open() {
+            Ok(cache) => cache,
+            Err(e) => {
+                tracing::error!("cache unavailable, nothing shown from it at start: {e}");
+                return;
+            }
         };
         for (i, c) in self.config.iter().enumerate() {
             if !c.enabled {
@@ -764,6 +807,13 @@ impl AppModel {
         self.refresh_own_faces();
         self.warm_own_gravatars(sender);
         self.spawn_workers(sender);
+        // The sidebar gives the launch view's account a while to list its
+        // folders once it is listed itself (#642). An account whose worker
+        // never lists it at all must not leave the window without a view.
+        let s = self.sidebar.sender().clone();
+        gtk::glib::timeout_add_seconds_local_once(30, move || {
+            let _ = s.send(SidebarInput::DropStart);
+        });
     }
 }
 

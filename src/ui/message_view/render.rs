@@ -3,8 +3,9 @@
 //! body with the settings the page script reads.
 
 use super::frame::{
-    LIVE_ATTS, LIVE_FOLDBAR, LIVE_FOLDED, LIVE_GROUNDS, LIVE_INVITE, LIVE_MARKS, LIVE_READ,
-    LIVE_RECEIPT, LIVE_TAGS, LIVE_TEMPLATES, LIVE_TRANSLATE, LIVE_TRANSLATE_ON, LIVE_UNSUB,
+    theme_colors_for, LIVE_ATTS, LIVE_COLORS, LIVE_FOLDBAR, LIVE_FOLDED, LIVE_GROUNDS, LIVE_INVITE,
+    LIVE_MARKS, LIVE_READ, LIVE_RECEIPT, LIVE_TAGS, LIVE_TEMPLATES, LIVE_TRANSLATE,
+    LIVE_TRANSLATE_ON, LIVE_UNSUB,
 };
 use super::types::TrState;
 use super::MessageView;
@@ -13,7 +14,9 @@ use adw::prelude::*;
 use relm4::prelude::*;
 
 impl MessageView {
-    pub(super) fn render(&mut self) {
+    /// Build the document for what is to be shown and load it; `false`
+    /// when what is on screen already is that.
+    pub(super) fn render(&mut self) -> bool {
         let dark = self.effective_dark();
         self.apply_webview_bg(dark);
         // Before the shortcut below: a sender whose face could not be found
@@ -24,14 +27,25 @@ impl MessageView {
         // and paint the same pixels back.
         let fingerprint = self.render_fingerprint(dark);
         if self.webview_ready && self.shown_fingerprint == Some(fingerprint) {
-            return;
+            return false;
         }
         self.shown_fingerprint = Some(fingerprint);
         // A page handed over while the window is hidden (running in the
         // background, a notification about to bring it back) may never be
         // painted: it is loaded again once the view is on screen (#332).
-        if !self.webview.is_mapped() {
+        // Only the window counts: behind the reader's spinner the view is off
+        // screen just until the stack shows it, later in this same turn, and
+        // loading the page a second time then made every open wait for two.
+        if !self.webview.root().is_some_and(|r| r.is_mapped()) {
             self.painted_hidden = true;
+        }
+        // What is on screen (a page, or the spinner) stays, frozen, until the
+        // new page is ready: opening a message has frozen the whole pane
+        // already, and this covers a page replaced in place. A sent reply's
+        // card has its own entrance (`PinArrival`).
+        let unseen = self.swap.held();
+        if !std::mem::take(&mut self.skip_freeze) {
+            self.swap.freeze();
         }
         // A conversation is covered until its new document has painted: the
         // spinner is already up from the moment the thread was opened, so it
@@ -45,9 +59,6 @@ impl MessageView {
         if self.thread.len() > 1 && !self.instant {
             self.webview_ready = false;
         }
-        // Only a page that stays in view dissolves into the next; behind the
-        // spinner there is nothing to see.
-        let fade = self.webview_ready && !self.loading && !std::mem::take(&mut self.skip_fade);
         let html = self.document_html(dark);
         // A message painted alone that has since grown into a conversation
         // gets the conversation's open scroll, unless the reader has been
@@ -58,6 +69,13 @@ impl MessageView {
             && self.thread.len() > 1
             && self.saved_anchor.is_none()
         {
+            self.did_autoscroll = false;
+        }
+        // A page replaced while the pane is still frozen was never seen: the
+        // open scroll it spent is owed to the page replacing it, which would
+        // otherwise open at the top (a second render close behind the
+        // first, before the page has reported where it is).
+        if unseen && self.saved_anchor.is_none() {
             self.did_autoscroll = false;
         }
         // A conversation opened behind the loading cover spends its open
@@ -74,10 +92,6 @@ impl MessageView {
             noscroll: self.did_autoscroll,
             anchor: self.saved_anchor,
             anchor_gutter: self.anchor_gutter,
-            card_actions_hover: self.card_actions_hover,
-            card_actions_auto: self.card_actions_auto,
-            palette_collapse_secs: self.palette_collapse_secs,
-            card_palette_menu: self.card_palette_menu,
             pgp_labels: self.pgp_labels,
             // The newest member, for the open-scroll fallback (#101).
             newest: self
@@ -87,13 +101,16 @@ impl MessageView {
                 .filter(|_| self.thread.len() > 1)
                 .map(|m| (m.account_id, m.id)),
             read_mark: self.read_mark,
+            covered: self.swap.covered(),
         });
         let html = html.replacen("<body", &format!("<body{stamps}"), 1);
         self.did_autoscroll = true;
         self.autoscroll_lone = self.thread.len() <= 1;
         let n = self.seq.get().wrapping_add(1);
         self.seq.set(n);
-        self.load_after_paint(html, format!("https://hylki.localhost/message/{n}"), fade);
+        self.latest_uri = format!("https://hylki.localhost/message/{n}");
+        self.load_after_paint(html, self.latest_uri.clone());
+        true
     }
 
     /// Everything the rendered document depends on, in one number. Ordered by
@@ -124,10 +141,6 @@ impl MessageView {
             .collect();
         shown.sort_unstable();
         shown.hash(&mut h);
-        self.card_actions_hover.hash(&mut h);
-        self.card_actions_auto.hash(&mut h);
-        self.palette_collapse_secs.hash(&mut h);
-        self.card_palette_menu.hash(&mut h);
         // Whether cards list their attachments (#213); the lists themselves
         // are patched in live rather than rendered for.
         self.chips_shown().hash(&mut h);
@@ -169,6 +182,7 @@ impl MessageView {
         // Hand the live theme grounds to the (display-free, testable) document
         // builder without widening its signature — see LIVE_GROUNDS.
         LIVE_GROUNDS.with(|g| *g.borrow_mut() = Some(self.theme_grounds(dark)));
+        LIVE_COLORS.with(|s| *s.borrow_mut() = Some(theme_colors_for(&self.webview, dark)));
         LIVE_TAGS.with(|t| *t.borrow_mut() = self.tags.clone());
         LIVE_ATTS.with(|a| {
             *a.borrow_mut() = if self.chips_shown() {
@@ -279,14 +293,13 @@ struct BodyStamps {
     anchor: Option<(u32, u32, u32)>,
     /// The saved place was in the gutter between cards.
     anchor_gutter: bool,
-    card_actions_hover: bool,
-    card_actions_auto: bool,
-    palette_collapse_secs: u64,
-    card_palette_menu: bool,
     pgp_labels: bool,
     /// The newest member of a conversation (none for a single message).
     newest: Option<(u32, u32)>,
     pub(super) read_mark: crate::config::ReadMark,
+    /// Loaded under the pane's still, whose reveal waits for the page to be
+    /// drawn: it reports ready without waiting for frames of its own.
+    covered: bool,
 }
 
 /// The attributes spliced into the wrapper's `<body` tag, in a fixed order.
@@ -305,30 +318,6 @@ fn body_stamps(s: &BodyStamps) -> String {
         format!(" data-hylki-noscroll=\"1\"{anchor}")
     } else {
         String::new()
-    };
-    // How card actions show is a body stamp too, so the static document
-    // builder (and its tests) need no extra parameter: "toggle" hides them
-    // behind the ⋯, "hover" shows them while the card is hovered, and no
-    // stamp means always shown.
-    let hover = if s.card_actions_hover {
-        " data-hylki-acts=\"toggle\""
-    } else if s.card_actions_auto {
-        " data-hylki-acts=\"hover\""
-    } else {
-        ""
-    };
-    // The palette timeout rides along in ms; the script reads it for the
-    // toggle mode's collapse timer and the hover mode's fade-out delay.
-    let delay = format!(
-        " data-hylki-actsdelay=\"{}\"",
-        s.palette_collapse_secs.max(1) * 1000
-    );
-    // With the ⋯ set to open the card's menu there is no palette to
-    // slide, so the script hands the click back to the app instead.
-    let acts_menu = if s.card_palette_menu {
-        " data-hylki-actsmenu=\"1\""
-    } else {
-        ""
     };
     // The OpenPGP chip as its icons alone, without the words (#300).
     let pgp_icons = if s.pgp_labels {
@@ -354,7 +343,8 @@ fn body_stamps(s: &BodyStamps) -> String {
         " data-hylki-copied=\"{}\"",
         i18n("Copied").replace('"', "&quot;")
     );
-    format!("{noscroll}{hover}{delay}{acts_menu}{pgp_icons}{newest}{readmark}{copied}")
+    let covered = if s.covered { " data-hylki-covered" } else { "" };
+    format!("{noscroll}{pgp_icons}{newest}{readmark}{copied}{covered}")
 }
 
 #[cfg(test)]
@@ -367,22 +357,16 @@ mod tests {
             noscroll: false,
             anchor: None,
             anchor_gutter: false,
-            card_actions_hover: false,
-            card_actions_auto: false,
-            palette_collapse_secs: 0,
-            card_palette_menu: false,
             pgp_labels: true,
             newest: None,
             read_mark: ReadMark::Manual,
+            covered: false,
         }
     }
 
     #[test]
     fn a_first_render_stamps_little() {
-        assert_eq!(
-            body_stamps(&stamps()),
-            " data-hylki-actsdelay=\"1000\" data-hylki-copied=\"Copied\""
-        );
+        assert_eq!(body_stamps(&stamps()), " data-hylki-copied=\"Copied\"");
     }
 
     #[test]
@@ -391,36 +375,31 @@ mod tests {
             noscroll: true,
             anchor: Some((1, 2, 30)),
             anchor_gutter: true,
-            card_actions_hover: true,
-            card_actions_auto: true,
-            palette_collapse_secs: 5,
-            card_palette_menu: true,
             pgp_labels: false,
             newest: Some((1, 9)),
             read_mark: ReadMark::Delay,
+            covered: true,
         };
         assert_eq!(
             body_stamps(&s),
             " data-hylki-noscroll=\"1\" data-hylki-anchor=\"1:2:30:g\" \
-             data-hylki-acts=\"toggle\" data-hylki-actsdelay=\"5000\" \
-             data-hylki-actsmenu=\"1\" data-hylki-pgpicons data-hylki-newest=\"1:9\" \
-             data-hylki-readmark=\"2000\" data-hylki-copied=\"Copied\""
+             data-hylki-pgpicons data-hylki-newest=\"1:9\" \
+             data-hylki-readmark=\"2000\" data-hylki-copied=\"Copied\" \
+             data-hylki-covered"
         );
     }
 
     #[test]
-    fn hover_actions_and_a_plain_anchor() {
+    fn a_plain_anchor() {
         let s = BodyStamps {
             noscroll: true,
             anchor: Some((3, 4, 0)),
-            card_actions_auto: true,
             read_mark: ReadMark::Shown,
             ..stamps()
         };
         assert_eq!(
             body_stamps(&s),
             " data-hylki-noscroll=\"1\" data-hylki-anchor=\"3:4:0\" \
-             data-hylki-acts=\"hover\" data-hylki-actsdelay=\"1000\" \
              data-hylki-readmark=\"250\" data-hylki-copied=\"Copied\""
         );
         // Without the open scroll done, a saved anchor is not stamped.

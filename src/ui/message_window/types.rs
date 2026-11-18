@@ -129,12 +129,13 @@ pub(crate) enum MessageWindowInput {
         items: Vec<Attachment>,
         start: usize,
     },
-    /// A card's attachment row: open or save that member's file at `index`.
+    /// A card's attachment row: open, save or preview that member's file
+    /// at `index`.
     CardAttachment {
         account_id: u32,
         id: u32,
         index: usize,
-        save: bool,
+        action: crate::ui::message_view::ChipAction,
     },
     /// The drawer's Delete from Server.
     DeleteAttachment(Attachment),
@@ -172,17 +173,17 @@ pub(crate) enum MessageWindowInput {
     MoveToInbox,
     /// The folder picker, under the Move To button (or the ⋯).
     MoveTo,
-    /// The folder picker at a window point (a card's Move to…).
-    MoveToAt {
-        message: Box<Message>,
-        x: f64,
-        y: f64,
-    },
     TagMenu,
     /// The Snooze menu, under its button (or the ⋯), #527.
     SnoozeMenu,
     OverflowMenu,
     Find,
+    /// View Source in this window's reader (#658): asked for, then here.
+    SourceLoading((u32, u32)),
+    ShowSource {
+        key: (u32, u32),
+        text: Option<String>,
+    },
     /// A single-key shortcut pressed in this window (#392).
     Key(Shortcut),
     // ---- from the embedded reader ----
@@ -197,8 +198,6 @@ pub(crate) enum MessageWindowInput {
         action: RowAction,
         message: Box<Message>,
     },
-    /// A card's "Add sender to Contacts" — for that card's message.
-    ContactFor(Box<Message>),
     /// An email address in a card header was clicked — compose to it.
     ComposeTo(String),
     /// "Add to Contacts" from an address's right-click menu.

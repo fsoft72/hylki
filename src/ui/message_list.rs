@@ -16,6 +16,7 @@ use crate::ui::message_row::{RowData, RowShared};
 
 mod component;
 mod conversations;
+mod day_fold;
 mod filters;
 mod init;
 mod layout;
@@ -39,11 +40,16 @@ mod views;
 
 pub(crate) use filters::{CheckFilter, DateBound, QuickFilter, QuickFilters};
 pub(crate) use layout::after_next_paint;
+pub(crate) use query::Query;
 pub(crate) use search::search_text_of;
 pub(crate) use search::{load_address_names, HitSet, PoolFolder, SearchScope, ServerScope};
 pub(crate) use sort::SortOrder;
 pub(crate) use types::{BulkAction, MessageListInput, MessageListOutput};
 pub(crate) use views::{KEEP_AT_MOST, KEPT_VIEWS};
+
+/// A view being built ahead while its conversations are worked out: the
+/// build's number, the view's key and fingerprint, its sort, its messages.
+type PendingPrebuild = (u64, u64, u64, (SortOrder, bool), Vec<Rc<Message>>);
 
 pub(crate) struct MessageList {
     /// The rows: a `ListView` builds only the ones on screen, so a folder
@@ -70,7 +76,7 @@ pub(crate) struct MessageList {
     /// A view being built ahead (`Prebuild`) while its conversations are
     /// worked out off the main thread: its number, key, fingerprint and
     /// messages.
-    prebuild: Option<(u64, u64, u64, Vec<Rc<Message>>)>,
+    prebuild: Option<PendingPrebuild>,
     prebuild_gen: u64,
     /// Another view was opened: its first rebuild waits for a frame, and
     /// fills the rows for the new look in passing (#401).
@@ -115,6 +121,9 @@ pub(crate) struct MessageList {
     server_searching: bool,
     /// Which messages the search field filters over.
     scope: SearchScope,
+    /// The account of the folder or view on show, which the "This Account"
+    /// scopes keep to (#649); `None` from a view across accounts.
+    search_account: Option<u32>,
     /// The search scope's button and popover.
     scope_picker: Option<ScopePicker>,
     /// The search field widget, kept so a folder switch can clear its text.
@@ -143,6 +152,10 @@ pub(crate) struct MessageList {
     preview_lines: u32,
     /// Whether rows draw their subject line (Focus Mode can take it away).
     show_subject: bool,
+    /// Whether rows wear a star (Focus Mode can take it away).
+    show_stars: bool,
+    /// Whether rows wear a paperclip (Focus Mode can take it away).
+    show_attachments: bool,
     /// Whether the colored avatars are drawn (#29).
     avatars: bool,
     /// Whether a sender's site icon may fill one (#30).
@@ -304,8 +317,6 @@ pub(crate) struct MessageList {
     /// row keeps its count chip and chevron, but never opens — the thread is
     /// read through the reader's cards instead.
     thread_expansion: bool,
-    /// Whether rows carry the actions palette line at all (preference).
-    list_palette: bool,
     /// One line per message (#334): set by the Layout setting, or by the
     /// pane's width when it is Automatic.
     single_line: bool,
@@ -323,6 +334,8 @@ pub(crate) struct MessageList {
     /// has them.
     group_by_date: bool,
     day_headings: bool,
+    /// The date sections the view on show keeps folded (#659).
+    folded_days: Vec<crate::ui::message_row::DaySection>,
     /// A card's pills on a line under its text (#374).
     pills_below: bool,
     /// Show the column headings over a single-line list (#334).

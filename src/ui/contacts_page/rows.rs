@@ -105,8 +105,8 @@ const FACE: i32 = 34;
 impl ListRow {
     pub(super) fn new() -> Self {
         let root = gtk::Box::new(gtk::Orientation::Vertical, 0);
-        // `header`, as in a list box row: the selected row's text turns
-        // white by that class (styles.css).
+        // `header`, as in a list box row: the selected row's text takes the
+        // accent's foreground by that class (styles.css).
         // The measures of the `adw::ActionRow` the list had before.
         let header = gtk::Box::new(gtk::Orientation::Horizontal, 12);
         header.add_css_class("header");
@@ -485,6 +485,9 @@ pub(super) fn avatar_with(c: &ContactDetails, size: i32, photo: Option<&[u8]>) -
     let avatar = adw::Avatar::new(size, Some(&c.name), !c.is_group());
     if c.is_group() {
         avatar.set_icon_name(Some("system-users-symbolic"));
+    } else if let Some(initials) = crate::ui::initials::InitialsPaintable::for_name(&c.name) {
+        // Ours, not libadwaita's: it reads "Foo Bar (Baz)" as "F(" (#627).
+        avatar.set_custom_image(Some(&initials));
     }
     if let Some(photo) = photo {
         let bytes = gtk::glib::Bytes::from(photo);

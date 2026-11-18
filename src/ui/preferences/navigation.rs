@@ -89,6 +89,12 @@ pub(super) const SIDE_PAGES: &[(&str, &[SidePage])] = &[
                 accounts: false,
             },
             SidePage {
+                id: "focus",
+                title: i18n_noop("Focus Mode"),
+                icon: "eye-open-negative-filled-symbolic",
+                accounts: false,
+            },
+            SidePage {
                 id: "sidebar",
                 title: i18n_noop("Sidebar"),
                 icon: "sidebar-show-symbolic",
@@ -122,6 +128,12 @@ pub(super) const SIDE_PAGES: &[(&str, &[SidePage])] = &[
                 id: "privacy",
                 title: i18n_noop("Privacy"),
                 icon: "security-high-symbolic",
+                accounts: false,
+            },
+            SidePage {
+                id: "assistants",
+                title: i18n_noop("MCP"),
+                icon: "network-workgroup-symbolic",
                 accounts: false,
             },
             SidePage {

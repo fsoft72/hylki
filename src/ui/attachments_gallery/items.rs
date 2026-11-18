@@ -149,6 +149,7 @@ impl AttachmentsGallery {
     /// back here. Anything else has no texture — the file-icon page shows.
     pub(super) fn refresh_preview(&mut self, sender: &ComponentSender<Self>) {
         self.preview_texture = None;
+        self.preview_failed = false;
         let Some(item) = self.current() else { return };
         let Some(data) = item.data.as_ref() else {
             // Never downloaded (or too big to have ridden along with the page):
@@ -167,10 +168,13 @@ impl AttachmentsGallery {
         }
         let key = thumb_cache_key(data);
         match PDF_PREVIEWS.with(|c| c.borrow().get(&key).cloned()) {
-            Some(texture) => self.preview_texture = texture,
+            Some(texture) => {
+                self.preview_failed = texture.is_none();
+                self.preview_texture = texture;
+            }
             None => {
                 let s = sender.clone();
-                lightbox_pdf_texture(data, move |_| {
+                lightbox_pdf_texture(data.clone(), move |_| {
                     s.input(GalleryInput::PreviewRendered(key));
                 });
             }
@@ -237,6 +241,31 @@ impl AttachmentsGallery {
             Some(data) => {
                 let parent = self.flow.root().and_downcast::<gtk::Window>();
                 open_bytes(&item.name, data, parent.as_ref());
+            }
+            None => self.fetch_item(item, sender),
+        }
+    }
+
+    /// Show item `index` in the file previewer, fetching it first as
+    /// [`Self::open_item`] does.
+    pub(super) fn preview_item(&self, index: usize, sender: &ComponentSender<Self>) {
+        let Some(item) = self.item_at(index) else {
+            return;
+        };
+        match &item.data {
+            Some(data) => {
+                let file = crate::models::Attachment {
+                    name: item.name.clone(),
+                    data: data.clone(),
+                };
+                let parent = self.flow.root().and_downcast::<gtk::Window>();
+                crate::desktop::previewer::show(
+                    vec![file],
+                    0,
+                    parent.as_ref(),
+                    gtk::gdk::CURRENT_TIME,
+                    None,
+                );
             }
             None => self.fetch_item(item, sender),
         }
@@ -314,7 +343,20 @@ impl AttachmentsGallery {
             s.input(GalleryInput::DeleteItem(index))
         })
         .icon("user-trash-symbolic");
-        let sections = vec![vec![open, download, goto], vec![delete]];
+        let mut first = vec![open, download, goto];
+        // Pictures and PDFs have the gallery's own preview, a click away.
+        if self.item_at(index).is_some_and(|item| {
+            !crate::models::is_image_name(&item.name) && !is_pdf_name(&item.name)
+        }) && crate::desktop::previewer::available()
+        {
+            let s = sender.clone();
+            let preview = MenuEntry::new(i18n("Preview"), move || {
+                s.input(GalleryInput::PreviewItem(index))
+            })
+            .icon("view-reveal-symbolic");
+            first.insert(0, preview);
+        }
+        let sections = vec![first, vec![delete]];
 
         // Anchor on the clicked cell/row itself so the click point (already
         // relative to it) needs no coordinate translation.

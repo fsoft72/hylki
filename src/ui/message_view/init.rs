@@ -8,8 +8,7 @@ use super::bridge::{parse_bridge, Bridge};
 use super::chrome::ClassRules;
 use super::links::{is_launchable_uri, link_destination, CLICK_LINK_PROBE};
 use super::menu::{menu_lookup, menu_skipped, MenuHit};
-use super::page_fade::PageFade;
-use super::types::MessageViewInput;
+use super::types::{ChipAction, MessageViewInput};
 use super::MessageView;
 use adw::prelude::*;
 use relm4::prelude::*;
@@ -47,7 +46,11 @@ pub(super) fn link_preview_plaque(webview: &webkit6::WebView) -> gtk::Label {
 
 impl MessageView {
     /// The reader before anything is shown.
-    pub(super) fn initial(webview: webkit6::WebView, link_preview: &gtk::Label) -> Self {
+    pub(super) fn initial(
+        webview: webkit6::WebView,
+        link_preview: &gtk::Label,
+        swap: crate::ui::reader_swap::ReaderSwap,
+    ) -> Self {
         MessageView {
             always_show_recipients: false,
             single_message_card: false,
@@ -76,10 +79,6 @@ impl MessageView {
             checked: (0, false),
             show_banner: crate::config::load_privacy().show_remote_banner,
             show_spoof_banner: crate::config::load_privacy().show_spoof_banner,
-            card_actions_hover: crate::config::load_privacy().card_actions_hover,
-            card_actions_auto: crate::config::load_privacy().card_actions_auto,
-            palette_collapse_secs: crate::config::load_privacy().card_palette_collapse_secs,
-            card_palette_menu: crate::config::load_privacy().card_palette_menu,
             remote_allowed: false,
             account_name: None,
             account_color: None,
@@ -92,7 +91,7 @@ impl MessageView {
             autoscroll_lone: false,
             saved_anchor: None,
             anchor_gutter: false,
-            skip_fade: false,
+            skip_freeze: false,
             drafts_view: false,
             template_folders: std::collections::HashSet::new(),
             frame_heights: std::collections::HashMap::new(),
@@ -102,6 +101,9 @@ impl MessageView {
             loading: false,
             webview_ready: false,
             find_open: false,
+            source: None,
+            source_view: crate::ui::source_find::source_view(),
+            source_find: Default::default(),
             under_split: false,
             find_matches: None,
             find_entry: None,
@@ -132,7 +134,9 @@ impl MessageView {
             link_preview: link_preview.clone(),
             seq: std::cell::Cell::new(0),
             pending_load: Default::default(),
-            page_fade: PageFade::new(),
+            swap,
+            latest_uri: String::new(),
+            ready_uri: String::new(),
             content_dark: None,
         }
     }
@@ -153,15 +157,23 @@ impl MessageView {
         // without a pointer.
         let click_link = std::env::var("HYLKI_SHOWCASE_CLICK_LINK").is_ok();
         let clicked = std::rc::Rc::new(std::cell::Cell::new(false));
-        let page_fade = self.page_fade.clone();
+        // Bumped per load, so the backstop of a page already replaced can't
+        // say the next one is ready (and lift its still) before it is.
+        let loads = std::rc::Rc::new(std::cell::Cell::new(0u64));
         self.webview.connect_load_changed(move |view, event| {
+            if event == webkit6::LoadEvent::Started {
+                loads.set(loads.get().wrapping_add(1));
+            }
             if event == webkit6::LoadEvent::Finished {
-                page_fade.release(view);
                 let s = ready_sender.clone();
+                let load = loads.get();
+                let loads = loads.clone();
                 gtk::glib::timeout_add_local_once(
                     std::time::Duration::from_millis(600),
                     move || {
-                        s.input_sender().emit(MessageViewInput::Rendered);
+                        if loads.get() == load {
+                            s.input_sender().emit(MessageViewInput::Rendered);
+                        }
                     },
                 );
                 if click_link && !clicked.get() {
@@ -237,6 +249,7 @@ impl MessageView {
                     selection: None,
                     translate: None,
                     folds: None,
+                    sender_style: None,
                 };
                 let selected = hit.context_is_selection();
                 let (x, y) = point.get();
@@ -276,10 +289,39 @@ impl MessageView {
     pub(super) fn watch_bridge(&self, sender: &ComponentSender<Self>) {
         // Everything the page posts to the `hylki` handler (see bridge.rs).
         if let Some(ucm) = self.webview.user_content_manager() {
+            // The time of the last Space, for a chip's preview (#625): the
+            // page's own event times are not the display's, and the
+            // previewer's focus token wants the display's.
+            let space_time = std::rc::Rc::new(std::cell::Cell::new(gtk::gdk::CURRENT_TIME));
+            let key = gtk::EventControllerKey::new();
+            key.set_propagation_phase(gtk::PropagationPhase::Capture);
+            {
+                let space_time = space_time.clone();
+                key.connect_key_pressed(move |key, keyval, _, _| {
+                    if matches!(keyval, gtk::gdk::Key::space | gtk::gdk::Key::KP_Space) {
+                        space_time.set(key.current_event_time());
+                    }
+                    gtk::glib::Propagation::Proceed
+                });
+            }
+            self.webview.add_controller(key);
             let open_sender = sender.clone();
             ucm.connect_script_message_received(
                 Some("hylki"),
                 move |_ucm, value| match parse_bridge(&value.to_str()) {
+                    Some(Bridge::Input(MessageViewInput::AttachmentAction {
+                        account_id,
+                        id,
+                        index,
+                        action: ChipAction::Preview(_),
+                    })) => open_sender
+                        .input_sender()
+                        .emit(MessageViewInput::AttachmentAction {
+                            account_id,
+                            id,
+                            index,
+                            action: ChipAction::Preview(space_time.get()),
+                        }),
                     Some(Bridge::Input(input)) => open_sender.input_sender().emit(input),
                     Some(Bridge::Clipboard(text)) => {
                         if let Some(display) = gtk::gdk::Display::default() {

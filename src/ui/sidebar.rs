@@ -34,7 +34,9 @@ mod unified;
 mod widgets;
 
 pub(crate) use messages::{CtxAction, SidebarInput, SidebarOutput};
-pub(crate) use tree::{folder_depth, order_folders, placed_run, TREE_EXPANDER_WIDTH};
+pub(crate) use tree::{
+    container_ancestors, folder_depth, order_folders, placed_run, TREE_EXPANDER_WIDTH,
+};
 pub(crate) use types::kind_label;
 use types::{InboxRef, KindWidgets, SectionWidgets, UnifiedRow};
 pub(crate) use types::{SectionData, Sel, SidebarInit, Slot, StartTarget, UnifiedFolderRef};
@@ -56,6 +58,8 @@ pub(crate) struct Sidebar {
     account_click_folds: bool,
     /// Icon rail: a dot for unread mail in place of the count.
     rail_dots: bool,
+    /// Whether unread counts show at all (Settings → Focus Mode).
+    unread_counts: bool,
     /// Icon rail: the sections that fold up by themselves when the sidebar
     /// collapses (Settings → Sidebar → Icon rail).
     rail_fold: crate::config::RailFold,
@@ -136,6 +140,9 @@ pub(crate) struct Sidebar {
     /// The launch view still to be picked (#256): kept until the account
     /// it names has its folders listed, then taken by the first pick.
     start: Option<StartTarget>,
+    /// The launch view's account is listed with no folders yet, and the
+    /// wait for them is running (#642).
+    start_wait: bool,
     /// The view to pick again, and announce, once its account is listed
     /// again: the app dropped what it showed when the accounts reconnected
     /// (an account saved), while this list still showed it selected. The
@@ -207,6 +214,8 @@ pub(crate) struct Sidebar {
     /// or folded, when "Fold up expanded items" covers it.
     rail_open: HashMap<UnifiedRow, bool>,
     rail_open_accounts: HashMap<u32, bool>,
+    /// The rail avatar clicked last and when, to tell a double click.
+    rail_last_click: Option<(u32, std::time::Instant)>,
     /// Which unified Starred / Sent / Drafts rows are shown, whether their
     /// account lists are open, and their widgets.
     unified_kinds: crate::config::UnifiedKinds,
@@ -319,6 +328,7 @@ impl Component for Sidebar {
             chevrons_left: false,
             account_click_folds: false,
             rail_dots: false,
+            unread_counts: true,
             rail_fold: crate::config::RailFold::default(),
             revealers: HashMap::new(),
             chevrons: HashMap::new(),
@@ -354,6 +364,7 @@ impl Component for Sidebar {
             quiet: std::rc::Rc::new(std::cell::Cell::new(false)),
             mirror: init.mirror,
             start: if init.mirror { None } else { init.start },
+            start_wait: false,
             reannounce: None,
             show_attachments: init.show_attachments,
             outbox_count: 0,
@@ -398,6 +409,7 @@ impl Component for Sidebar {
             kind_widgets: HashMap::new(),
             rail_open: HashMap::new(),
             rail_open_accounts: HashMap::new(),
+            rail_last_click: None,
             show_accounts: true,
             section_style: crate::config::SectionStyle::default(),
             filtered_placement: crate::config::SectionPlacement::AboveAccounts,
@@ -451,7 +463,7 @@ impl Sidebar {
         _root: &<Self as Component>::Root,
     ) {
         match msg {
-            SidebarInput::DropStart => self.on_drop_start(),
+            SidebarInput::DropStart => self.on_drop_start(&sender),
             SidebarInput::Reannounce => self.on_reannounce(sender),
             SidebarInput::MirrorSelection(sel) => self.on_mirror_selection(sel),
             msg @ SidebarInput::SetContents { .. } => self.on_set_contents(msg, widgets, sender),
@@ -540,6 +552,7 @@ impl Sidebar {
             }
             SidebarInput::ToggleCollapsed => self.on_toggle_collapsed(widgets, sender),
             SidebarInput::ToggleCollapseLocal(id) => self.on_toggle_collapse_local(id, sender),
+            SidebarInput::RailAvatarClicked(id) => self.on_rail_avatar_clicked(id, sender),
             SidebarInput::ToggleCustomFoldersLocal(id) => {
                 self.on_toggle_custom_folders_local(id, sender)
             }

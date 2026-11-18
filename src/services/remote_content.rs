@@ -53,6 +53,23 @@ fn origin_url(routed: &str) -> Option<String> {
     (lower.starts_with("https:") || lower.starts_with("http:")).then(|| canonical(rest))
 }
 
+/// The web address of a picture the reader loaded through the cache, for its
+/// right-click menu (#569). `None` for any other URI.
+pub(crate) fn web_url(uri: &str) -> Option<String> {
+    origin_url(uri)
+}
+
+/// The bytes behind a URI the reader loaded through the cache, handed to
+/// `done` on the main thread (#569). A picture on screen is on disk, so this
+/// is a read; only a cache trimmed since then goes back to the network.
+pub(crate) fn get(uri: &str, done: impl FnOnce(Option<Arc<Entry>>) + 'static) {
+    let Some(url) = origin_url(uri) else {
+        done(None);
+        return;
+    };
+    glib::spawn_future_local(async move { done(load(url).await) });
+}
+
 /// One spelling per URL, so the markup's form (fetched ahead) and WebKit's
 /// (asked for by the reader) meet on the same cache entry: the fragment
 /// dropped, scheme and host lower case, an empty path written `/`, spaces
@@ -128,14 +145,11 @@ pub(crate) fn register(ctx: &webkit6::WebContext) {
     );
 }
 
-/// Let `view`'s pages load from the cached schemes. WebKitGTK shows a
-/// custom scheme only to a page it may request it from, which by default is
-/// a page on that scheme; the allowlist is what opens it to the reader's
-/// `https://hylki.localhost` documents.
-pub(crate) fn allow_in(view: &webkit6::WebView) {
-    use webkit6::prelude::WebViewExt;
-    view.set_cors_allowlist(&["hylki-http://*/*", "hylki-https://*/*"]);
-}
+/// What lets a page load from the cached schemes, for the view's CORS
+/// allowlist. WebKitGTK shows a custom scheme only to a page it may request
+/// it from, which by default is a page on that scheme; the allowlist is what
+/// opens it to the reader's `https://hylki.localhost` documents.
+pub(crate) const CORS_PATTERNS: [&str; 2] = ["hylki-http://*/*", "hylki-https://*/*"];
 
 fn handle(request: &webkit6::URISchemeRequest) {
     let Some(url) = request.uri().and_then(|u| origin_url(&u)) else {

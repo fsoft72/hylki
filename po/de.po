@@ -7,7 +7,7 @@ msgstr ""
 "Project-Id-Version: hylki\n"
 "Report-Msgid-Bugs-To: https://github.com/hyprlab/hylki/issues\n"
 "POT-Creation-Date: \n"
-"PO-Revision-Date: 2026-11-01 18:29+0100\n"
+"PO-Revision-Date: 2026-11-16 20:23+0100\n"
 "Last-Translator: Samuel Edlmeier <samuel.edlmeier@gmx.net>\n"
 "Language-Team: German\n"
 "Language: de\n"
@@ -32,6 +32,12 @@ msgstr ""
 
 msgid "Release Notes"
 msgstr "Versionshinweise"
+
+msgid "Credits"
+msgstr "Mitwirkende"
+
+msgid "Contributors and translators"
+msgstr "Beitragende und Übersetzende"
 
 msgid "Keyring Setup Help"
 msgstr "Hilfe zur Einrichtung des Schlüsselbunds"
@@ -58,15 +64,14 @@ msgstr "Lizenz (GNU AGPL v3)"
 msgid "Buy Me a Coffee"
 msgstr "Entwicklern einen Kaffee spendieren"
 
-#. Contributors — people outside Hyprlab whose patches are in the app.
+#. Contributors: people outside Hyprlab whose patches are in the app.
 msgid "Special thanks to these contributors"
 msgstr "Besonderer Dank an diese Mitwirkenden"
 
-#. Translators — the same list, with the languages each one carried.
+#. Translators: the same list, with the languages each one carried.
 msgid "Translated by"
 msgstr "Übersetzt von"
 
-#. Footer.
 msgid "© 2026 Hyprlab"
 msgstr "© 2026 Hyprlab"
 
@@ -90,6 +95,99 @@ msgstr "Konnte kein Konto importieren: {e}"
 
 msgid "On This Computer is switched off"
 msgstr "»Auf diesem Rechner« ist deaktiviert"
+
+msgid "Could not start: {error}"
+msgstr "Fehler beim Starten: »{error}«"
+
+msgid "Off"
+msgstr "Aus"
+
+msgid "No activity yet."
+msgstr "Derzeit nicht aktiv"
+
+msgid "Message from an AI Agent"
+msgstr "Nachricht von einem KI-Agenten"
+
+msgid "An AI agent prepared a message"
+msgstr "Ein KI-Agent hat eine Nachricht vorbereitet"
+
+msgid "Show"
+msgstr "Anzeigen"
+
+msgid "Listed accounts"
+msgstr "Aufgelistete Konten"
+
+msgid "Listed folders"
+msgstr "Aufgelistete Ordner"
+
+msgid "Listed messages"
+msgstr "Aufgelistete Nachrichten"
+
+msgid "Searched mail"
+msgstr "Durchsuchte Nachrichten"
+
+msgid "Searched on the server"
+msgstr "Auf dem Server gesucht"
+
+msgid "Read a message"
+msgstr "Nachricht lesen"
+
+msgid "Read a conversation"
+msgstr "Unterhaltung lesen"
+
+msgid "Listed attachments"
+msgstr "Aufgelistete Anhänge"
+
+msgid "Read an attachment"
+msgstr "Anhang gelesen"
+
+msgid "Looked up contacts"
+msgstr "Kontakte nachgeschlagen"
+
+msgid "Prepared a message"
+msgstr "Nachricht vorbereitet"
+
+msgid "Prepared a reply"
+msgstr "Antwort vorbereitet"
+
+msgid "Prepared a forward"
+msgstr "Weiterleitung vorbereitet"
+
+msgid "Changed read state"
+msgstr "Gelesen-Status angepasst"
+
+msgid "Changed stars"
+msgstr "Sternmarkierung geändert"
+
+msgid "Listed tags"
+msgstr "Schlagwörter aufgelistet"
+
+msgid "Changed tags"
+msgstr "Kontakte nachgeschlagen"
+
+msgid "Moved messages"
+msgstr "Nachrichten verschoben"
+
+msgid "Archived messages"
+msgstr "Nachrichten archiviert"
+
+msgid "Moved messages to Trash"
+msgstr "Nachrichten in den Papierkorb verschoben"
+
+msgid "Read the open conversation"
+msgstr "Offene Unterhaltung lesen"
+
+msgid "Listed open drafts"
+msgstr "Offene Entwürfe aufgelistet"
+
+msgid "Read an open draft"
+msgstr "Offenen Entwurf lesen"
+
+msgid "Suggested changes to a draft"
+msgstr "Entwurfsänderungen vorgeschlagen"
+
+msgid "Refused or failed: {action}"
+msgstr "Abgelehnt oder fehlgeschlagen: »{action}«"
 
 msgid "Delete the attachment from the server?"
 msgstr "Den Anhang vom Server löschen?"
@@ -116,9 +214,6 @@ msgstr "Rechts"
 
 msgid "Below"
 msgstr "Unterhalb"
-
-msgid "Off"
-msgstr "Aus"
 
 msgid "Reading Pane"
 msgstr "Lesenbereich"
@@ -160,7 +255,7 @@ msgid "Remove Star"
 msgstr "Stern entfernen"
 
 msgid "Star"
-msgstr "Stern"
+msgstr "Mit Stern markieren"
 
 msgid "Mark as Read"
 msgstr "Als gelesen markieren"
@@ -173,6 +268,18 @@ msgstr "Alle Nachrichten ausklappen"
 
 msgid "Collapse All Messages"
 msgstr "Alle Nachrichten einklappen"
+
+msgid "Back to My Fonts and Colors"
+msgstr "Eigene Schriftarten und Farben verwenden"
+
+msgid "Show Sender's Fonts and Colors"
+msgstr "Schriftarten und Farben des Absenders anzeigen"
+
+msgid "Create Event from Selection…"
+msgstr "Termin aus Auswahl erstellen…"
+
+msgid "Create Task from Selection…"
+msgstr "Aufgabe aus Auswahl erstellen…"
 
 msgid "View Source"
 msgstr "Quelltext anzeigen"
@@ -187,10 +294,13 @@ msgid "Create Filter from Message…"
 msgstr "Filterregel aus Nachricht erstellen…"
 
 msgid "Create Event…"
-msgstr "Erstelle Termin..."
+msgstr "Erstelle Termin…"
 
 msgid "Create Task…"
-msgstr "Erstelle Aufgabe..."
+msgstr "Erstelle Aufgabe…"
+
+msgid "Copy To…"
+msgstr "Kopieren nach…"
 
 msgid "Tags"
 msgstr "Tags"
@@ -206,9 +316,6 @@ msgstr "Als Spam markieren"
 
 msgid "Move To…"
 msgstr "Verschieben nach…"
-
-msgid "Copy To…"
-msgstr "Kopieren nach…"
 
 msgid "Archive"
 msgstr "Archivieren"
@@ -231,11 +338,129 @@ msgstr "Drucken…"
 msgid "New Message"
 msgstr "Neue Nachricht"
 
-msgid "Hylki Address Book"
-msgstr "Hylki Adressbuch"
+msgid "A group needs a name."
+msgstr "Für die Kontaktliste muss ein Name angegeben werden."
+
+msgid ""
+"A group in this address book is kept on its people's cards, so it needs at "
+"least one person."
+msgstr ""
+"Da Kontaktlisten in diesem Adressbuch als Eigenschaft der zugehörigen "
+"Kontakte gespeichert werden, muss mindestens eine Person enthalten sein."
 
 msgid "Hylki cannot change this kind of group"
 msgstr "Kontaktlisten dieser Art können nicht geändert werden."
+
+msgid "Home"
+msgstr "Privat"
+
+msgid "Work"
+msgstr "Geschäftlich"
+
+msgid "Mobile"
+msgstr "Mobil"
+
+msgid "Fax"
+msgstr "Fax"
+
+msgid "{field} ({label})"
+msgstr "{field} ({label})"
+
+msgid "Do not import"
+msgstr "Import überspringen"
+
+msgid "Full name"
+msgstr "Vollständiger Name"
+
+msgid "First name"
+msgstr "Vorname"
+
+msgid "Middle name"
+msgstr "Zweiter Vorname"
+
+msgid "Last name"
+msgstr "Nachname"
+
+msgid "Name prefix"
+msgstr "Anrede / Titel"
+
+msgid "Name suffix"
+msgstr "Nachgestellter Titel"
+
+msgid "Nickname"
+msgstr "Spitzname"
+
+msgid "Company"
+msgstr "Organisation"
+
+msgid "Department"
+msgstr "Abteilung"
+
+msgid "Job title"
+msgstr "Position"
+
+msgid "Notes"
+msgstr "Notizen"
+
+msgid "Birthday"
+msgstr "Geburtstag"
+
+msgid "Birth year"
+msgstr "Geburtsjahr"
+
+msgid "Birth month"
+msgstr "Geburtsmonat"
+
+msgid "Birth day"
+msgstr "Geburtstag"
+
+msgid "Groups"
+msgstr "Kontaktlisten"
+
+msgid "Email"
+msgstr "E-Mail"
+
+msgid "Phone"
+msgstr "Telefon"
+
+msgid "Email label"
+msgstr "E-Mail-Typ"
+
+msgid "Phone label"
+msgstr "Rufnummern-Typ"
+
+msgid "Address label"
+msgstr "Anschrift-Typ"
+
+msgid "Website label"
+msgstr "Website-Typ"
+
+msgid "Address"
+msgstr "Adresse"
+
+msgid "Street"
+msgstr "Straße"
+
+msgid "Apartment or suite"
+msgstr "Wohnung, Tür oder Stiege"
+
+msgid "PO box"
+msgstr "Postfach"
+
+msgid "City"
+msgstr "Stadt"
+
+msgid "State or region"
+msgstr "Bundesland/Region"
+
+msgid "Postal code"
+msgstr "Postleitzahl"
+
+msgid "Country"
+msgstr "Land"
+
+msgid "Hylki Address Book"
+msgstr "Hylki Adressbuch"
 
 msgid "On This Computer"
 msgstr "Auf diesem Rechner"
@@ -369,15 +594,30 @@ msgstr[1] "{n} Personen"
 msgid "Enable Console mode in Settings → System & Appearance"
 msgstr "Konsolenmodus unter »Einstellungen → System« aktivieren"
 
+msgid ""
+"No templates yet. Save one from the composer's ⋯ menu with Save as Template."
+msgstr "Keine Vorlagen. Im Editor-Menü »⋯« »Als Vorlage speichern« wählen."
+
 msgid "New Message from Template"
 msgstr "Aus Vorlage erstellen"
 
 msgid "The new message starts as a copy of the template you pick."
 msgstr "Neue Nachricht basiert auf gewählter Vorlage."
 
-msgid ""
-"No templates yet. Save one from the composer's ⋯ menu with Save as Template."
-msgstr "Keine Vorlagen. Im Editor-Menü »⋯« »Als Vorlage speichern« wählen."
+msgid "Insert Template"
+msgstr "Textvorlage verwenden"
+
+msgid "The template goes in where the cursor is."
+msgstr "Die Textvorlage wird an der Cursor-Position platziert."
+
+msgid "Templates"
+msgstr "Vorlagen"
+
+msgid "Template saved to {folder} in {account}"
+msgstr "Vorlage wurde in »{folder}« ({account}) gespeichert."
+
+msgid "Could not load the template."
+msgstr "Fehler beim Laden der Vorlage."
 
 msgid "Continue a Draft"
 msgstr "Entwurf fortsetzen"
@@ -602,7 +842,8 @@ msgstr "Seitenleiste ein- oder ausblenden"
 
 msgid "Always do this (change it in Settings → System → GNOME Files)"
 msgstr ""
-"Immer ausführen (änderbar unter »Einstellungen → System → GNOME Files«)"
+"Immer ausführen (änderbar unter »Einstellungen → System → GNOME-"
+"Dateiintegration«)"
 
 msgid "Could not attach {names}: Hylki cannot read the file."
 msgid_plural "Could not attach {n} files (Hylki cannot read them): {names}"
@@ -701,6 +942,36 @@ msgstr "Antwort wurde gesendet: Vorbehaltlich."
 msgid "Your answer has been sent: declined."
 msgstr "Antwort wurde gesendet: Abgelehnt."
 
+msgid "Retry"
+msgstr "Erneut versuchen"
+
+msgid "Waiting for the keyring"
+msgstr "Warten auf Schlüsselbund"
+
+msgid "Couldn’t read the password"
+msgstr "Passwort konnte nicht gelesen werden"
+
+msgid "The keyring gave an error for {accounts}: {error}"
+msgstr "Fehler beim Zugriff auf den Schlüsselbund für {accounts}: {error}"
+
+msgid "The keyring hasn’t answered for {accounts}. Mail connects once it does."
+msgstr ""
+"Schlüsselbund antwortet nicht für »{accounts}«. Nachrichten werden "
+"abgerufen, sobald er bereit ist."
+
+msgid ""
+"Unlock the keyring, for example the Login keyring in Passwords and Keys."
+msgstr ""
+"Schlüsselbund entsperren (z. B. Login-Schlüsselbund in »Passwörter und "
+"Verschlüsselung«)."
+
+msgid ""
+"Unlock the keyring, for example the Login keyring in Passwords and Keys, "
+"then choose Retry."
+msgstr ""
+"Schlüsselbund entsperren (z. B. Login-Schlüsselbund in »Passwörter und "
+"Verschlüsselung«) und wiederholen."
+
 msgid "Date (Newest first)"
 msgstr "Datum (neueste zuerst)"
 
@@ -734,8 +1005,17 @@ msgstr "Seit {date}"
 msgid "Until {date}"
 msgstr "Bis zum {date}"
 
+msgid "Sender"
+msgstr "Absender"
+
+msgid "Recipients"
+msgstr "Empfänger"
+
 msgid "Sort by"
 msgstr "Sortieren nach"
+
+msgid "Use for All Folders"
+msgstr "Auf alle Ordner anwenden"
 
 msgid "Show only"
 msgstr "Nur anzeigen"
@@ -766,6 +1046,29 @@ msgstr "Filter"
 
 msgid "Sort"
 msgstr "Sortieren"
+
+msgid "Sending {n} message…"
+msgid_plural "Sending {n} messages…"
+msgstr[0] "Sende {n} Nachricht…"
+msgstr[1] "Sende {n} Nachrichten…"
+
+#. Each one that failed has said why already, and waits in the
+#. Outbox, a refused one included.
+msgid "Sent {n} of {total} message"
+msgid_plural "Sent {n} of {total} messages"
+msgstr[0] "{n} von {total} E-Mail gesendet"
+msgstr[1] "{n} von {total} E-Mails gesendet"
+
+msgid "Sent {n} message"
+msgid_plural "Sent {n} messages"
+msgstr[0] "{n} E-Mail gesendet"
+msgstr[1] "{n} E-Mails gesendet"
+
+msgid "Stop"
+msgstr "Stopp"
+
+msgid "Show Outbox"
+msgstr "Postausgang anzeigen"
 
 #. Rightmost, beside the window controls, as in the main window.
 msgid "Actions"
@@ -887,6 +1190,9 @@ msgstr "Fett, kursiv, unterstrichen"
 
 msgid "Preview the highlighted attachment"
 msgstr "Vorschau des hervorgehobenen Anhangs anzeigen"
+
+msgid "Open the highlighted attachment"
+msgstr "Den ausgewählten Anhang öffnen"
 
 msgid "Previous or next in the gallery's preview"
 msgstr "Vorheriges oder nächstes Element in der Galerie-Vorschau"
@@ -1150,9 +1456,6 @@ msgstr "Suche nach Absender, Betreff oder Konto"
 msgid "(no subject)"
 msgstr "(kein Betreff)"
 
-msgid "Message Source"
-msgstr "Nachrichtenquelle"
-
 msgid "Forwarded message"
 msgstr "Weitergeleitete Nachricht"
 
@@ -1286,6 +1589,19 @@ msgstr "Vollständige Versionshinweise auf GitHub"
 msgid "Delete this conversation?"
 msgstr "Diese Unterhaltung löschen?"
 
+msgid ""
+"The message in this conversation will be deleted. You can turn this warning "
+"off in Settings."
+msgid_plural ""
+"All {n} messages in this conversation will be deleted. You can turn this "
+"warning off in Settings."
+msgstr[0] ""
+"Nachricht in dieser Unterhaltung wird gelöscht. Diese Warnung lässt sich "
+"unter »Einstellungen → Unterhaltungen« ausschalten."
+msgstr[1] ""
+"Alle {n} Nachrichten in dieser Unterhaltung werden gelöscht. Diese Warnung "
+"lässt sich unter »Einstellungen → Unterhaltungen« ausschalten."
+
 msgid "Delete Conversation"
 msgstr "Unterhaltung löschen"
 
@@ -1334,11 +1650,6 @@ msgstr "Kein Posteingangsordner für dieses Konto verfügbar"
 msgid "No {v1} folder available for some messages"
 msgstr "Für einige Nachrichten ist kein Ordner für {v1} verfügbar"
 
-msgid "Sending {n} message…"
-msgid_plural "Sending {n} messages…"
-msgstr[0] "Sende {n} Nachricht…"
-msgstr[1] "Sende {n} Nachrichten…"
-
 msgid "Remove Account?"
 msgstr "Konto entfernen?"
 
@@ -1354,14 +1665,29 @@ msgstr "Tags entfernen"
 msgid "Open a message first, then print it."
 msgstr "Zuerst eine Nachricht öffnen, dann drucken."
 
+msgid "Message Source"
+msgstr "Nachrichtenquelle"
+
+msgid "Find in message"
+msgstr "In Nachricht suchen"
+
+msgid "Previous match"
+msgstr "Vorheriger Treffer"
+
+msgid "Next match"
+msgstr "Nächster Treffer"
+
+msgid "Close find"
+msgstr "Suche schließen"
+
 msgid "Delete “{name}”?"
 msgstr "Lösche »{name}«?"
 
 msgid ""
 "The smart folder goes from the sidebar. The mail it shows stays where it is."
 msgstr ""
-"Smart Folder aus der Seitenleiste entfernen. Die angezeigten E-Mails bleiben "
-"unverändert erhalten."
+"Smart Folder aus der Seitenleiste entfernen. Die angezeigten Nachrichten "
+"bleiben unverändert erhalten."
 
 msgid "Snooze until"
 msgstr "Zurückstellen bis"
@@ -1395,17 +1721,20 @@ msgstr[1] "{n} Nachrichten werden in {account} verschoben…"
 
 msgid "One message stayed put: this account can't take mail from another"
 msgstr ""
-"Eine Nachricht konnte nicht verschoben werden: Dieses Konto kann keine E-"
-"Mails von einem anderen Konto empfangen."
+"Eine Nachricht konnte nicht verschoben werden: Dieses Konto kann keine "
+"Nachrichten von einem anderen Konto empfangen."
 
 msgid ""
 "{foreign} messages stayed put: this account can't take mail from another"
 msgstr ""
 "{foreign} Nachrichten konnten nicht verschoben werden: Dieses Konto kann "
-"keine E-Mails von einem anderen Konto empfangen."
+"keine Nachrichten von einem anderen Konto empfangen."
 
 msgid "Could not save the message: {e}"
 msgstr "Nachricht konnte nicht gespeichert werden: {e}"
+
+msgid "Could not decrypt the draft: {e}"
+msgstr "Entwurf konnte nicht entschlüsselt werden: {e}"
 
 msgid "Open Hylki"
 msgstr "Hylki öffnen"
@@ -1417,7 +1746,7 @@ msgid "Accounts"
 msgstr "Konten"
 
 msgid "No unread mail in Inboxes"
-msgstr "Keine ungelesenen E-Mails in Posteingängen"
+msgstr "Keine ungelesenen Nachrichten in Posteingängen"
 
 msgid "{n} unread in Inboxes"
 msgid_plural "{n} unread in Inboxes"
@@ -1555,17 +1884,20 @@ msgstr "In Nachricht suchen (»Strg+F«)"
 msgid "Downloading attachments…"
 msgstr "Anhänge werden heruntergeladen…"
 
+#. Translators: words in a message that mean today, for Create Event
+#. from Selection; lower case, separated by spaces. English already works.
+msgid "today tonight"
+msgstr "heute"
+
+#. Translators: words in a message that mean tomorrow, as above.
+msgid "tomorrow"
+msgstr "morgen"
+
 msgid "Signature"
 msgstr "Signatur"
 
 msgid "Replied"
 msgstr "Replied"
-
-msgid "Sender"
-msgstr "Absender"
-
-msgid "Recipients"
-msgstr "Empfänger"
 
 msgid "Correspondents"
 msgstr "Beteiligte"
@@ -1657,7 +1989,7 @@ msgstr "Klassisch"
 msgid ""
 "Hylki checks for new mail and shows notifications while its window is closed."
 msgstr ""
-"Hylki sucht nach neuen E-Mails und zeigt Benachrichtigungen, während das "
+"Hylki sucht nach neuen Nachrichten und zeigt Benachrichtigungen, während das "
 "Fenster geschlossen ist."
 
 msgid "Checking for new mail"
@@ -1682,6 +2014,14 @@ msgid_plural "A new message with {n} files attached is open in Hylki."
 msgstr[0] "Eine neue Nachricht mit {n}-Datei ist in Hylki geöffnet."
 msgstr[1] "Eine neue Nachricht mit {n} Dateien ist in Hylki geöffnet."
 
+msgid "Message ready"
+msgstr "Nachricht bereit"
+
+msgid "An AI agent prepared a message. Check it, then send it."
+msgstr ""
+"Ein KI-Agent hat eine E-Mail vorbereitet. Nachrichten prüfen und "
+"anschließend senden."
+
 msgid "On {date} at {time}, {name} wrote:"
 msgstr "Am {date} um {time} schrieb {name}:"
 
@@ -1694,9 +2034,6 @@ msgstr "Vorname"
 msgid "Last Name"
 msgstr "Nachname"
 
-msgid "Email"
-msgstr "E-Mail"
-
 msgid "Column {n}"
 msgstr "Spalte {n}"
 
@@ -1705,6 +2042,13 @@ msgstr "Die Datei ist leer."
 
 msgid "The file has no rows below its first."
 msgstr "Keine Datenzeilen unterhalb der Kopfzeile vorhanden."
+
+msgid ""
+"The signing key is not for {addr}, the address this message is from, so the "
+"signature does not show who sent it."
+msgstr ""
+"Schlüssel passt nicht zu Absenderadresse »{addr}«; Absenderidentität durch "
+"Signatur nicht bestätigt."
 
 msgid "GnuPG (gpg) is not installed, so this message cannot be read."
 msgstr ""
@@ -1720,6 +2064,14 @@ msgstr ""
 
 msgid "The encrypted block is damaged or not OpenPGP data."
 msgstr "Der verschlüsselte Block ist beschädigt oder nicht OpenPGP-Daten."
+
+msgid ""
+"Signing key {id} came with the sender's mail or from their domain, not from "
+"your keyring; check its fingerprint with the sender before trusting it."
+msgstr ""
+"Signaturschlüssel {id} stammt aus der Nachricht oder der Absender-Domain, "
+"nicht aus dem Schlüsselbund. Fingerabdruck vor dem Vertrauen bei der "
+"absendenden Person prüfen."
 
 msgid "Revoked"
 msgstr "Zurückgezogen"
@@ -1972,6 +2324,13 @@ msgstr "Mit OpenPGP verschlüsselt; konnte nicht entschlüsselt werden"
 msgid "Encrypted with OpenPGP"
 msgstr "Mit OpenPGP verschlüsselt"
 
+msgid ""
+"Encrypted, and signed by {signer}, whose key is not for the sender's address "
+"{addr}"
+msgstr ""
+"Verschlüsselt und signiert von »{signer}«, Schlüssel passt nicht zu "
+"Absenderadresse »{addr}«)"
+
 msgid "Encrypted, and signed by {signer}"
 msgstr "Verschlüsselt und signiert von {signer}"
 
@@ -1997,6 +2356,10 @@ msgstr "Verschlüsselt und signiert von {signer}; die Signatur ist abgelaufen"
 
 msgid "OpenPGP-signed; the signature could not be checked"
 msgstr "OpenPGP-signiert; die Signatur konnte nicht überprüft werden"
+
+msgid "Signed by {signer}, whose key is not for the sender's address {addr}"
+msgstr ""
+"Signiert von »{signer}«, Schlüssel passt nicht zu Absenderadresse »{addr}«."
 
 msgid "Signed by {signer}"
 msgstr "Unterzeichnet von {signer}"
@@ -2026,6 +2389,9 @@ msgstr "Verschlüsselt"
 
 msgid "Signature not checked"
 msgstr "Signatur nicht überprüft"
+
+msgid "Signed by another address"
+msgstr "Signatur von einer anderen Adresse"
 
 msgid "Encrypted and signed"
 msgstr "Verschlüsselt und signiert"
@@ -2255,17 +2621,11 @@ msgstr "Ordner"
 msgid "Permanently deletes the message"
 msgstr "Nachricht dauerhaft löschen"
 
-msgid "Show"
-msgstr "Anzeigen"
-
 msgid "Bring this folder back to the sidebar"
 msgstr "Diesen Ordner wieder in die Seitenleiste einfügen"
 
 msgid "Sends through {host}"
 msgstr "Versendet über {host}"
-
-msgid "Sends through this account"
-msgstr "Versendet über dieses Konto"
 
 msgid "Remove this alias"
 msgstr "Alias entfernen"
@@ -2290,11 +2650,20 @@ msgstr "Anzeigename (optional)"
 msgid "Email address"
 msgstr "E-Mail-Adresse"
 
+msgid "Default From address"
+msgstr "Standardmäßige Absenderadresse"
+
 msgid "Sending"
 msgstr "Senden"
 
 msgid "Own SMTP server"
 msgstr "Eigener SMTP-Server"
+
+msgid ""
+"Needed when this account's provider, such as Gmail, rewrites the sender."
+msgstr ""
+"Erforderlich, wenn der Anbieter dieses Kontos (z. B. Gmail) die "
+"Absenderadresse umschreibt."
 
 msgid "SMTP server"
 msgstr "SMTP-Server"
@@ -2308,8 +2677,19 @@ msgstr "SMTP-Benutzername"
 msgid "SMTP password"
 msgstr "SMTP-Passwort"
 
+msgid "Server saves its own copy of sent mail"
+msgstr "Server speichert selbst eine Kopie gesendeter Nachrichten"
+
+msgid "Only when this server files sent mail in this account."
+msgstr "Nur, wenn dieser Server gesendete Nachrichten in diesem Konto ablegt."
+
 msgid "Test SMTP"
 msgstr "SMTP testen"
+
+msgid "Names that share an address send through this account's server."
+msgstr ""
+"Identitäten mit übereinstimmender Adresse senden über den Server dieses "
+"Kontos."
 
 msgid "Testing…"
 msgstr "Wird getestet…"
@@ -2387,6 +2767,13 @@ msgid ""
 msgstr ""
 "Fordert Zugriff bei Microsoft an. In einigen Organisationen ist hierfür die "
 "Genehmigung eines Administratiors erforderlich."
+
+msgid ""
+"Switching this off returns the account to the import list. It stays in GNOME "
+"Online Accounts."
+msgstr ""
+"Beim Deaktivieren wird das Konto wieder in die Importliste verschoben – es "
+"verbleibt in GNOME-Online-Konten."
 
 msgid "Choose a Picture"
 msgstr "Bild auswählen"
@@ -2487,6 +2874,21 @@ msgstr ""
 "Ungelesene Nachrichten dieses Ordners zum Zähler im Symbol im Infobereich "
 "hinzufügen"
 
+msgid ""
+"Any folder, the Inbox included. Applies only to mail sent from here, "
+"starting now."
+msgstr ""
+"Beliebiger Ordner (inklusive Posteingang). Gilt ab jetzt nur für hier "
+"gesendete Nachrichten."
+
+msgid ""
+"Uses the original's folder at the time the reply is sent. Replies to mail in "
+"Sent, Drafts, Trash or Junk go with sent mail."
+msgstr ""
+"Nutzt den aktuellen Ordner der ursprünglichen Nachricht. Antworten aus "
+"Gesendet, Entwürfe, Papierkorb oder Spam werden wie gesendete Nachrichten "
+"abgelegt."
+
 msgid "Never"
 msgstr "Nie"
 
@@ -2581,7 +2983,7 @@ msgid ""
 "Store mail in folders that live on this computer. Move or copy mail from any "
 "account to here."
 msgstr ""
-"E-Mails in lokalen Ordnern auf diesem Computer speichern. Es können "
+"Nachrichten in lokalen Ordnern auf diesem Computer speichern. Es können "
 "Nachrichten aus allen Konten hierher verschoben oder kopiert werden."
 
 msgid "Add"
@@ -2803,11 +3205,32 @@ msgstr "Gelesen"
 msgid "Has attachments"
 msgstr "Hat Anhänge"
 
+msgid "No attachments"
+msgstr "Keine Anhänge"
+
 msgid "Tagged"
 msgstr "Tagged"
 
+msgid "Not tagged"
+msgstr "Nicht tagged"
+
+msgid "Gmail label"
+msgstr "Gmail-Label"
+
 msgid "Message preview"
 msgstr "Vorschau der Nachricht"
+
+msgid "does not contain"
+msgstr "enthält nicht"
+
+msgid "is not"
+msgstr "ist nicht"
+
+msgid "does not start with"
+msgstr "beginnt nicht mit"
+
+msgid "does not end with"
+msgstr "endet nicht mit"
 
 msgid "Edit Smart Folder"
 msgstr "Bearbeite Smart Folder"
@@ -2823,6 +3246,9 @@ msgstr "Ordner"
 
 msgid "Any tag"
 msgstr "Beliebiger Tag"
+
+msgid "With no text, any label matches."
+msgstr "Bei leerem Textfeld wird jedes beliebige Label akzeptiert."
 
 msgid "The preview each message has in the list"
 msgstr "Die Vorschau der Nachrichten in der Liste"
@@ -2903,8 +3329,37 @@ msgstr "Jeden Anhang in einem Ordner speichern"
 msgid "Save Attachment"
 msgstr "Anhang speichern"
 
+msgid "Open “{name}”?"
+msgstr "»{name}« öffnen?"
+
+msgid ""
+"This attachment is a program or a script. Opening it can run it with your "
+"permissions. Open it only if you expected it and trust where it came from."
+msgstr ""
+"Dieser Anhang enthält ein Programm oder ein Skript. Beim Öffnen wird es mit "
+"den bestehenden Berechtigungen ausgeführt. Nur öffnen, wenn der Anhang "
+"erwartet wurde und dem Absender vertraut wird."
+
+msgid "Open Anyway"
+msgstr "Trotzdem öffnen"
+
 msgid "The file could not be opened"
 msgstr "Die Datei konnte nicht geöffnet werden"
+
+#. No Flatseal toggle can help here: portal access is not a
+#. permission, and the failure is inside the portal's own launcher.
+#. Offer the steps that actually work.
+msgid ""
+"The desktop portal reported: {error}\n"
+"\n"
+"• Download the file, then open it from Files\n"
+"• Updating “xdg-desktop-portal” and logging back in may fix direct opening"
+msgstr ""
+"Desktop-Portal meldet: {error}\n"
+"\n"
+"• Die Datei herunterladen und in »Dateien« öffnen.\n"
+"• Aktualisieren von »xdg-desktop-portal« und erneutes Anmelden behebt "
+"möglicherweise Fehler beim direkten Öffnen."
 
 msgid "Go to Message"
 msgstr "Zur Nachricht wechseln"
@@ -2934,9 +3389,6 @@ msgstr "Nach Absender, Betreff, Typ oder Dateiname suchen…"
 
 msgid "Loading attachments…"
 msgstr "Anhänge werden geladen…"
-
-msgid "No attachments"
-msgstr "Keine Anhänge"
 
 msgid "Attachments from your inboxes will appear here."
 msgstr "Anhänge aus den Posteingängen werden hier angezeigt."
@@ -3032,11 +3484,152 @@ msgstr "Typ (Z–A)"
 msgid "Previous"
 msgstr "Vorherige"
 
+msgid "No preview available"
+msgstr "Keine Vorschau verfügbar"
+
 msgid "Next"
 msgstr "Nächste"
 
 msgid "Open in the default app"
 msgstr "Mit der Standardanwendung öffnen"
+
+msgid "Waiting for the Keyring"
+msgstr "Warten auf Schlüsselbund"
+
+msgid ""
+"Mail stored on this computer is encrypted with a key stored in the keyring. "
+"Unlock the keyring if it asks."
+msgstr ""
+"Die auf diesem Gerät gespeicherten Nachrichten sind über den Schlüsselbund "
+"verschlüsselt. Den Schlüsselbund bei einer Abfrage entsperren."
+
+msgid ""
+"This happens once and can take a few minutes. If you quit, your mail is left "
+"as it was."
+msgstr ""
+"Dieser Vorgang erfolgt einmalig und kann einige Minuten dauern. Beim Beenden "
+"bleiben die Nachrichten unverändert."
+
+msgid "Checking the copy"
+msgstr "Überprüfung der Kopie"
+
+msgid "Encrypting Stored Mail"
+msgstr "Gespeicherte Nachrichten verschlüsseln"
+
+msgid "Decrypting Stored Mail"
+msgstr "Gespeicherte Nachrichten entschlüsseln"
+
+msgid "Store Unencrypted…"
+msgstr "Unverschlüsselt speichern…"
+
+msgid "Reset Cache…"
+msgstr "Zwischenspeicher leeren…"
+
+msgid "Try Again"
+msgstr "Erneut versuchen"
+
+msgid "Keyring Unavailable"
+msgstr "Schlüsselbund steht nicht zur Verfügung"
+
+msgid ""
+"Mail kept on this computer is encrypted with a key stored in the keyring, "
+"and the keyring is locked or did not answer. Unlock it, then try again."
+msgstr ""
+"Lokal gespeicherte Nachrichten sind über den Schlüsselbund verschlüsselt, "
+"welcher gesperrt ist oder nicht reagiert. Schlüsselbund entsperren und "
+"erneut versuchen."
+
+msgid "Mail Cache Key Missing"
+msgstr "Schlüssel für E-Mail-Zwischenspeicher fehlt"
+
+msgid ""
+"Mail kept on this computer is encrypted, and the keyring no longer holds its "
+"key. If the keyring was replaced, restore the old one and try again. "
+"Otherwise reset the cache to download your mail again."
+msgstr ""
+"Lokal gespeicherte Nachrichten sind verschlüsselt und der zuhörige Schlüssel "
+"fehlt im Schlüsselbund. Wurde der Schlüsselbund ersetzt, den bisherigen "
+"wiederherstellen und den Vorgang wiederholen. Alternativ den "
+"Zwischenspeicher zurücksetzen, um die Nachrichten neu abzurufen."
+
+msgid "Mail Cache Cannot Be Unlocked"
+msgstr "E-Mail-Zwischenspeicher kann nicht entsperrt werden"
+
+msgid ""
+"The key in the keyring does not open the mail kept on this computer. If the "
+"keyring was replaced, restore the old one and try again. Otherwise reset the "
+"cache to download your mail again."
+msgstr ""
+"Der Schlüssel im Schlüsselbund passt nicht zu den lokal gespeicherten "
+"Nachrichten. Wurde der Schlüsselbund ersetzt, den bisherigen "
+"wiederherstellen und den Vorgang wiederholen. Alternativ den "
+"Zwischenspeicher zurücksetzen, um die Nachrichten neu abzurufen."
+
+msgid "Mail Cache Not Converted"
+msgstr "E-Mail-Zwischenspeicher nicht konvertiert"
+
+msgid ""
+"The mail kept on this computer could not be converted, and was left as it "
+"was. Check that the disk has free space, then try again."
+msgstr ""
+"Lokal gespeicherte Nachrichten konnten nicht konvertiert werden und befinden "
+"sich im ursprünglichen Zustand. Verfügbaren Speicherplatz prüfen und den "
+"Vorgang wiederholen."
+
+msgid "Mail Cache Unreadable"
+msgstr "E-Mail-Zwischenspeicher nicht lesbar"
+
+msgid ""
+"The mail kept on this computer could not be read. Try again, or reset the "
+"cache to download your mail again."
+msgstr ""
+"Lokal gespeicherte Nachrichten konnten nicht gelesen werden. Erneut "
+"versuchen oder den Zwischenspeicher zurücksetzen, um die Nachrichten neu "
+"abzurufen."
+
+msgid ""
+"Mail that exists only on this computer is lost: a POP3 account's mail, and "
+"unsent mail in the Outbox."
+msgstr ""
+"Nur lokal gespeicherte Nachrichten gehen verloren: Nachrichten eines POP3-"
+"Kontos und Entwürfe im Postausgang."
+
+msgid ""
+"Mail kept on this computer is deleted and downloaded again from the server."
+msgstr "Löschen der lokalen Nachrichten und erneutes Herunterladen vom Server"
+
+msgid "Reset the Mail Cache?"
+msgstr "E-Mail-Zwischenspeicher zurücksetzen?"
+
+msgid "Reset"
+msgstr "Zurücksetzen"
+
+msgid ""
+"Anyone who can read your files, or a backup of them, can then read the mail "
+"kept on this computer, including mail that is end-to-end encrypted on the "
+"server."
+msgstr ""
+"Jeder mit Zugriff auf diese Dateien oder deren Sicherung kann die lokal "
+"gespeicherten Nachrichten lesen, selbst wenn diese auf dem Server Ende-zu-"
+"Ende verschlüsselt sind."
+
+msgid "Encryption can be turned back on in Settings → Privacy."
+msgstr ""
+"Die Verschlüsselung kann unter »Einstellungen → Datenschutz« wieder "
+"aktiviert werden."
+
+msgid ""
+"The encrypted cache cannot be opened without the keyring, so it is deleted "
+"and your mail is downloaded again."
+msgstr ""
+"Da der verschlüsselte E-Mail-Cache ohne Schlüsselbund nicht entsperrt werden "
+"kann, wird dieser gelöscht und alle Nachrichten erneut vom Server bezogen."
+
+msgid "Store Mail Unencrypted?"
+msgstr "Nachrichten unverschlüsselt speichern?"
+
+msgid "Store Unencrypted"
+msgstr "Unverschlüsselte Speicherung"
 
 msgid "New Event"
 msgstr "Neuer Termin"
@@ -3056,9 +3649,6 @@ msgstr "Kalender"
 msgid "Task list"
 msgstr "Aufgabenliste"
 
-msgid "Notes"
-msgstr "Notizen"
-
 msgid "All day"
 msgstr "Ganztägig"
 
@@ -3069,7 +3659,7 @@ msgid "Ends"
 msgstr "Ende"
 
 msgid "Alarm"
-msgstr "Erinnerungen"
+msgstr "Erinnerung"
 
 msgid "Second alarm"
 msgstr "Zweite Erinnerung"
@@ -3393,6 +3983,88 @@ msgstr "Befehlspalette"
 msgid "Type an action, a folder or a tag, or > for actions only"
 msgstr "Aktion, Ordner oder Tag eingeben (oder > nur für Aktionen)"
 
+msgid "Cc"
+msgstr "Cc"
+
+msgid "Bcc"
+msgstr "Bcc"
+
+msgid ""
+"An AI agent prepared this message. Check who it goes to before you send it."
+msgstr ""
+"Diese Nachricht wurde von einem KI-Agenten vorbereitet. Vor dem Versenden "
+"die Empfänger überprüfen."
+
+msgid "It has no recipients yet."
+msgstr "Bisher keine Empfänger angegeben"
+
+msgid "Bcc, hidden from the others:"
+msgstr "Bcc, vor den anderen verborgen:"
+
+msgid "In Bcc: the other recipients will not see this address"
+msgstr "Bcc: Von anderen Empfängern nicht einsehbar"
+
+msgid "Outside your own domains"
+msgstr "Außerhalb der eigenen Domains"
+
+msgid "Not now"
+msgstr "Nicht jetzt"
+
+msgid "Accept or reject the AI agent's suggested changes first."
+msgstr "Änderungsvorschläge des KI-Agenten zuerst annehmen oder ablehnen"
+
+msgid "Wait for the translation to come back, then accept the changes."
+msgstr ""
+"Warten, bis die Übersetzung abgeschlossen ist, um die Änderungen anzunehmen."
+
+msgid "Changes suggested by an AI agent"
+msgstr "Vom KI-Agenten vorgeschlagene Änderungen"
+
+msgid "Nothing changes until you accept them."
+msgstr "Änderungen werden erst nach Bestätigung übernommen."
+
+msgid "Reject"
+msgstr "Ablehnen"
+
+msgid "Accept"
+msgstr "Akzeptieren"
+
+msgid "To:"
+msgstr "An:"
+
+msgid "Cc:"
+msgstr "Cc:"
+
+msgid "Subject:"
+msgstr "Betreff:"
+
+msgid "Accepting removes this text's formatting, links and pictures."
+msgstr ""
+"Bei Übernahme werden Formatierungen, Links und Grafiken dieses Texts "
+"entfernt."
+
+msgid "Taken out"
+msgstr "Entfernt"
+
+msgid "Added in Bcc: the other recipients will not see this address"
+msgstr "In Bcc hinzugefügt: Andere Empfänger sehen diese Adresse nicht"
+
+msgid "Added, outside your own domains"
+msgstr "Hinzugefügt, außerhalb eigener Domänen"
+
+msgid "Added"
+msgstr "Hinzugefügt"
+
+msgid "Send without an attachment?"
+msgstr "Ohne Anhang senden?"
+
+msgid "The message mentions “{word}”, but nothing is attached."
+msgstr ""
+"In der Nachricht wird »{word}« erwähnt, aber es ist keine Datei angehängt."
+
+msgid "Send Anyway"
+msgstr "Trotzdem senden"
+
 msgid "The file was moved or deleted. Attach it again from where it is now."
 msgstr ""
 "Die Datei wurde verschoben oder gelöscht. Erneut am aktuellen Speicherort "
@@ -3549,6 +4221,40 @@ msgstr "Mehr"
 msgid "Show Cc, Bcc and Reply-To"
 msgstr "Cc, Bcc und Reply-To anzeigen"
 
+msgid "They prefer encrypted mail."
+msgstr "Diese Person bevorzugt verschlüsselte E-Mails."
+
+msgid "No OpenPGP key: mail to this recipient cannot be encrypted."
+msgstr ""
+"Kein OpenPGP-Schlüssel verfügbar: E-Mails an diese Empfangsadresse lassen "
+"sich nicht verschlüsseln."
+
+msgid ""
+"OpenPGP key from older mail: their recent mail came without it, so they may "
+"no longer read encrypted mail."
+msgstr ""
+"OpenPGP-Schlüssel aus einer älteren Nachricht: Neuere Nachrichten dieser "
+"Person enthielten ihn nicht mehr, daher können verschlüsselte Nachrichten "
+"möglicherweise nicht mehr gelesen werden."
+
+msgid "OpenPGP key in your keyring."
+msgstr "OpenPGP-Schlüssel im eigenen Schlüsselbund."
+
+msgid "OpenPGP key sent with their mail (Autocrypt)."
+msgstr "OpenPGP-Schlüssel, der per E-Mail mitgesendet wurde (Autocrypt)."
+
+msgid "OpenPGP key passed on in someone else's encrypted mail."
+msgstr ""
+"OpenPGP-Schlüssel, der über die verschlüsselte E-Mail eines Dritten "
+"übermittelt wurde."
+
+msgid "OpenPGP key published by their mail domain (WKD)."
+msgstr ""
+"OpenPGP-Schlüssel, der über die E-Mail-Domain (WKD) veröffentlicht wurde."
+
+msgid "OpenPGP key from the keyserver keys.openpgp.org."
+msgstr "OpenPGP-Schlüssel vom Schlüsselserver keys.openpgp.org."
+
 msgid "Cannot merge an encrypted message"
 msgstr "Verschlüsselte Nachrichten können nicht zusammengeführt werden."
 
@@ -3583,6 +4289,22 @@ msgid ""
 msgstr ""
 "Es ist kein OpenPGP-Schlüssel für {addr} vorhanden. Bitte den öffentlichen "
 "Schlüssel anfragen oder unter »Einstellungen → OpenPGP« abrufen."
+
+msgid "Encrypt to keys you have not checked?"
+msgstr "Mit nicht verifizierten Schlüsseln verschlüsseln?"
+
+msgid ""
+"Nothing confirms that the keys for {addresses} belong to them. If one is "
+"someone else's, that person can read this message and the recipient cannot. "
+"To check a key, compare its fingerprint with its owner and trust it under "
+"Settings, OpenPGP. Send Anyway does not ask about these keys again."
+msgstr ""
+"Die Schlüssel für »{addresses}« sind nicht als zugehörig bestätigt. Bei "
+"einem fremden Schlüssel kann die Nachricht von einer anderen Person anstelle "
+"des Empfängers gelesen werden. Zur Überprüfung eines Schlüssels den "
+"Fingerabdruck mit dem des Eigentümers vergleichen und in den Einstellungen "
+"unter »OpenPGP« das Vertrauen bestätigen. »Trotzdem senden« fragt für diese "
+"Schlüssel nicht erneut nach."
 
 msgid "Send later"
 msgstr "Später senden"
@@ -3753,14 +4475,33 @@ msgstr "Stattdessen jetzt senden"
 msgid "Download password for {name}: {password}"
 msgstr "Download-Passwort für {name}: {password}"
 
-msgid "Cc"
-msgstr "Cc"
-
-msgid "Bcc"
-msgstr "Bcc"
-
 msgid "Reply-To"
 msgstr "Antwort an"
+
+msgid "Match a column to a name, an email address or a phone number."
+msgstr ""
+"Eine Spalte einem Namen, einer E-Mail-Adresse oder einer Telefonnummer "
+"zuordnen."
+
+msgid "Import Contacts"
+msgstr "Kontakte importieren"
+
+msgid "Import"
+msgstr "Importieren"
+
+msgid "Import into"
+msgstr "Importieren nach"
+
+msgid "Keeps no groups: their names stay on each contact."
+msgstr ""
+"Übernimmt keine Gruppen: Die Gruppennamen bleiben beim jeweiligen Kontakt "
+"erhalten."
+
+msgid "Not imported"
+msgstr "Nicht importiert"
+
+msgid "vCard files"
+msgstr "vCard-Dateien"
 
 msgid "The name used here and in Contacts. Left blank, it is {own}."
 msgstr ""
@@ -3883,15 +4624,15 @@ msgstr "Kontakte, die Hylki selbst verwaltet. Funktioniert auch ohne GNOME."
 msgid "Contacts in the Hylki book"
 msgstr "Kontakte im Adressbuch von Hylki"
 
-msgid "Import vCard files"
-msgstr "Importiere vCard"
+msgid "Import vCard or CSV files"
+msgstr "vCard- oder CSV-Dateien importieren"
 
 msgid ""
-"Adds contacts from .vcf files. Importing a file again updates existing "
-"entries."
+"Adds contacts from .vcf or .csv files. Importing a file again updates "
+"existing entries."
 msgstr ""
-"Fügt Kontakte aus .vcf-Dateien hinzu. Ein erneuter Import aktualisiert "
-"bestehende Kontakte."
+"Fügt Kontakte aus .vcf- oder .csv-Dateien hinzu. Ein erneuter Import "
+"aktualisiert bestehende Kontakte."
 
 msgid "Export as a vCard file"
 msgstr "Als vCard exportieren"
@@ -3957,7 +4698,7 @@ msgid ""
 "password."
 msgstr ""
 "Normalerweise ist nur die Serveradresse nötig. Eine Zwei-Faktor-"
-"Authentifizierung erfordert den Einsatz eines App-Passworts."
+"Authentifizierung erfordert ein App-Passwort."
 
 msgid ""
 "Such as cloud.example.org. With two-factor sign-in, make an app password in "
@@ -3988,7 +4729,7 @@ msgstr ""
 "Beim Deaktivieren wird diese in Hylki nicht mehr verwendet."
 
 msgid "Look again for address books"
-msgstr "Look again for address books"
+msgstr "Erneut nach Adressbüchern suchen"
 
 msgid "Add Address Book…"
 msgstr "Adressbuch hinzufügen…"
@@ -4021,6 +4762,9 @@ msgid "Saved addresses show the contact's name, not the mail's."
 msgstr ""
 "Gespeicherte Adressen werden mit dem Namen aus den Kontakten dargestellt, "
 "nicht mit dem der E-Mail."
+
+msgid "Show the Reply-To sender"
+msgstr "»Antwort an«-Adresse anzeigen"
 
 msgid "Layout"
 msgstr "Layout"
@@ -4127,15 +4871,6 @@ msgstr "Foto ansehen"
 msgid "Add to Contacts"
 msgstr "Zu Kontakten hinzufügen"
 
-msgid "Phone"
-msgstr "Telefon"
-
-msgid "Address"
-msgstr "Adresse"
-
-msgid "Birthday"
-msgstr "Geburtstag"
-
 #. ---- note ----
 msgid "Note"
 msgstr "Notiz"
@@ -4173,7 +4908,7 @@ msgstr ""
 msgid ""
 "Groups here hold addresses, so people with no email address are left out."
 msgstr ""
-"Kontaktlisten enthalten hier Adressen, daher werden Personen ohne E-Mail-"
+"Kontaktlisten enthalten E-Mail-Adressen, daher werden Personen ohne E-Mail-"
 "Adresse nicht berücksichtigt."
 
 msgid "Group"
@@ -4185,7 +4920,8 @@ msgstr "Als Bcc senden"
 msgid "Members do not see each other's addresses."
 msgstr "Mitglieder sehen die Adressen der anderen nicht."
 
-#. An Apple group (iCloud's) holds cards of its own book.
+#. An Apple group (iCloud's) or a category (Nextcloud's) holds
+#. cards of its own book.
 msgid ""
 "Groups in this address book hold its own contacts: anyone added who is not "
 "in it yet is added to it."
@@ -4199,9 +4935,6 @@ msgstr "Kontakt bearbeiten"
 #. ---- identity fields ----
 msgid "Identity"
 msgstr "Identität"
-
-msgid "Nickname"
-msgstr "Spitzname"
 
 msgid "Organization"
 msgstr "Organisation"
@@ -4223,38 +4956,11 @@ msgstr "Website hinzufügen"
 msgid "No label"
 msgstr "Ohne Label"
 
-msgid "Home"
-msgstr "Privat"
-
-msgid "Work"
-msgstr "Geschäftlich"
-
-msgid "Mobile"
-msgstr "Mobil"
-
-msgid "Fax"
-msgstr "Fax"
-
 msgid "Label"
 msgstr "Label"
 
 msgid "Add address"
 msgstr "Adresse hinzufügen"
-
-msgid "Street"
-msgstr "Straße"
-
-msgid "City"
-msgstr "Stadt"
-
-msgid "State or region"
-msgstr "Bundesland/Region"
-
-msgid "Postal code"
-msgstr "Postleitzahl"
-
-msgid "Country"
-msgstr "Land"
 
 msgid "No birthday"
 msgstr "Kein Geburtsdatum"
@@ -4287,8 +4993,8 @@ msgstr "Aus Kontaktliste entfernen"
 msgid "Add to Group"
 msgstr "Zu Kontaktliste hinzufügen"
 
-msgid "Move to Address Book"
-msgstr "In Adressbuch verschieben"
+msgid "Move to Address Book…"
+msgstr "In Adressbuch verschieben…"
 
 msgid "Delete…"
 msgstr "Löschen…"
@@ -4297,7 +5003,7 @@ msgid "Edit"
 msgstr "Bearbeiten"
 
 msgid "Open in GNOME Contacts"
-msgstr "In GNOME Kontakte öffnen"
+msgstr "In »GNOME Kontakte« öffnen"
 
 msgid "{n} Group Selected"
 msgid_plural "{n} Groups Selected"
@@ -4324,26 +5030,38 @@ msgstr "Person nach Name oder Adresse hinzufügen"
 msgid "No email address · {book}"
 msgstr "Ohne E-Mail-Adresse · {book}"
 
-msgid "First name"
-msgstr "Vorname"
-
-msgid "Last name"
-msgstr "Nachname"
-
 msgid "Sort and filter contacts"
 msgstr "Kontakte sortieren und filtern"
 
-msgid "Groups"
-msgstr "Kontaktlisten"
-
-msgid "Import Contacts"
-msgstr "Kontakte importieren"
-
-msgid "vCard files"
-msgstr "vCard Dateien"
+msgid "vCard and CSV files"
+msgstr "vCard- und CSV-Dateien"
 
 msgid "All files"
 msgstr "Alle Dateien"
+
+msgid ""
+"{name} leaves {from}, locally and on the server, and any group there that "
+"holds the contact."
+msgstr ""
+"»{name}« wird lokal und auf dem Server aus »{from}« sowie aus allen dortigen "
+"Kontaktlisten entfernt, die diesen Kontakt enthalten."
+
+msgid ""
+"{n} contact leaves its address book, locally and on the server, and any "
+"group there that holds it."
+msgid_plural ""
+"{n} contacts leave their address books, locally and on the server, and any "
+"group there that holds them."
+msgstr[0] ""
+"{n} Kontakt wird lokal und auf dem Server aus dem zugehörigen Adressbuch "
+"sowie aus allen dortigen Kontaktlisten entfernt, die ihn enthalten."
+msgstr[1] ""
+"{n} Kontakte werden lokal und auf dem Server aus ihren jeweiligen "
+"Adressbüchern sowie aus allen dortigen Kontaktlisten entfernt, die sie "
+"enthalten."
+
+msgid "Move to Address Book"
+msgstr "In Adressbuch verschieben"
 
 msgid "Directories"
 msgstr "Verzeichnisse"
@@ -4373,14 +5091,14 @@ msgid ""
 "This will remove the group {name} from your address book locally and on the "
 "server. The contacts are not removed."
 msgstr ""
-"Die Kontaktliste {name} wird lokal und auf dem Server aus dem Adressbuch "
+"Die Kontaktliste »{name}« wird lokal und auf dem Server aus dem Adressbuch "
 "entfernt. Die enthaltenen Kontakte bleiben erhalten."
 
 msgid ""
 "This will remove the group {name} from your address book. The contacts are "
 "not removed."
 msgstr ""
-"Die Kontaktliste {name} wird aus dem Adressbuch entfernt. Die enthaltenen "
+"Die Kontaktliste »{name}« wird aus dem Adressbuch entfernt. Die enthaltenen "
 "Kontakte bleiben erhalten."
 
 msgid "Delete Group?"
@@ -4390,10 +5108,11 @@ msgid ""
 "This will remove the contact {name} from your address book locally and on "
 "the server."
 msgstr ""
-"Der Kontakt {name} wird lokal und auf dem Server aus dem Adressbuch entfernt."
+"Der Kontakt »{name}« wird lokal und auf dem Server aus dem Adressbuch "
+"entfernt."
 
 msgid "This will remove the contact {name} from your address book."
-msgstr "Der Kontakt {name} wird aus dem Adressbuch entfernt."
+msgstr "Der Kontakt »{name}« wird aus dem Adressbuch entfernt."
 
 msgid "Delete Contact?"
 msgstr "Kontakt löschen?"
@@ -4450,8 +5169,8 @@ msgid_plural "This will remove {n} contacts from your address books."
 msgstr[0] "Entfernt {n} Kontakt aus dem Adressbuch."
 msgstr[1] "Entfernt {n} Kontakte aus dem Adressbuch."
 
-msgid "Import vCard files into the Hylki address book"
-msgstr "vCard Dateien in das Hylki Adressbuch importieren"
+msgid "Import vCard or CSV files into the Hylki address book"
+msgstr "vCard- oder CSV-Dateien in das Hylki-Adressbuch importieren"
 
 msgid "New contact or group"
 msgstr "Neuer Kontakt oder Kontaktliste"
@@ -4460,13 +5179,13 @@ msgid "Loading Contacts…"
 msgstr "Kontakte werden geladen…"
 
 msgid ""
-"Add a contact with the + button, or import vCard files. Contacts are kept in "
-"Hylki's own address book, and the address books of GNOME Contacts are listed "
-"here too."
+"Add a contact with the + button, or import vCard or CSV files. Contacts are "
+"kept in Hylki's own address book, and the address books of GNOME Contacts "
+"are listed here too."
 msgstr ""
-"Einen Kontakt über die +-Schaltfläche hinzufügen oder vCard-Dateien "
+"Kontakte über die Schaltfläche »+« hinzufügen oder vCard- bzw. CSV-Dateien "
 "importieren. Kontakte werden im eigenen Adressbuch von Hylki gespeichert; "
-"zudem werden die Adressbücher von GNOME Kontakte hier aufgelistet."
+"die Adressbücher von »GNOME Kontakte« werden hier ebenfalls aufgeführt."
 
 msgid "Search contacts (Ctrl+F)"
 msgstr "Kontakte durchsuchen (»Strg+F«)"
@@ -4515,7 +5234,7 @@ msgstr ""
 "hinzugefügt"
 
 msgid "Share a download link from {name}"
-msgstr "Download-Link von {name} teilen"
+msgstr "Download-Link von »{name}« teilen"
 
 msgid "Share a download link"
 msgstr "Download-Link teilen"
@@ -4573,7 +5292,7 @@ msgid "Choose a time later than now."
 msgstr "Uhrzeit in der Zukunft wählen."
 
 msgid "the portal answered response code {code}"
-msgstr "das Portal beantwortet Antwortcode {code}"
+msgstr "Das Portal hat mit dem Antwortcode »{code}« geantwortet"
 
 msgid "The link could not be opened"
 msgstr "Der Link konnte nicht geöffnet werden"
@@ -4608,6 +5327,22 @@ msgstr "Text"
 msgid "In {places}"
 msgstr "In {places}"
 
+msgid "Takes under a minute"
+msgstr "Dauert weniger als eine Minute"
+
+msgid "Takes about a minute"
+msgstr "Dauert etwa eine Minute"
+
+msgid "Takes about {n} minute"
+msgid_plural "Takes about {n} minutes"
+msgstr[0] "Dauert etwa {n} Minute"
+msgstr[1] "Dauert etwa {n} Minuten"
+
+msgid "Takes about {n} hour"
+msgid_plural "Takes about {n} hours"
+msgstr[0] "Dauert etwa {n} Stunde"
+msgstr[1] "Dauert etwa {n} Stunden"
+
 msgid "Mail Merge"
 msgstr "Serienmail (Mail Merge)"
 
@@ -4631,6 +5366,18 @@ msgstr "Felder"
 
 msgid "Leave these fields empty"
 msgstr "Diese Felder leer lassen"
+
+msgid "Limit sending rate"
+msgstr "Versandgeschwindigkeit begrenzen"
+
+msgid "Messages"
+msgstr "Nachrichten"
+
+msgid "per minute"
+msgstr "pro Minute"
+
+msgid "per hour"
+msgstr "pro Stunde"
 
 msgid "{n} of {total}"
 msgstr "{n} von {total}"
@@ -4712,6 +5459,9 @@ msgstr "Alle als gelesen markieren"
 msgid "Mark All as Unread"
 msgstr "Alle als ungelesen markieren"
 
+msgid "This Account (Except Trash & Junk)"
+msgstr "Dieses Konto (außer Papierkorb und Spam)"
+
 msgid "All folders (except trash & junk)"
 msgstr "Alle Ordner (außer Papierkorb und Spam)"
 
@@ -4721,8 +5471,18 @@ msgstr "Alle Ordner"
 msgid "This folder"
 msgstr "Dieser Ordner"
 
+msgid "This Account"
+msgstr "Dieses Konto"
+
 msgid "All folders"
 msgstr "Alle Ordner"
+
+msgid ""
+"Every folder of this account, except Trash and Junk. A search started in "
+"Trash or Junk looks there too."
+msgstr ""
+"Alle Ordner dieses Kontos mit Ausnahme von »Papierkorb« und »Spam«. Bei "
+"Start der Suche in einem dieser Ordner wird dieser mit einbezogen."
 
 msgid ""
 "Every folder of every account, except Trash and Junk. A search started in "
@@ -4732,10 +5492,13 @@ msgstr ""
 "Papierkorb oder Spam gestartet, werden diese ebenfalls durchsucht."
 
 msgid "Every folder of every account, Trash and Junk included."
-msgstr "Alle Ordner aller Konten, inklusive Papierkorb und Spam.)"
+msgstr "Alle Ordner aller Konten, inklusive Papierkorb und Spam."
 
 msgid "Only the folder or view the list is showing."
 msgstr "Nur der aktuell angezeigte Ordner oder die aktuelle Ansicht"
+
+msgid "Every folder of this account, Trash and Junk included."
+msgstr "Alle Ordner dieses Kontos inklusive Papierkorb und Spam."
 
 msgid "What this searches"
 msgstr "Durchsuchte Ordner"
@@ -4743,29 +5506,11 @@ msgstr "Durchsuchte Ordner"
 msgid "me"
 msgstr "ich"
 
-msgid "To:"
-msgstr "An:"
-
 msgid "Show conversation"
 msgstr "Unterhaltung anzeigen"
 
 msgid "Drag to resize, double-click for the usual width"
 msgstr "Ziehen zum Anpassen der Größe, Doppelklick für die Standardbreite"
-
-msgid "Mark as read"
-msgstr "Als gelesen markieren"
-
-msgid "Not spam"
-msgstr "Kein Spam"
-
-msgid "Add sender to Contacts"
-msgstr "Absender zu Kontakten hinzufügen"
-
-msgid "Mark as unread"
-msgstr "Als ungelesen markieren"
-
-msgid "Remove star"
-msgstr "Stern entfernen"
 
 msgid "High importance"
 msgstr "Wichtigkeit: hoch"
@@ -4819,6 +5564,9 @@ msgstr "Einen Entwurf aus der Liste auswählen, um ihn hier zu bearbeiten."
 msgid "Choose a message from the list to read it here."
 msgstr "Eine Nachricht aus der Liste auswählen, um sie hier zu lesen."
 
+msgid "Show Message"
+msgstr "Nachricht anzeigen"
+
 msgid "Remote content (images, trackers) is blocked to protect your privacy."
 msgstr ""
 "Remote-Inhalte (Bilder, Tracker) werden blockiert, um die Privatsphäre zu "
@@ -4830,23 +5578,11 @@ msgstr "Laden"
 msgid "Always allow sender"
 msgstr "Absender immer zulassen"
 
-msgid "Find in message"
-msgstr "In Nachricht suchen"
-
 msgid "No matches"
 msgstr "Keine Treffer"
 
 msgid "{cur} of {total}"
 msgstr "{cur} von {total}"
-
-msgid "Previous match"
-msgstr "Vorheriger Treffer"
-
-msgid "Next match"
-msgstr "Nächster Treffer"
-
-msgid "Close find"
-msgstr "Suche schließen"
 
 msgid ""
 "Message zoom. Ctrl+ and Ctrl-, or Ctrl and the scroll wheel, change it; a "
@@ -4869,8 +5605,8 @@ msgid ""
 "Reader View shows a message as its text alone, in one plain format, without "
 "the sender's layout, colors and fonts."
 msgstr ""
-"Reader View zeigt eine Nachricht als Text allein, in einem einfachen Format, "
-"ohne das Layout, die Farben und die Schriftarten des Absenders."
+"Leseansicht stellt den Nachrichtentext im einfachen Format ohne das Layout, "
+"die Farben und Schriftarten des Absenders dar."
 
 msgid "Reader View"
 msgstr "Leseansicht"
@@ -4903,48 +5639,6 @@ msgstr "Empfänger ausblenden"
 
 msgid "Show recipients"
 msgstr "Empfänger anzeigen"
-
-msgid "Mark as read or unread"
-msgstr "Als gelesen oder ungelesen markieren"
-
-msgid "Star this message"
-msgstr "Nachricht mit Stern markieren"
-
-msgid "View source"
-msgstr "Quelltext anzeigen"
-
-msgid "Translate this message"
-msgstr "Diese Nachricht übersetzen"
-
-msgid "Reply to this message"
-msgstr "Antwort auf diese Nachricht"
-
-msgid "Reply to everyone on this message"
-msgstr "Allen antworten auf diese Nachricht"
-
-msgid "Forward this message"
-msgstr "Nachricht weiterleiten"
-
-msgid "Move this message to a folder"
-msgstr "Nachricht in einen Ordner verschieben"
-
-msgid "Archive this message"
-msgstr "Nachricht archivieren"
-
-msgid "Delete this message"
-msgstr "Nachricht löschen"
-
-msgid "Back to my fonts and colors"
-msgstr "Eigene Schriftarten und Farben verwenden"
-
-msgid "Show the sender's fonts and colors"
-msgstr "Schriftarten und Farben des Absenders anzeigen"
-
-msgid "Show remote content"
-msgstr "Externe Inhalte anzeigen"
-
-msgid "Block remote content"
-msgstr "Externe Inhalte blockieren"
 
 msgid "Click to open this message"
 msgstr "Klicken zum Öffnen der Nachricht"
@@ -5029,9 +5723,6 @@ msgstr "Sie haben diese Einladung abgelehnt."
 msgid "You declined this invitation on {date}."
 msgstr "Sie haben diese Einladung am {date} abgelehnt."
 
-msgid "Accept"
-msgstr "Akzeptieren"
-
 msgid "Tells the organiser you will be there"
 msgstr "Sagt der organisierenden Person zu"
 
@@ -5099,9 +5790,6 @@ msgstr ""
 msgid "From:"
 msgstr "Von:"
 
-msgid "Cc:"
-msgstr "Cc:"
-
 msgid "Bcc:"
 msgstr "Bcc:"
 
@@ -5147,7 +5835,7 @@ msgstr ""
 msgid "Trust"
 msgstr "Vertrauen"
 
-msgid "The sender's key was imported from the message."
+msgid "The sender's key was taken from the message."
 msgstr "Der Schlüssel des Absenders wurde aus der Nachricht importiert."
 
 msgid "The sender's key was fetched and imported."
@@ -5182,14 +5870,16 @@ msgstr "Kopie der Vorlage als neue Nachricht verwenden"
 msgid "Save…"
 msgstr "Speichern…"
 
+#. The translation decides where the address sits; only the text around
+#. it is escaped, and the address goes in as a link of its own.
+msgid "via {sender}"
+msgstr "gesendet über {sender}"
+
 msgid "Translating…"
 msgstr "übersetze…"
 
 msgid "Could not translate: {why}"
 msgstr "Konnte nicht übersetzt werden: {why}"
-
-msgid "Try Again"
-msgstr "Erneut versuchen"
 
 msgid "Translated from {language} by {service}."
 msgstr "Aus {language} übersetzt von {service}"
@@ -5215,8 +5905,8 @@ msgstr "Abmeldung fehlgeschlagen: {why}"
 #. "unsubscribed" over the proof that it was not.
 msgid "You unsubscribed on {date}, but this list is still sending mail."
 msgstr ""
-"Die Abmeldung erfolgte am {date}, diese Liste versendet jedoch weiterhin E-"
-"Mails."
+"Die Abmeldung erfolgte am {date}, diese Liste versendet jedoch weiterhin "
+"Nachrichten."
 
 msgid "You unsubscribed from this list on {date}."
 msgstr "Die Abmeldung von dieser Liste erfolgte am {date}."
@@ -5230,7 +5920,7 @@ msgid "This message has an unsubscribe link."
 msgstr "Diese Nachricht hat einen Abmeldelink."
 
 msgid "Asks the list to stop sending you mail"
-msgstr "Bittet die Liste, das Senden von E-Mails zu stoppen"
+msgstr "Bittet die Liste, das Senden von Nachrichten zu stoppen"
 
 msgid "Sends an unsubscribe request by email"
 msgstr "Sendet eine Abmeldeanfrage per E-Mail"
@@ -5255,13 +5945,16 @@ msgid ""
 "sent. Messages you send wait in the Outbox. Everything syncs again once the "
 "network is back."
 msgstr ""
-"Offline: Es besteht keine Netzwerkverbindung, daher werden keine E-Mails "
+"Offline: Es besteht keine Netzwerkverbindung, daher werden keine Nachrichten "
 "abgerufen oder gesendet. Gesendete Nachrichten verbleiben im Postausgang. "
 "Sobald die Netzwerkverbindung wiederhergestellt ist, wird alles erneut "
 "synchronisiert."
 
 msgid "Status bar ({n})"
 msgstr "Statusleiste ({n})"
+
+msgid "Ask Again"
+msgstr "Erneut nachfragen"
 
 msgid "All keys"
 msgstr "Alle Schlüssel"
@@ -5318,6 +6011,27 @@ msgstr ""
 "Derselbe Schlüsselbund, der vom gpg-Befehl und anderen E-Mail-Anwendungen "
 "verwendet wird."
 
+msgid "Finding keys"
+msgstr "Schlüsselsuche"
+
+msgid "Keys found here are kept apart from your keyring."
+msgstr ""
+"Hier gefundene Schlüssel werden getrennt vom eigenen Schlüsselbund "
+"aufbewahrt."
+
+msgid "Look up recipients' keys"
+msgstr "Schlüssel empfangender Personen abrufen"
+
+msgid "Each recipient's domain (WKD) learns that you write to them."
+msgstr ""
+"Die Domain der empfangenden Person (WKD) erfährt von der Kontaktaufnahme."
+
+msgid "Also ask a keyserver"
+msgstr "Zusätzlich einen Schlüsselserver abfragen"
+
+msgid "keys.openpgp.org learns who you write to."
+msgstr "keys.openpgp.org erfährt, an wen geschrieben wird."
+
 msgid "Your keys"
 msgstr "Eigene Schlüssel"
 
@@ -5351,8 +6065,14 @@ msgstr "Nach Adresse abrufen…"
 msgid "Search by name, address or key ID"
 msgstr "Nach Name, Adresse oder ID suchen"
 
+msgid "Unchecked keys you encrypt to"
+msgstr "Ungeprüfte Schlüssel bei der Verschlüsselung"
+
+msgid "Send Anyway stopped the warning for these keys."
+msgstr "Warnungen für diese Schlüssel durch »Trotzdem senden« deaktiviert"
+
 msgid "No keys from other people yet."
-msgstr "Noch keine Schlüssel von anderen Leuten."
+msgstr "Noch keine Schlüssel von anderen Personen."
 
 msgid "GnuPG {version} found."
 msgstr "GnuPG {version} gefunden."
@@ -5428,8 +6148,8 @@ msgid ""
 "{uid} will be removed, secret half included. Mail encrypted to it can never "
 "be read again, unless you have a backup of the key."
 msgstr ""
-"{uid} wird entfernt, einschließlich des privaten Teils. Verschlüsselte E-"
-"Mails an diesen Schlüssel können nicht mehr gelesen werden, außer es "
+"{uid} wird entfernt, einschließlich des privaten Teils. Mit diesem Schlüssel "
+"verschlüsselte Nachrichten können nicht mehr gelesen werden, außer es "
 "existiert eine Sicherung."
 
 msgid "Remove this key?"
@@ -5529,7 +6249,7 @@ msgid "Symbolic"
 msgstr "Symbolisch"
 
 msgid "All unread inbox mail"
-msgstr "Alle ungelesenen E-Mails im Posteingang"
+msgstr "Alle ungelesenen Nachrichten im Posteingang"
 
 msgid "New since the window was last in front"
 msgstr "Neu seit dem letzten Öffnen"
@@ -5698,14 +6418,8 @@ msgstr "Leseansicht ein"
 msgid "Reader View off"
 msgstr "Leseansicht aus"
 
-msgid "Hidden behind a toggle"
-msgstr "Hinter einem Schalter verborgen"
-
-msgid "Shown while hovering"
-msgstr "Beim Darüberfahren sichtbar"
-
-msgid "Always visible"
-msgstr "Immer sichtbar"
+msgid "Needs Sushi, the GNOME file previewer."
+msgstr "Für diese Funktion wird Sushi, die GNOME-Dateivorschau, benötigt."
 
 msgid "Ask each time"
 msgstr "Jedes Mal fragen"
@@ -5757,6 +6471,8 @@ msgstr "Befolgt die Lesereihenfolge"
 msgid "System language"
 msgstr "Systemsprache"
 
+#. A group's description is markup: "<code>" would be
+#. read as a tag and the whole line dropped.
 msgid ""
 "No dictionaries found. On Flatpak, add a language with: flatpak config --set "
 "extra-languages <code>"
@@ -5877,6 +6593,9 @@ msgstr "Verfassen"
 msgid "Privacy"
 msgstr "Datenschutz"
 
+msgid "MCP"
+msgstr "MCP"
+
 msgid "Date and Time"
 msgstr "Datum und Uhrzeit"
 
@@ -5901,12 +6620,125 @@ msgstr "Adressbuch speichern?"
 msgid "Save the account?"
 msgstr "Konto speichern?"
 
+msgid "See message lists"
+msgstr "Nachrichtenlisten einsehen"
+
+msgid "Senders, subjects, dates, previews and folders."
+msgstr "Absender, Betreff, Datum, Nachrichtenvorschau und Ordner."
+
+msgid "Read message text"
+msgstr "Nachrichtentext lesen"
+
+msgid "Search on the mail server"
+msgstr "Auf Mailserver suchen"
+
+msgid "Finds mail not downloaded yet."
+msgstr "Nicht heruntergeladene Nachrichten suchen"
+
+msgid "Read attachments"
+msgstr "Anhänge lesen"
+
+msgid "Prepare messages"
+msgstr "Nachrichten vorbereiten"
+
+msgid "Each opens in a window for you to check and send."
+msgstr "Öffnen in einzelnen Fenstern zur Überprüfung und Freigabe."
+
+msgid "Mark as read or unread"
+msgstr "Als gelesen oder ungelesen markieren"
+
+msgid "Add and remove stars"
+msgstr "Sterne (Markierungen) hinzufügen und entfernen"
+
+msgid "Add and remove tags"
+msgstr "Tags hinzufügen und entfernen"
+
+msgid "Move and archive"
+msgstr "Verschieben und archivieren"
+
+msgid "Move to Trash"
+msgstr "In Papierkorb verschieben"
+
+msgid "See open conversation"
+msgstr "Einsehen der geöffneten Konversation"
+
+msgid "The one you are reading, as you read it."
+msgstr "Gerade angezeigte Nachricht (beim Lesen)"
+
+msgid "Read and edit open drafts"
+msgstr "Lesen und Bearbeiten von offenen Entwürfen"
+
+msgid "Those agents prepared. You accept each edit."
+msgstr "Durch Agenten vorbereitet. Einzelne Freigabe von Änderungen."
+
+msgid "Include drafts you started"
+msgstr "Einschließlich selbst begonnener Entwürfe"
+
+msgid "What you are writing, unsaved text too."
+msgstr "Aktueller Textentwurf inklusive ungespeicherter Änderungen"
+
 msgid ""
-"Accounts, preferences, filters, tags and layout, in one file. Passwords and "
-"OpenPGP keys are not included."
+"Hylki contains no AI agent of its own but you can allow outside agents to "
+"access your mail using MCP (Model Context Protocol)"
 msgstr ""
-"Konten, Einstellungen, Filter, Tags und Layout in einer Datei. Passwörter "
-"und OpenPGP-Schlüssel sind nicht enthalten."
+"Hylki enthält keinen eigenen KI-Agenten. Der Zugriff externer Agenten auf "
+"Nachrichten ist jedoch über MCP (Model Context Protocol) möglich."
+
+msgid "Allow AI agent access"
+msgstr "Zugriff für KI-Agenten erlauben"
+
+msgid "Recent Activity"
+msgstr "Letzte Aktionen"
+
+msgid ""
+"Nothing is shared until you allow it. Agents can't send mail, erase it "
+"permanently (moving to Trash is ok) or read encrypted mail."
+msgstr ""
+"Ohne Freigabe werden keine Daten geteilt. Für Agenten ist das Senden, das "
+"endgültige Löschen (Verschieben in den Papierkorb ausgenommen) sowie das "
+"Lesen verschlüsselter Mails gesperrt."
+
+msgid "Command for the agent"
+msgstr "Kommando für den Agenten"
+
+msgid "Address books and directories"
+msgstr "Adressbücher und Verzeichnisse"
+
+msgid "People in your mail"
+msgstr "Kontakte in Nachrichten"
+
+msgid "From every account, shared or not."
+msgstr "Von allen Konten, ob freigegeben oder nicht."
+
+msgid "Full access"
+msgstr "Vollzugriff"
+
+msgid "Grant access to entire account (except Trash and Junk)"
+msgstr ""
+"Zugriff auf das gesamte Konto gewähren (ausgenommen Papierkorb und Spam)"
+
+msgid "Junk and Trash are hidden until you allow them."
+msgstr "Papierkorb und Spam bleiben bis zur Freigabe ausgeblendet."
+
+msgid "Reset to Defaults"
+msgstr "Standardeinstellungen wiederherstellen"
+
+msgid "Reset permissions?"
+msgstr "Berechtigungen zurücksetzen?"
+
+msgid ""
+"The account stays shared, but only for reading and preparing messages. Junk "
+"and Trash are hidden again."
+msgstr ""
+"Freigabe des Kontos bleibt bestehen, beschränkt auf Lesen und Erstellen von "
+"Entwürfen. Papierkorb und Spam werden wieder verborgen."
+
+msgid ""
+"Accounts, preferences, filters, tags and layout, in one file. Passwords, "
+"OAuth client secrets and OpenPGP keys are not included."
+msgstr ""
+"Konten, Einstellungen, Filter, Tags und Layout in einer Datei. Passwörter, "
+"OAuth Client-Secrets und OpenPGP-Schlüssel sind nicht enthalten."
 
 msgid "Export settings"
 msgstr "Einstellungen exportieren"
@@ -5981,6 +6813,102 @@ msgstr "Datumsformat"
 msgid "Clock"
 msgstr "Uhr"
 
+msgid ""
+"While it is on, this page decides the layout in place of the other settings. "
+"Ctrl+Shift+F or the main menu turns it on."
+msgstr ""
+"Bei Aktivierung ersetzt diese Seite die Standard-Layout-Einstellungen. "
+"Umschalten mittels »Strg+Umschalt+F« oder über das Hauptmenü."
+
+msgid "Start in Focus Mode"
+msgstr "Im Fokusmodus starten"
+
+msgid "Fold the sidebar to the icon rail"
+msgstr "Seitenleiste zur Symbolleiste einklappen"
+
+msgid "Unread counts"
+msgstr "Zähler ungelesener Nachrichten"
+
+msgid "Unread dots instead of counts"
+msgstr "Punkte statt Zahlen für ungelesene Nachrichten"
+
+msgid "Expand the sidebar on hover"
+msgstr "Seitenleiste beim Darüberfahren ausklappen"
+
+msgid "Hide the accounts in the sidebar"
+msgstr "Konten in der Seitenleiste ausblenden"
+
+msgid "Only the unified section stays."
+msgstr "Nur der einheitliche Abschnitt bleibt bestehen."
+
+msgid "Fold up the accounts"
+msgstr "Konten einklappen"
+
+msgid "Collapses expanded accounts into their avatars"
+msgstr "Klappt ausgeklappte Konten auf ihre Avatare zusammen"
+
+msgid "Fold accounts with one click"
+msgstr "Konten mit einem Klick zuklappen"
+
+msgid "Fold up the unified rows"
+msgstr "Gemeinsame Zeilen einklappen"
+
+msgid "Unified"
+msgstr "Zusammengefasst"
+
+msgid "Inboxes"
+msgstr "Posteingänge"
+
+msgid "Snoozed"
+msgstr "Zurückgestellt"
+
+msgid "Sections"
+msgstr "Abschnitte"
+
+msgid "Favorites"
+msgstr "Favoriten"
+
+msgid "Show column headings"
+msgstr "Spaltentitel anzeigen"
+
+msgid "Preview lines"
+msgstr "Vorschauzeilen"
+
+msgid "Fold the message list's header"
+msgstr "Kopfzeile der Nachrichtenliste einklappen"
+
+msgid "Everything but the sidebar toggle goes into ⋯."
+msgstr ""
+"Alle Elemente außer dem Seitenleisten-Schalter werden unter »⋯« "
+"zusammengefasst."
+
+msgid "Hide sender avatars"
+msgstr "Absender-Avatare ausblenden"
+
+msgid "Hide the subject"
+msgstr "Betreff ausblenden"
+
+msgid "Tag chips hide with it."
+msgstr "Tag-Chips werden dabei ebenfalls ausgeblendet."
+
+msgid "Tags and labels under the text"
+msgstr "Tags und Labels unter dem Text"
+
+msgid "Hide stars"
+msgstr "Stern-Markierungen ausblenden"
+
+msgid "Hide attachment icons"
+msgstr "Anhangssymbole ausblenden"
+
+msgid "Fold the reading pane's toolbar"
+msgstr "Symbolleiste des Lesebereichs einklappen"
+
+msgid "Every button goes into its ⋯ menu."
+msgstr "Jeder Button geht in sein »⋯« Menü."
+
+msgid "Open messages in Reader View."
+msgstr "Nachrichten in der Leseansicht öffnen."
+
 msgid "Instant new mail (push)"
 msgstr "Neue Nachrichten sofort empfangen (Push)"
 
@@ -5993,7 +6921,7 @@ msgstr "Daten bei getakteten Verbindungen sparen"
 
 msgid "New mail still arrives. Nothing else is fetched ahead."
 msgstr ""
-"Der Empfang neuer E-Mails bleibt aktiv. Ein Vorab-Abruf weiterer Daten "
+"Der Empfang neuer Nachrichten bleibt aktiv. Ein Vorab-Abruf weiterer Daten "
 "findet nicht statt."
 
 msgid "Notifications"
@@ -6003,7 +6931,8 @@ msgid "Desktop notifications"
 msgstr "Desktop-Benachrichtigungen"
 
 msgid "For new mail and errors, while the window is in the background."
-msgstr "Für neue E-Mails und Fehler, während das Fenster im Hintergrund läuft"
+msgstr ""
+"Für neue Nachrichten und Fehler, während das Fenster im Hintergrund läuft"
 
 msgid "Show sender and subject"
 msgstr "Absender und Betreff anzeigen"
@@ -6017,7 +6946,7 @@ msgstr ""
 "wurde"
 
 msgid "Sound for new mail"
-msgstr "Ton bei neuen E-Mails"
+msgstr "Ton bei neuen Nachrichten"
 
 msgid "Sound"
 msgstr "Ton"
@@ -6042,7 +6971,7 @@ msgid "Show sender avatars"
 msgstr "Absender-Avatare anzeigen"
 
 msgid "Sent mail uses your account circle"
-msgstr "Gesendete E-Mails nutzen das Konto-Profilbild"
+msgstr "Gesendete Nachrichten nutzen das Konto-Profilbild"
 
 msgid "The account's picture or emoji, as in the sidebar."
 msgstr ""
@@ -6053,17 +6982,19 @@ msgid "Automatic uses single lines in wide windows."
 msgstr ""
 "»Automatisch« verwendet in breiten Fenstern die einzeilige Darstellung."
 
-msgid "Preview lines"
-msgstr "Vorschauzeilen"
+msgid "Resize the list with the window"
+msgstr "Listenbreite automatisch an die Fenstergröße anpassen"
+
+msgid "Off, it keeps its width and the reader resizes."
+msgstr ""
+"Bei deaktivierter Option bleibt die Breite der Liste konstant, während die "
+"Nachrichtenansicht skaliert wird."
 
 msgid "Off also stops downloading previews."
 msgstr "Bei Deaktivierung werden keine Vorschauen mehr heruntergeladen."
 
 msgid "Group by date"
 msgstr "Nach Datum gruppieren"
-
-msgid "Tags and labels under the text"
-msgstr "Tags und Labels unter dem Text"
 
 msgid "Gives the subject its full width."
 msgstr "Zeigt den Betreff in voller Breite an."
@@ -6079,15 +7010,6 @@ msgstr "Nachrichten mit Tags einfärben"
 
 msgid "In the color of its first tag."
 msgstr "Färbung anhand des ersten Tags"
-
-msgid "Actions palette in the message list"
-msgstr "Aktionspalette in der Nachrichtenliste"
-
-msgid "The ⋯ row under each message."
-msgstr "Die »⋯« Zeile unter jeder Nachricht"
-
-msgid "Open the actions palette on hover"
-msgstr "Aktionspalette beim Darüberfahren öffnen"
 
 msgid "Swipe actions"
 msgstr "Wischaktionen"
@@ -6109,12 +7031,6 @@ msgstr ""
 "Den Wert erhöhen, falls Wischgesten vorzeitig abbrechen. Mauszug-Aktionen "
 "bleiben unbeeinflusst."
 
-msgid "Actions palette timeout"
-msgstr "Zeitlimit der Aktionspalette"
-
-msgid "Seconds it stays open after the pointer leaves."
-msgstr "Zeitverzögerung in Sekunden nach dem Verlassen mit dem Zeiger."
-
 msgid "Columns"
 msgstr "Spalten"
 
@@ -6125,9 +7041,6 @@ msgstr ""
 "Betrifft die einzeilige Ansicht. Neuanordnung von Spalten per Drag-and-Drop, "
 "Entfernen durch Herausziehen. Fälligkeitsdatum ist ausschließlich für "
 "Microsoft 365 E-Mails verfügbar."
-
-msgid "Show column headings"
-msgstr "Spaltentitel anzeigen"
 
 msgid "Fit columns to the list"
 msgstr "Spaltenbreite an die Liste anpassen"
@@ -6144,17 +7057,11 @@ msgstr "Hylki erfasst keine Telemetriedaten und übermittelt keine Analysen."
 msgid "Always load remote content"
 msgstr "Externe Inhalte immer laden"
 
-msgid "Remote content can tell a sender when and where you read."
-msgstr ""
-"Externe Inhalte können dem Absender verraten, wann und wo eine Nachricht "
-"gelesen wird."
-
 msgid "Pre-load remote content for the next messages"
 msgstr "Externe Inhalte für die nächsten Nachrichten vorab laden"
 
-msgid "Their senders can tell they were opened."
-msgstr ""
-"Das Öffnen dieser Nachrichten ist für die jeweiligen Absender sichtbar."
+msgid "Remove trackers from links"
+msgstr "Link-Tracker entfernen"
 
 msgid "Warn when remote content is blocked"
 msgstr "Warnen, wenn externe Inhalte blockiert sind"
@@ -6167,13 +7074,6 @@ msgstr ""
 msgid "Warn when the addressing doesn't match"
 msgstr "Bei abweichenden Adressangaben warnen"
 
-msgid ""
-"The badge beside the sender stays. A possible forgery always shows the "
-"banner."
-msgstr ""
-"Das Kennzeichen neben dem Absender bleibt bestehen. Bei möglicher Fälschung "
-"wird das Banner stets angezeigt."
-
 msgid "Use Gravatar when a contact has no photo"
 msgstr "Verwende Gravatar, wenn ein Kontakt kein Foto hat"
 
@@ -6184,19 +7084,31 @@ msgstr ""
 msgid "Show sender logos"
 msgstr "Absender-Logos anzeigen"
 
-msgid ""
-"Most are fetched from the sender's domain, which learns your IP address."
-msgstr ""
-"Der Abruf erfolgt überwiegend von der Absender-Domain, wodurch die eigene IP-"
-"Adresse offengelegt wird."
-
 msgid "Send read receipts"
 msgstr "Lesebestätigungen senden"
 
-msgid "A receipt tells the sender when you opened the message."
+#. Not "On This Computer": that names an account kind.
+msgid "Stored Mail"
+msgstr "Gespeicherte Nachrichten"
+
+msgid "Encrypt stored mail"
+msgstr "Gespeicherte Nachrichten verschlüsseln"
+
+msgid "Encrypt Stored Mail?"
+msgstr "Gespeicherte Nachrichten verschlüsseln?"
+
+msgid ""
+"Mail stored on this computer will be encrypted at the next start which can "
+"take a few minutes. Earlier versions of the app cannot open it. Turn this "
+"setting off and restart before going back to an older version."
 msgstr ""
-"Eine Lesebestätigung informiert die absendende Person darüber, wann die "
-"Nachricht geöffnet wurde."
+"Lokal gespeicherte Nachrichten werden beim nächsten Anwendungsstart "
+"verschlüsselt (Dauer: einige Minuten). Ältere Anwendungsversionen können die "
+"Daten nicht öffnen. Vor der Nutzung einer älteren Version diese Funktion "
+"deaktivieren und neu starten."
+
+msgid "Encrypt"
+msgstr "Verschlüsseln"
 
 msgid "Open at startup"
 msgstr "Beim Start öffnen"
@@ -6221,9 +7133,6 @@ msgstr ""
 msgid "Chevron placement"
 msgstr "Position der Ausklapp-Pfeile"
 
-msgid "Fold accounts with one click"
-msgstr "Konten mit einem Klick zuklappen"
-
 msgid "When off, only its chevron or a double click activates the fold."
 msgstr ""
 "Wenn ausgeschaltet, klappt der Bereich nur durch Klick auf den Pfeil oder "
@@ -6235,9 +7144,6 @@ msgstr "Zeigt Bereich mit Anhängen"
 msgid "Browse every account's attachments in one place."
 msgstr "Dateianhänge aller Konten an einem zentralen Ort durchsuchen."
 
-msgid "Expand the sidebar on hover"
-msgstr "Seitenleiste beim Darüberfahren ausklappen"
-
 msgid "Hovering the icon rail floats the full sidebar out."
 msgstr ""
 "Beim Überfahren der Symbolleiste mit dem Mauszeiger wird die vollständige "
@@ -6247,42 +7153,25 @@ msgid "Remember the sidebar layout"
 msgstr "Layout der Seitenleiste merken"
 
 msgid "Off starts every launch folded up."
-msgstr ""
-"Bei Deaktivierung startet die Seitenleiste bei jedem Programmaufruf "
-"eingeklappt."
+msgstr "Bei Deaktivierung startet das Programm mit eingeklappter Seitenleiste."
 
 msgid "Remember icon rail state"
 msgstr "Zustand der Symbolleiste merken"
 
 msgid "Highlight only new unread mail"
-msgstr "Nur neue, ungelesene E-Mails hervorheben"
+msgstr "Nur neue, ungelesene Nachrichten hervorheben"
 
 msgid "A count turns grey once you have looked at the folder."
 msgstr "Sobald ein Ordner betrachtet wurde, wechselt der Zähler zu Grau."
 
-msgid "Unified"
-msgstr "Zusammengefasst"
-
 msgid "Shown only with more than one account."
 msgstr "Wird nur angezeigt, wenn mehr als ein Konto eingerichtet ist."
-
-msgid "Inboxes"
-msgstr "Posteingänge"
-
-msgid "Snoozed"
-msgstr "Zurückgestellt"
 
 msgid "Shown only while mail is snoozed."
 msgstr "Anzeige nur bei zurückgestellten Nachrichten"
 
-msgid "Unread counts"
-msgstr "Zähler ungelesener Nachrichten"
-
 msgid "Shown on the unified rows while they are folded up."
 msgstr "Anzeige auf zusammengefassten Einträgen im eingeklappten Zustand."
-
-msgid "Sections"
-msgstr "Abschnitte"
 
 msgid "Section style"
 msgstr "Abschnittsstil"
@@ -6298,9 +7187,6 @@ msgstr "Platzierung der Favoriten"
 
 msgid "Icon rail"
 msgstr "Symbolleiste"
-
-msgid "Unread dots instead of counts"
-msgstr "Punkte statt Zahlen für ungelesene Nachrichten"
 
 msgid "The count stays in the tooltip."
 msgstr "Die Zähleranzeige bleibt im Tooltip erhalten."
@@ -6536,6 +7422,9 @@ msgstr "Einfügen"
 msgid "Show or hide folders"
 msgstr "Ordner anzeigen oder ausblenden"
 
+msgid "Long-press to expand or collapse"
+msgstr "Lange drücken, um aus- oder einzuklappen"
+
 msgid "Show or hide labels"
 msgstr "Beschriftungen anzeigen oder ausblenden"
 
@@ -6620,9 +7509,6 @@ msgstr "Noch keine Konten"
 msgid "New Message from Template…"
 msgstr "Aus Vorlage erstellen…"
 
-msgid "Favorites"
-msgstr "Favoriten"
-
 msgid "Show each inbox"
 msgstr "Jeden Posteingang anzeigen"
 
@@ -6640,9 +7526,6 @@ msgstr "Jeden Smart Folder anzeigen"
 
 msgid "Show each address book"
 msgstr "Jedes Adressbuch anzeigen"
-
-msgid "Long-press to expand or collapse"
-msgstr "Lange drücken, um aus- oder einzuklappen"
 
 msgid "Show or hide tags"
 msgstr "Tags ein- oder ausblenden"
@@ -6670,9 +7553,6 @@ msgstr "Region (leer für eine globale Ressource)"
 msgid "Translates a greeting to test the service."
 msgstr ""
 "Eine Begrüßung übersetzen, um die Verfügbarkeit des Dienstes zu überprüfen."
-
-msgid "Messages"
-msgstr "Nachrichten"
 
 msgid "Hylki's language ({language})"
 msgstr "Hylkis Sprache — {language}"
@@ -6794,7 +7674,8 @@ msgstr "Externe Bilder blockieren"
 
 msgid "Stops senders tracking when and where you open mail"
 msgstr ""
-"Verhindert, dass Absender nachverfolgen, wann und wo E-Mails geöffnet werden"
+"Verhindert, dass Absender nachverfolgen, wann und wo Nachrichten geöffnet "
+"werden"
 
 msgid "Fetch Gravatar portraits"
 msgstr "Gravatar-Profilbilder abrufen"
@@ -6901,7 +7782,7 @@ msgid ""
 "Offline: there is no network connection. Mail syncs again once the network "
 "is back. Click to try now, or long-press for Status Bar"
 msgstr ""
-"Offline: Es besteht keine Netzwerkverbindung. E-Mails werden erneut "
+"Offline: Es besteht keine Netzwerkverbindung. Nachrichten werden erneut "
 "synchronisiert, sobald die Verbindung wiederhergestellt ist. Klicken, um es "
 "jetzt zu versuchen, oder gedrückt halten für die Statusleiste."
 
@@ -6912,14 +7793,20 @@ msgstr ""
 "Passwort für {email} konnte nicht aus dem Schlüsselbund gelesen werden "
 "({e}). Erneuter Versuch bei der nächsten Verbindung."
 
+msgid "The draft is not an OpenPGP message."
+msgstr "Bei dem Entwurf handelt es sich nicht um eine OpenPGP-Nachricht."
+
+msgid "The draft could not be decrypted."
+msgstr "Der Entwurf konnte nicht entschlüsselt werden."
+
+msgid "no OpenPGP key for {addr}"
+msgstr "kein OpenPGP-Schlüssel für {addr}"
+
 msgid ""
 "no OpenPGP key of your own for {addr}; generate one under Settings, OpenPGP"
 msgstr ""
 "kein eigener OpenPGP-Schlüssel für {addr} vorhanden; unter »Einstellungen → "
 "OpenPGP« einen Schlüssel erzeugen"
-
-msgid "no OpenPGP key for {addr}"
-msgstr "kein OpenPGP-Schlüssel für {addr}"
 
 msgid "Could not save template: {e}"
 msgstr "Konnte die Vorlage nicht speichern: {e}"
@@ -6993,6 +7880,20 @@ msgstr "Anhang wird entfernt…"
 msgid "Could not remove the attachment: {e}"
 msgstr "Anhang konnte nicht entfernt werden: {e}"
 
+msgid ""
+"GNOME Online Accounts could not provide a sign-in token for {email}. Open "
+"Settings → Online Accounts and sign in again."
+msgstr ""
+"GNOME-Online-Konten konnte kein Anmeldetoken für {email} bereitstellen. "
+"Unter »Einstellungen → Online-Konten« erneut anmelden."
+
+msgid ""
+"Microsoft did not accept the saved sign-in for {email}. Open Hylki's "
+"Settings → Mail Accounts and sign in to it again."
+msgstr ""
+"Microsoft hat die gespeicherte Anmeldung für {email} nicht akzeptiert. Unter "
+"Hylkis »Einstellungen → E-Mail-Konten« erneut anmelden."
+
 msgid "The attachment is no longer in the message on the server"
 msgstr "Der Anhang ist nicht mehr in der Nachricht auf dem Server vorhanden"
 
@@ -7004,7 +7905,7 @@ msgstr "Quelltext konnte nicht geladen werden: {e}"
 
 msgid "A Microsoft account can't receive mail from another account"
 msgstr ""
-"Ein Microsoft-Konto kann keine E-Mails von einem anderen Konto empfangen"
+"Ein Microsoft-Konto kann keine Nachrichten von einem anderen Konto empfangen"
 
 msgid "“{folder}” is left out of search: {reason}"
 msgstr "»{folder}« ist von der Suche ausgenommen: {reason}"
@@ -7035,6 +7936,9 @@ msgstr ""
 
 msgid "Could not load {path}: {e}"
 msgstr "{path} konnte nicht geladen werden: {e}"
+
+msgid "This message was moved or deleted on the server."
+msgstr "Nachricht auf dem Server verschoben oder gelöscht."
 
 msgid "Could not load conversation: {e}"
 msgstr "Konnte die Unterhaltung nicht laden: {e}"
@@ -7091,7 +7995,7 @@ msgstr "Konnte den JMAP-Server nicht erreichen: {e}"
 
 msgid "Mail on this computer is not sent, and has no drafts"
 msgstr ""
-"Lokale E-Mails werden nicht versendet; es sind keine Entwürfe vorhanden."
+"Lokale Nachrichten werden nicht versendet; es sind keine Entwürfe vorhanden."
 
 msgid "Mail is not sent from On This Computer: choose another From address"
 msgstr ""
@@ -7108,7 +8012,7 @@ msgid "A folder by that name already exists"
 msgstr "Ein Ordner mit diesem Namen existiert bereits."
 
 msgid "The folder still holds mail"
-msgstr "Im Ordner befinden sich noch E-Mails."
+msgstr "Im Ordner befinden sich noch Nachrichten."
 
 msgid "That is not a folder name"
 msgstr "Ungültiger Ordnername"
@@ -7130,6 +8034,11 @@ msgid ""
 msgstr ""
 "Keine Netzwerkverbindung. Die Nachricht befindet sich im Postausgang und "
 "wird gesendet, sobald die Verbindung wiederhergestellt ist."
+
+#. A merge's message the server would not take: retrying will
+#. not help unless it is edited, or the server's limit resets.
+msgid "Send failed: {e}. The message is in the Outbox."
+msgstr "Senden fehlgeschlagen: {e}. Die Nachricht liegt im Postausgang."
 
 msgid ""
 "Send failed: {e}. The message is in the Outbox and will be sent when the "
@@ -7154,7 +8063,8 @@ msgid "POP3 accounts don't support folders"
 msgstr "POP3-Konten unterstützen keine Ordner"
 
 msgid "A POP3 account can't receive mail from another account"
-msgstr "Ein POP3-Konto kann keine E-Mails von einem anderen Konto übernehmen"
+msgstr ""
+"Ein POP3-Konto kann keine Nachrichten von einem anderen Konto übernehmen"
 
 msgid ""
 "POP3 cannot change a message on the server, so the attachment was not removed"
@@ -7244,9 +8154,9 @@ msgid ""
 "File or tag incoming mail automatically. Filters run on each Inbox as it "
 "syncs; Apply Now runs them over the mail already there."
 msgstr ""
-"Automatische Ablage oder Taggen eingehender E-Mails. Filter laufen bei jeder "
-"Synchronisation des Posteingangs; »Jetzt anwenden« wendet diese auf bereits "
-"vorhandene E-Mails an."
+"Automatische Ablage oder Taggen eingehender Nachrichten. Filter laufen bei "
+"jeder Synchronisation des Posteingangs; »Jetzt anwenden« wendet diese auf "
+"bereits vorhandene Nachrichten an."
 
 msgid "Add Filter…"
 msgstr "Filter hinzufügen…"
@@ -7394,21 +8304,11 @@ msgstr "Initialen verwenden"
 msgid "Send-as aliases"
 msgstr "Absender-Aliasse"
 
-msgid "Extra addresses this account can send as."
-msgstr "Zusätzliche Absenderadressen für dieses Konto."
-
 msgid "Add Alias…"
 msgstr "Alias hinzufügen…"
 
 msgid "Signatures"
 msgstr "Signaturen"
-
-msgid ""
-"With more than one, the composer's signature button allows you to pick "
-"between them."
-msgstr ""
-"Bei mehreren Einträgen ermöglicht die Signatur-Schaltfläche im Verfassen-"
-"Fenster die Auswahl."
 
 msgid "Add Signature"
 msgstr "Signatur hinzufügen"
@@ -7418,6 +8318,13 @@ msgstr "Datei importieren…"
 
 msgid "Delete Signature"
 msgstr "Signatur entfernen"
+
+msgid "Sender name"
+msgstr "Name des Absenders"
+
+msgid "Replaces the account's name in From. Aliases keep their own."
+msgstr ""
+"Ersetzt den Kontonamen im »Von«-Feld. Aliase behalten ihren eigenen Namen."
 
 msgid "Start messages with this signature"
 msgstr "Neue Nachricht mit dieser Signatur"
@@ -7435,17 +8342,17 @@ msgid "Empty Trash automatically"
 msgstr "Papierkorb automatisch leeren"
 
 msgid "Move list mail to Trash"
-msgstr "Mailinglisten-E-Mails in den Papierkorb verschieben"
+msgstr "Nachrichten aus Mailinglisten in den Papierkorb verschieben"
 
 msgid ""
 "Inbox mail with an unsubscribe link older than this gets trashed unless it's "
 "starred."
 msgstr ""
-"E-Mails im Posteingang mit Abmelde-Link, die älter als dieser Wert sind, "
+"Nachrichten im Posteingang mit Abmelde-Link, die älter als dieser Wert sind, "
 "werden in den Papierkorb verschoben, sofern sie nicht sternmarkiert sind."
 
 msgid "Keep mail cached"
-msgstr "Offline-Speicherung für E-Mails"
+msgstr "Offline-Speicherung für Nachrichten"
 
 msgid "Leaves out Trash, Junk and Drafts."
 msgstr "Ohne Papierkorb, Spam und Entwürfe"
@@ -7467,11 +8374,8 @@ msgstr ""
 "Computer herunter (außer Papierkorb, Spam und Entwürfe) und speichert sie "
 "unter »Auf diesem Rechner«."
 
-msgid "Import"
-msgstr "Importieren"
-
 msgid "Mail already here is not imported again."
-msgstr "Bereits vorhandene E-Mails werden nicht erneut importiert."
+msgstr "Bereits vorhandene Nachrichten werden nicht erneut importiert."
 
 msgid "Maildir folders"
 msgstr "Ordner im Maildir-Format"
@@ -7501,8 +8405,8 @@ msgstr "Nur von diesem Konto vorschlagen"
 
 msgid "Suggestions come from the directory and this account's mail only."
 msgstr ""
-"Vorschläge stammen ausschließlich aus dem Adressbuch und den E-Mails dieses "
-"Kontos."
+"Vorschläge stammen ausschließlich aus dem Adressbuch und den Nachrichten "
+"dieses Kontos."
 
 msgid "Show sensitivity label names"
 msgstr "Namen der Vertraulichkeitsbezeichnungen anzeigen"
@@ -7534,15 +8438,9 @@ msgstr "Kopie gesendeter Nachrichten speichern in"
 msgid "Save a copy of replies in"
 msgstr "Kopie von Antworten speichern in"
 
-msgid "Server saves its own copy of sent mail"
-msgstr "Server speichert selbst eine Kopie gesendeter Nachrichten"
-
 msgid "For Gmail and others that file sent mail themselves."
 msgstr ""
 "Für Gmail und andere Anbieter, die gesendete Nachrichten selbst ablegen."
-
-msgid "Templates"
-msgstr "Vorlagen"
 
 msgid "Hidden Folders"
 msgstr "Ausgeblendete Ordner"
@@ -7567,10 +8465,26 @@ msgid "Sign messages by default"
 msgstr "Nachrichten standardmäßig unterschreiben"
 
 msgid "Hide the subject of encrypted mail"
-msgstr "Betreff verschlüsselter E-Mails ausblenden"
+msgstr "Betreff verschlüsselter Nachrichten ausblenden"
 
 msgid "Only the recipients see the subject. Others see \"...\"."
 msgstr "Nur für Empfänger sichtbar. Für alle anderen wird »...« angezeigt."
+
+msgid "Send your key with your mail"
+msgstr "Eigenen Schlüssel mit Nachrichten senden"
+
+msgid "Autocrypt. Keys others send this way are kept too."
+msgstr ""
+"Autocrypt. Auf diesem Weg gesendete Schlüssel anderer Personen werden "
+"ebenfalls gespeichert."
+
+msgid "Encrypt by default"
+msgstr "Standardmäßig verschlüsseln"
+
+msgid "Mail to people who ask for the same is encrypted."
+msgstr ""
+"E-Mails werden verschlüsselt, sofern die empfangende Person dies ebenfalls "
+"wünscht."
 
 msgid "Your password is kept in the system keyring, never in plain text."
 msgstr ""
@@ -7596,7 +8510,7 @@ msgid ""
 "Their mail is moved to Trash on arrival. Enter an address, or a domain like "
 "\"example.com\" to apply to all senders from that domain."
 msgstr ""
-"Eingehende E-Mails dieser Absender werden automatisch in den Papierkorb "
+"Eingehende Nachrichten dieser Absender werden automatisch in den Papierkorb "
 "verschoben. Eine E-Mail-Adresse oder eine gesamte Domain wie »example.com« "
 "eingeben, um die Regel für die gesamte Domain anzuwenden."
 
@@ -7656,64 +8570,6 @@ msgstr ""
 msgid "Always fold the right group into ⋯"
 msgstr "Die rechte Gruppe immer zu »⋯« einklappen"
 
-msgid ""
-"The parts switched on below hide while Focus Mode is on. Activated by "
-"Ctrl+Shift+F or the main menu."
-msgstr ""
-"Bei eingeschaltetem Fokusmodus werden die unten ausgewählten Bereiche "
-"ausgeblendet. Lässt sich mit »Strg+Umschalt+F« oder über das Hauptmenü "
-"aktivieren."
-
-msgid "Start in Focus Mode"
-msgstr "Im Fokusmodus starten"
-
-msgid "Fold the reading pane's toolbar"
-msgstr "Symbolleiste des Lesebereichs einklappen"
-
-msgid "Every button goes into its ⋯ menu."
-msgstr "Jeder Button geht in sein »⋯« Menü."
-
-msgid "Fold the message list's header"
-msgstr "Kopfzeile der Nachrichtenliste einklappen"
-
-msgid "Everything but the sidebar toggle goes into ⋯."
-msgstr ""
-"Alle Elemente außer dem Seitenleisten-Schalter werden unter »⋯« "
-"zusammengefasst."
-
-msgid "Hide the accounts in the sidebar"
-msgstr "Konten in der Seitenleiste ausblenden"
-
-msgid "Only the unified section stays."
-msgstr "Nur der einheitliche Abschnitt bleibt bestehen."
-
-msgid "Fold up the unified rows"
-msgstr "Gemeinsame Zeilen einklappen"
-
-msgid "Hide sender avatars"
-msgstr "Absender-Avatare ausblenden"
-
-msgid "Hide the preview text"
-msgstr "Vorschautext ausblenden"
-
-msgid "One line of preview text"
-msgstr "Eine Zeile Vorschautext"
-
-msgid "Hide the subject"
-msgstr "Betreff ausblenden"
-
-msgid "Tag chips hide with it."
-msgstr "Tag-Chips werden dabei ebenfalls ausgeblendet."
-
-msgid "Fold the sidebar to the icon rail"
-msgstr "Seitenleiste zur Symbolleiste einklappen"
-
-msgid "Hovering it slides the full sidebar out."
-msgstr "Durch Überfahren mit der Maus wird die gesamte Seitenleiste sichtbar."
-
-msgid "Open messages in Reader View."
-msgstr "Nachrichten in der Leseansicht öffnen."
-
 msgid "Compose in the main window"
 msgstr "Im Hauptfenster verfassen"
 
@@ -7751,7 +8607,7 @@ msgid "Return starts a new paragraph"
 msgstr "Eingabetaste beginnt einen neuen Absatz"
 
 msgid "Shift+Return does the other."
-msgstr "Umschalt+Eingabe löst das Gegenteil aus."
+msgstr "»Umschalt+Eingabe« löst das Gegenteil aus."
 
 msgid "Formatting toolbar"
 msgstr "Formatierungsleiste"
@@ -7770,6 +8626,15 @@ msgstr "Immer ausgeklappt"
 msgid "Start new messages in"
 msgstr "Format für neue Nachrichten"
 
+msgid "Reply in the original's format"
+msgstr "Im ursprünglichen Format antworten"
+
+msgid "Ask before switching to plain text"
+msgstr "Vor Wechsel zu reinem Text nachfragen"
+
+msgid "Only when formatting, images or links would be removed."
+msgstr "Nur bei Verlust von Formatierungen, Bildern oder Links."
+
 msgid "For rich text. Default leaves it to the recipient's own font."
 msgstr ""
 "Für formatierten Text (HTML). Die Standardeinstellung überlässt die "
@@ -7780,12 +8645,6 @@ msgstr "Für formatierten Text (in Pt)."
 
 msgid "Default zoom"
 msgstr "Standard-Zoom"
-
-msgid "Reply in the original's format"
-msgstr "Im ursprünglichen Format antworten"
-
-msgid "Plain-text mail is answered in plain text."
-msgstr "Text-E-Mails werden als reiner Text beantwortet."
 
 msgid "Signature in replies"
 msgstr "Signatur in Antworten"
@@ -7818,11 +8677,8 @@ msgstr "Erhaltene Lesebestätigungen"
 
 msgid "Sent mail shows who read it; the receipt goes here."
 msgstr ""
-"Bei gesendeten E-Mails wird der Lesestatus angezeigt; eingehende "
+"Bei gesendeten Nachrichten wird der Lesestatus angezeigt; eingehende "
 "Bestätigungen erscheinen hier."
-
-msgid "Move to Trash"
-msgstr "In Papierkorb verschieben"
 
 msgid "Keep in Inbox"
 msgstr "Im Posteingang belassen"
@@ -7841,6 +8697,19 @@ msgstr "Trennlinie über der zitierten Nachricht"
 msgid "Restore Default"
 msgstr "Standardeinstellungen wiederherstellen"
 
+msgid "Attachment Reminder"
+msgstr "Erinnerung an Anhänge"
+
+msgid ""
+"Send asks first when the message mentions one of these words and nothing is "
+"attached."
+msgstr ""
+"Vor dem Senden nachfragen, wenn die Nachricht eines dieser Wörter enthält "
+"und kein Anhang beigefügt ist."
+
+msgid "Words, separated by commas"
+msgstr "Wörter, getrennt durch Kommas"
+
 msgid "Spelling"
 msgstr "Rechtschreibung"
 
@@ -7857,7 +8726,10 @@ msgid "Added words"
 msgstr "Hinzugefügte Wörter"
 
 msgid "Changes apply after a restart."
-msgstr "Änderungen werden nach einem Neustart wirksam."
+msgstr "Änderungen werden nach einem Neustart der Anwendung wirksam."
+
+msgid "Mark as read"
+msgstr "Als gelesen markieren"
 
 msgid "Conversations mark each message as it comes into view."
 msgstr ""
@@ -7887,7 +8759,7 @@ msgstr "Eigene Schriftart verwenden"
 
 msgid "The font below replaces the sender's."
 msgstr ""
-"Ersetzung der ursprünglichen Absenderschriftart durch die unten gewählte."
+"Ersetzung der vom Absender gewählten Schriftart durch die unten gewählte."
 
 msgid "Message font"
 msgstr "Schriftart der Nachricht"
@@ -7919,18 +8791,6 @@ msgstr ""
 "Die Monospace-Schriftart des Systems, es sei denn, es wird eine andere "
 "gewählt."
 
-msgid "Message card actions palette"
-msgstr "Aktionspalette für Nachrichtenkarten"
-
-msgid "Message card actions palette timeout"
-msgstr "Zeitlimit der Aktionspalette für Nachrichtenkarten"
-
-msgid "Message card actions palette as a menu"
-msgstr "Nachrichtenkarten-Aktionspalette als Menü"
-
-msgid "The ⋯ opens the right-click menu instead."
-msgstr "Das Symbol »⋯« öffnet stattdessen das Kontextmenü."
-
 msgid "Single messages as cards"
 msgstr "Einzelne Nachrichten als Karten"
 
@@ -7949,6 +8809,10 @@ msgstr "Bei Deaktivierung werden nur Symbole angezeigt."
 
 msgid "Find bar position"
 msgstr "Position der Suchleiste"
+
+msgid "Space shows pictures and PDFs in Sushi"
+msgstr ""
+"Durch Drücken der Leertaste werden Bilder und PDF-Dateien in Sushi angezeigt."
 
 msgid "A message's text alone, without the sender's layout, colors and fonts."
 msgstr ""
@@ -7972,7 +8836,7 @@ msgid "Page numbers"
 msgstr "Seitennummern"
 
 msgid "Date printed"
-msgstr "Gedrucktes Datum"
+msgstr "Datum"
 
 msgid "Wider left margin"
 msgstr "Linken Rand vergrößern"
@@ -8061,13 +8925,13 @@ msgstr ""
 "Domainnamen reduziert."
 
 msgid "Downloaded mail"
-msgstr "Nachricht herunterladen"
+msgstr "Heruntergeladene Nachrichten"
 
 msgid "Remove…"
-msgstr "Entfernen…"
+msgstr "Leeren…"
 
 msgid "Keep downloaded mail"
-msgstr "Behalte heruntergeladene Nachricht"
+msgstr "Behalte heruntergeladene Nachrichten"
 
 msgid "Mail inside an account's offline period is kept."
 msgstr ""
@@ -8152,6 +9016,15 @@ msgstr "Mit Formatierung einfügen"
 
 msgid "Paste as Plain Text"
 msgstr "Als reinen Text einfügen"
+
+msgid "Cut"
+msgstr "Ausschneiden"
+
+msgid "Select All"
+msgstr "Alles auswählen"
+
+msgid "Insert Emoji"
+msgstr "Emoji einfügen"
 
 msgid "Email Client"
 msgstr "E-Mail-Client"
@@ -8288,6 +9161,158 @@ msgstr "Der gemeinsame Posteingang im hellen Modus."
 msgid "Hyprlab"
 msgstr "Hyprlab"
 
+#~ msgid "Sends through this account"
+#~ msgstr "Versendet über dieses Konto"
+
+#~ msgid ""
+#~ "Will appear in the composer's From menu. Replies to mail sent here will "
+#~ "come from this address."
+#~ msgstr ""
+#~ "Auswahl im Menü »Von« beim Verfassen möglich. Antworten auf hier "
+#~ "eingehende Nachrichten nutzen diese Adresse."
+
+#~ msgid "Extra names and addresses this account can send as."
+#~ msgstr "Zusätzliche Identitäten und Absenderadressen für dieses Konto."
+
+#~ msgid ""
+#~ "With more than one, the composer's signature button allows you to pick "
+#~ "between them."
+#~ msgstr ""
+#~ "Bei mehreren Einträgen ermöglicht die Signatur-Schaltfläche im Verfassen-"
+#~ "Fenster die Auswahl."
+
+#~ msgid "Plain-text mail is answered in plain text."
+#~ msgstr "Text-E-Mails werden als reiner Text beantwortet."
+
+#~ msgid "Remote content can tell a sender when and where you read."
+#~ msgstr ""
+#~ "Externe Inhalte können dem Absender verraten, wann und wo eine Nachricht "
+#~ "gelesen wird."
+
+#~ msgid "Their senders can tell they were opened."
+#~ msgstr ""
+#~ "Das Öffnen dieser Nachrichten ist für die jeweiligen Absender sichtbar."
+
+#~ msgid "Takes off utm_ tags and redirects that log the click."
+#~ msgstr "Entfernt utm_-Parameter sowie Tracking-Weiterleitungen."
+
+#~ msgid ""
+#~ "The badge beside the sender stays. A possible forgery always shows the "
+#~ "banner."
+#~ msgstr ""
+#~ "Das Kennzeichen neben dem Absender bleibt bestehen. Bei möglicher "
+#~ "Fälschung wird das Banner stets angezeigt."
+
+#~ msgid ""
+#~ "Most are fetched from the sender's domain, which learns your IP address."
+#~ msgstr ""
+#~ "Der Abruf erfolgt überwiegend von der Absender-Domain, wodurch die eigene "
+#~ "IP-Adresse offengelegt wird."
+
+#~ msgid "A receipt tells the sender when you opened the message."
+#~ msgstr ""
+#~ "Eine Lesebestätigung informiert die absendende Person darüber, wann die "
+#~ "Nachricht geöffnet wurde."
+
+#~ msgid "Not spam"
+#~ msgstr "Kein Spam"
+
+#~ msgid "Add sender to Contacts"
+#~ msgstr "Absender zu Kontakten hinzufügen"
+
+#~ msgid "Mark as unread"
+#~ msgstr "Als ungelesen markieren"
+
+#~ msgid "Remove star"
+#~ msgstr "Stern entfernen"
+
+#~ msgid "Star this message"
+#~ msgstr "Nachricht mit Stern markieren"
+
+#~ msgid "View source"
+#~ msgstr "Quelltext anzeigen"
+
+#~ msgid "Translate this message"
+#~ msgstr "Diese Nachricht übersetzen"
+
+#~ msgid "Reply to this message"
+#~ msgstr "Antwort auf diese Nachricht"
+
+#~ msgid "Reply to everyone on this message"
+#~ msgstr "Allen antworten auf diese Nachricht"
+
+#~ msgid "Forward this message"
+#~ msgstr "Nachricht weiterleiten"
+
+#~ msgid "Move this message to a folder"
+#~ msgstr "Nachricht in einen Ordner verschieben"
+
+#~ msgid "Archive this message"
+#~ msgstr "Nachricht archivieren"
+
+#~ msgid "Delete this message"
+#~ msgstr "Nachricht löschen"
+
+#~ msgid "Show remote content"
+#~ msgstr "Externe Inhalte anzeigen"
+
+#~ msgid "Block remote content"
+#~ msgstr "Externe Inhalte blockieren"
+
+#~ msgid "Hidden behind a toggle"
+#~ msgstr "Hinter einem Schalter verborgen"
+
+#~ msgid "Shown while hovering"
+#~ msgstr "Beim Darüberfahren sichtbar"
+
+#~ msgid "Always visible"
+#~ msgstr "Immer sichtbar"
+
+#~ msgid "Actions palette in the message list"
+#~ msgstr "Aktionspalette in der Nachrichtenliste"
+
+#~ msgid "The ⋯ row under each message."
+#~ msgstr "Die »⋯« Zeile unter jeder Nachricht"
+
+#~ msgid "Open the actions palette on hover"
+#~ msgstr "Aktionspalette beim Darüberfahren öffnen"
+
+#~ msgid "Actions palette timeout"
+#~ msgstr "Zeitlimit der Aktionspalette"
+
+#~ msgid "Seconds it stays open after the pointer leaves."
+#~ msgstr "Zeitverzögerung in Sekunden nach dem Verlassen mit dem Zeiger."
+
+#~ msgid ""
+#~ "The parts switched on below hide while Focus Mode is on. Activated by "
+#~ "Ctrl+Shift+F or the main menu."
+#~ msgstr ""
+#~ "Bei eingeschaltetem Fokusmodus werden die unten ausgewählten Bereiche "
+#~ "ausgeblendet. Lässt sich mit »Strg+Umschalt+F« oder über das Hauptmenü "
+#~ "aktivieren."
+
+#~ msgid "Hide the preview text"
+#~ msgstr "Vorschautext ausblenden"
+
+#~ msgid "One line of preview text"
+#~ msgstr "Eine Zeile Vorschautext"
+
+#~ msgid "Hovering it slides the full sidebar out."
+#~ msgstr ""
+#~ "Durch Überfahren mit der Maus wird die gesamte Seitenleiste sichtbar."
+
+#~ msgid "Message card actions palette"
+#~ msgstr "Aktionspalette für Nachrichtenkarten"
+
+#~ msgid "Message card actions palette timeout"
+#~ msgstr "Zeitlimit der Aktionspalette für Nachrichtenkarten"
+
+#~ msgid "Message card actions palette as a menu"
+#~ msgstr "Nachrichtenkarten-Aktionspalette als Menü"
+
+#~ msgid "The ⋯ opens the right-click menu instead."
+#~ msgstr "Das Symbol »⋯« öffnet stattdessen das Kontextmenü."
+
 #~ msgid "Received"
 #~ msgstr "Empfangen"
 
@@ -8302,10 +9327,6 @@ msgstr "Hyprlab"
 
 #~ msgid "Search this folder"
 #~ msgstr "Diesen Ordner durchsuchen"
-
-#, fuzzy
-#~ msgid "Same as messages"
-#~ msgstr "E-Mails"
 
 #~ msgid "Leave in Inbox to only tag matching mail"
 #~ msgstr "Im Posteingang belassen und nur passende Nachrichten markieren"
@@ -8671,9 +9692,6 @@ msgstr "Hyprlab"
 #~ "Andernfalls erfolgt die Tonausgabe nur bei Benachrichtigungen, wenn das "
 #~ "Fenster im Hintergrund liegt oder geschlossen ist."
 
-#~ msgid "Moves the message to Trash."
-#~ msgstr "Verschiebt die Nachricht in den Papierkorb."
-
 #~ msgid "Opens the message with a reply started."
 #~ msgstr "Öffnet die Nachricht mit einer begonnenen Antwort."
 
@@ -8892,9 +9910,6 @@ msgstr "Hyprlab"
 #~ "gewählten Elemente eingeklappt. Gedrückt Halten auf ein Symbol klappt das "
 #~ "jeweilige Element weiterhin auf oder zu. Die vollständige Seitenleiste "
 #~ "kehrt genau im vorherigen Zustand zurück."
-
-#~ msgid "Every account's folder list."
-#~ msgstr "Die Ordnerliste jedes Kontos."
 
 #~ msgid "The account list under the unified Inboxes row."
 #~ msgstr "Die Kontoliste unter dem Zeile des gemeinsamen Posteingangs"
@@ -9548,9 +10563,6 @@ msgstr "Hyprlab"
 #~ "Kontakte müssen in GNOME Kontakte hinzugefügt werden, damit sie hier "
 #~ "sichtbar sind."
 
-#~ msgid "Sort contacts"
-#~ msgstr "Kontakte sortieren"
-
 #~ msgid ""
 #~ "{name} is removed from your address book, and for a synced book, from the "
 #~ "server too. The people in it are not."
@@ -9661,9 +10673,6 @@ msgstr "Hyprlab"
 
 #~ msgid "Add Directory"
 #~ msgstr "Verzeichnis hinzufügen"
-
-#~ msgid "Look up recipients in this directory"
-#~ msgstr "Empfänger in diesem Verzeichnis suchen"
 
 #~ msgid "Zugriff auf das Verzeichnis im geöffneten Fenster bestätigen."
 #~ msgstr "Konnte die Anmeldung nicht im Schlüsselring speichern: {e}"

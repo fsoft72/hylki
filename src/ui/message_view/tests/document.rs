@@ -226,53 +226,6 @@ fn a_card_with_no_recipients_shows_no_chip() {
     );
 }
 
-#[test]
-fn a_card_offers_remote_content_both_ways_and_only_where_there_is_any() {
-    let mut with_remote = msg_for_print();
-    with_remote.body = "<p>Hello</p><img src=\"https://example.com/track.gif\">".into();
-    let mut without = msg_for_print();
-    without.id = 2;
-    without.body = "<p>Just words.</p>".into();
-    let doc_for = |restrict: bool| {
-        MessageView::conversation_document(
-            &[with_remote.clone(), without.clone()],
-            &std::collections::HashMap::new(),
-            &Default::default(),
-            &Default::default(),
-            &[],
-            "#3584e4",
-            restrict,
-            false,
-            false,
-            false,
-            &crate::config::ReaderStyle::NONE,
-            &Default::default(),
-            false,
-            100,
-        )
-    };
-    // Only the card with something to load carries the button.
-    let blocked = doc_for(true);
-    assert_eq!(
-        blocked.matches("data-act=\"remote\"").count(),
-        1,
-        "{blocked}"
-    );
-    assert!(blocked.contains("Show remote content"), "{blocked}");
-    assert!(
-        !blocked.contains("class=\"hylki-act on\" data-act=\"remote\""),
-        "not lit while blocked"
-    );
-    // Showing it, the same button offers to put the block back, and is lit.
-    let shown = doc_for(false);
-    assert_eq!(shown.matches("data-act=\"remote\"").count(), 1, "{shown}");
-    assert!(shown.contains("Block remote content"), "{shown}");
-    assert!(
-        shown.contains("class=\"hylki-act on\" data-act=\"remote\""),
-        "lit while showing: {shown}"
-    );
-}
-
 /// Each card carries its own Reply/Reply all/Forward, keyed to that message
 /// — the toolbar's buttons are disabled in a conversation precisely because
 /// they could not say which message they meant.
@@ -297,16 +250,14 @@ fn every_card_carries_its_own_actions_keyed_to_that_message() {
         false,
         100,
     );
-    for act in ["reply", "replyall", "forward"] {
-        assert_eq!(
-            doc.matches(&format!("data-act=\"{act}\"")).count(),
-            2,
-            "one {act} button per card: {doc}"
-        );
-    }
-    // Keyed per message, so the action can't land on the wrong one.
-    assert!(doc.contains("data-act=\"reply\" data-key=\"1:1\""), "{doc}");
-    assert!(doc.contains("data-act=\"reply\" data-key=\"1:2\""), "{doc}");
+    assert_eq!(
+        doc.matches("class=\"hylki-acts-toggle\"").count(),
+        2,
+        "one menu button per card: {doc}"
+    );
+    // Keyed per message, so the menu can't open for the wrong one.
+    assert!(doc.contains("data-key=\"1:1\">"), "{doc}");
+    assert!(doc.contains("data-key=\"1:2\">"), "{doc}");
 }
 
 /// An unread message in a conversation is marked with its dot; reading is
@@ -503,8 +454,8 @@ fn a_single_message_keeps_the_header_but_goes_full_bleed() {
         "no card gutter: {doc}"
     );
     assert!(
-        doc.contains("data-act=\"reply\""),
-        "card actions present: {doc}"
+        doc.contains("class=\"hylki-acts-toggle\""),
+        "card menu present: {doc}"
     );
     // Full-bleed also means the plain ground, not the cards' deeper page.
     assert!(
@@ -646,4 +597,53 @@ fn a_sender_cannot_put_markup_in_the_conversation_header() {
     assert!(!doc.contains("<img src=y"), "{doc}");
     assert!(doc.contains("&lt;script&gt;x=1&lt;/script&gt;"), "{doc}");
     assert!(doc.contains("onerror=z&gt;"), "{doc}");
+}
+
+/// A folded card hides its frame, and a hidden frame still loads its whole
+/// document: a long conversation folded down to its newest card rendered
+/// every message at once. The folded card's frame keeps its document aside
+/// until the card opens; an open card's frame loads it as before.
+#[test]
+fn a_folded_card_does_not_load_its_message_until_opened() {
+    let mut first = msg_for_print();
+    first.body = "<p>opening</p>".into();
+    let mut second = msg_for_print();
+    second.id = 2;
+    second.body = "<p>reply</p>".into();
+    LIVE_FOLDED.with(|f| *f.borrow_mut() = [(1, 1)].into_iter().collect());
+
+    let doc = MessageView::conversation_document(
+        &[first, second],
+        &std::collections::HashMap::new(),
+        &Default::default(),
+        &Default::default(),
+        &[],
+        "#3584e4",
+        true,
+        false,
+        false,
+        false,
+        &crate::config::ReaderStyle::NONE,
+        &Default::default(),
+        false,
+        100,
+    );
+    LIVE_FOLDED.with(|f| f.borrow_mut().clear());
+
+    let frame = |key: &str| {
+        let at = doc
+            .find(&format!("<iframe class=\"hylki-frame\" data-key=\"{key}\""))
+            .expect("the card's frame");
+        doc[at..doc[at..].find("</iframe>").map(|e| at + e).unwrap()].to_string()
+    };
+    let folded = frame("1:1");
+    assert!(
+        folded.contains(" data-hylki-srcdoc=\"") && !folded.contains(" srcdoc=\""),
+        "a folded card keeps its document aside: {folded}"
+    );
+    let open = frame("1:2");
+    assert!(
+        open.contains(" srcdoc=\"") && !open.contains("data-hylki-srcdoc"),
+        "an open card loads its document: {open}"
+    );
 }

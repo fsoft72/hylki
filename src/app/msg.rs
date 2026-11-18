@@ -151,6 +151,8 @@ pub(crate) enum AppMsg {
     /// An account's starred mail, for an account with no Starred folder
     /// (#482): the unified Starred view narrowed to it.
     AccountStarredSelected(u32),
+    /// The sidebar's next pick stands in for the launch view (#642).
+    StandInView,
     /// A folder row was chosen (the sidebar, the command palette): list it.
     FolderSelected {
         account_id: u32,
@@ -399,6 +401,14 @@ pub(crate) enum AppMsg {
         x: f64,
         y: f64,
     },
+    /// A message window's Copy To (#398): the folder picker over that
+    /// window, at its point (x, y). The window stays open.
+    PopoutCopyTo {
+        key: (u32, u32),
+        message: Box<Message>,
+        x: f64,
+        y: f64,
+    },
     /// A message window's single-key shortcut that needs the app (#392):
     /// the window's message and the conversation it shows.
     PopoutShortcut {
@@ -425,12 +435,13 @@ pub(crate) enum AppMsg {
         items: Vec<Attachment>,
         start: usize,
     },
-    /// A card's attachment chip (#213): open the file, or save it.
+    /// A card's attachment chip (#213): open the file, save it, or
+    /// preview it (#625).
     CardAttachment {
         account_id: u32,
         id: u32,
         index: usize,
-        save: bool,
+        action: crate::ui::message_view::ChipAction,
     },
     /// The drawer's "Show in Message": scroll the reader to the message this
     /// attachment came with (#213).
@@ -542,9 +553,7 @@ pub(crate) enum AppMsg {
     },
     /// The reader toolbar's Mark as Read/Unread toggle for the open message.
     ToggleReadCurrent,
-    /// A card's "Add sender to Contacts" button.
-    CardContact(Box<Message>),
-    /// A row's palette or context-menu action. `conversation` holds the whole
+    /// A row's context-menu action. `conversation` holds the whole
     /// thread when the row stands for a collapsed conversation rather than for
     /// `message` alone — a reply started there answers the conversation's
     /// newest message, not the head it is filed under (#210). Empty otherwise.
@@ -737,8 +746,14 @@ pub(crate) enum AppMsg {
     },
     /// A contact write finished (`Some` = the error to show).
     ContactWriteDone(Option<String>),
-    /// `.vcf` files chosen in the Contacts page, to import into the Hylki book.
-    ImportContacts(Vec<std::path::PathBuf>),
+    /// Files chosen to import, and the book to offer first.
+    ImportContacts {
+        paths: Vec<std::path::PathBuf>,
+        book: Option<String>,
+    },
+    /// The files are read: ask where they go and what their columns are.
+    ContactImportReady(Box<crate::contacts::import::ImportStart>),
+    RunContactImport(crate::contacts::import::ImportRequest),
     /// The import finished.
     ContactsImported(Result<crate::contacts::local::ImportOutcome, String>),
 
@@ -812,8 +827,15 @@ pub(crate) enum AppMsg {
     ListCount(String),
     /// A column heading was dragged to a new width (#334): keep it.
     ListColumnWidths(std::collections::HashMap<config::ListColumn, i32>),
-    /// A column heading sorted the list (#334): the sort menus follow.
-    ListSortChanged(&'static str),
+    /// The list's sort changed, by its key and whether it is reversed: the
+    /// sort menus follow and it is kept (#334, #574).
+    ListSortChanged(&'static str, bool),
+    /// The open view's sort becomes every view's.
+    ListSortForAll,
+    /// Sender or Recipients was chosen for the open view's rows (#657).
+    ListShowRecipients(bool),
+    /// The date sections folded in the open view changed (#659).
+    ListFoldedDays(Vec<String>),
 
     // ---- on_identity (identity.rs) ----
     /// A Gravatar one of the accounts asked for came back (#189).
@@ -973,6 +995,10 @@ pub(crate) enum AppMsg {
     TemplatePickNow,
     /// The template picker answered (None: a blank message instead).
     TemplatePicked(Option<Message>),
+    /// A composer's Insert Template: pick a template to put into its message.
+    PickTemplate { id: u32 },
+    /// The template picked for composer `id`.
+    TemplateInsertPicked { id: u32, template: Message },
     /// A composer's Save Draft: store the message in its account's Drafts
     /// folder.
     SaveDraftMessage(Box<OutgoingMessage>),
@@ -1003,6 +1029,7 @@ pub(crate) enum AppMsg {
         account_id: u32,
         autosave: Option<u32>,
         message_id: Option<String>,
+        template: bool,
     },
 
     // ---- on_settings_window (settings_window.rs) ----
@@ -1094,8 +1121,16 @@ pub(crate) enum AppMsg {
         from: u32,
         out: Box<OutgoingMessage>,
     },
-    /// A composer's Mail Merge (#447): one message per row.
-    SendMerged(Vec<OutgoingMessage>),
+    /// A composer's Mail Merge (#447): one message per row, and the wait
+    /// from one to the next if the rate is limited.
+    SendMerged {
+        messages: Vec<OutgoingMessage>,
+        interval: Option<std::time::Duration>,
+    },
+    /// A merge's wait for its rate is over (#447).
+    MergeTick(u64),
+    /// Stop on a merge's toast (#447).
+    StopMerge(u64),
     /// A message's Undo Send delay is over, or Send now was asked for it in
     /// the Outbox: it goes to its worker (#434).
     DispatchSend(u64),
@@ -1164,6 +1199,12 @@ pub(crate) enum AppMsg {
     /// Show the keyring / Secret Service setup help. `problem: true` when a save
     /// actually failed to persist; `false` for the proactive one-time tip.
     ShowKeyringHelp { problem: bool },
+    /// A worker's read of the account's password from the keyring failed,
+    /// is still waiting, or answered after a wait (#573).
+    KeyringRead {
+        account_id: u32,
+        read: crate::worker::KeyringRead,
+    },
     /// Reconnect every account: a saved edit changed a secret, which the
     /// keyring said after the save.
     ReconnectAccounts,
@@ -1404,6 +1445,13 @@ pub(crate) enum AppMsg {
         token: u64,
         result: Result<(), String>,
     },
+    /// An encrypted draft decrypted for its editor (the pending sealed
+    /// draft's `token`): the message with its protected headers, or why
+    /// it could not be.
+    DraftDecrypted {
+        token: u64,
+        raw: Result<Vec<u8>, String>,
+    },
 
     // ---- on_events_messages (events_messages.rs) ----
     /// A worker sent a folder's messages.
@@ -1448,8 +1496,12 @@ pub(crate) enum AppMsg {
         path: String,
         body: String,
     },
-    /// A message's source arrived: show it.
-    Source { text: String },
+    /// A message's source arrived, `None` when it could not be loaded.
+    Source {
+        account_id: u32,
+        message_id: u32,
+        text: Option<String>,
+    },
     /// These, like `Body`, name the folder: a UID means a message only
     /// within its folder.
     Attachments {
@@ -1476,6 +1528,10 @@ pub(crate) enum AppMsg {
         path: String,
         message_id: u32,
     },
+
+    // ---- on_assistant (assistant.rs) ----
+    /// The connection for AI assistants asks for, or tells of, something.
+    Assistant(crate::mcp::AppCall),
 
     // ---- Settings: route_pref (router.rs) ----
     /// A setting changed in Preferences (or its equivalent elsewhere).

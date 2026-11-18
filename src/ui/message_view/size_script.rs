@@ -17,6 +17,21 @@
 // or silent image host left the card blank for up to a minute (#487).
 // Listeners on a script-less sandboxed document never fire, so it is
 // polled; `init` runs once and the later `load` only measures again.
+//
+// A card counts as read only from `ready` on, and only once its body is
+// drawn: a card still saying Loading… is not watched at all (the page is
+// built again when its body comes), and the count for one whose frame is
+// not yet live starts when it is (#638).
+//
+// `ready` is posted once the open scroll (`openAt`) has been applied and
+// drawn, two animation frames on: the reader may show the page at that
+// moment, so the page must already be where it opens. Its timeout is queued
+// after `openAt`'s own, which wait a turn for the folds the same handler
+// sets up. A page loading behind the spinner is not drawn and gets no
+// animation frames: it says so at once, and the reader shows it. So does a
+// page stamped `data-hylki-covered`, loaded under the pane's still: the
+// reader patches it and lifts the still two animation frames later, which
+// covers the open scroll as well.
 /// Wrapper-document script: size each message iframe to its content height so the
 /// whole conversation scrolls as one page (the iframes have no inner scrollbars).
 /// Re-measures as images load and as content reflows.
@@ -146,11 +161,13 @@ window.scrollTo(0,sy);\
 setTimeout(function(){f.classList.remove('anim');s(f);\
 if(on){var br=b.getBoundingClientRect();\
 if(br.top>innerHeight*0.6)window.scrollBy({top:Math.min(br.top-innerHeight*0.3,to-from),behavior:'smooth'});}},280);});}catch(_){}}\
+function wake(f){var d=f.getAttribute('data-hylki-srcdoc');if(d===null)return;\
+f.removeAttribute('data-hylki-srcdoc');f._i=0;f._c=0;f._u=0;f.srcdoc=d;}\
 function foldCard(sec){if(!sec)return;var on=!sec.classList.contains('hylki-folded');\
 sec.classList.toggle('hylki-folded',on);\
 try{window.webkit.messageHandlers.hylki.postMessage('fold:'+sec.dataset.key+':'+(on?1:0));}catch(_){}\
-if(!on){var f=sec.querySelector('iframe.hylki-frame');if(f){f._h=0;s(f);setTimeout(function(){s(f);},80);}}}\
-function init(f){if(f._i){s(f);return;}f._i=1;quote(f);s(f);try{var d=f.contentDocument;if(d){if(window.ResizeObserver&&d.body){new ResizeObserver(function(){s(f);}).observe(d.body);}\
+if(!on){var f=sec.querySelector('iframe.hylki-frame');if(f){wake(f);f._h=0;s(f);setTimeout(function(){s(f);},80);}}}\
+function init(f){if(f._i){s(f);return;}f._i=1;try{if(window.vfZ&&f.contentDocument&&f.contentDocument.documentElement)f.contentDocument.documentElement.style.zoom=window.vfZ;}catch(_){}quote(f);s(f);try{var d=f.contentDocument;if(d){if(window.ResizeObserver&&d.body){new ResizeObserver(function(){s(f);}).observe(d.body);}\
 if(f.dataset.key&&!f._c){f._c=1;d.addEventListener('click',function(e){\
 if(e.target&&e.target.closest&&e.target.closest('a'))return;pick(f.dataset.key,e);});}\
 if(!f._u){f._u=1;['wheel','touchstart','mousedown','keydown'].forEach(function(ev){\
@@ -161,9 +178,12 @@ setTimeout(function(){s(f);},250);setTimeout(function(){s(f);},1000);}\
 function all(){return document.querySelectorAll('iframe.hylki-frame');}\
 document.addEventListener('DOMContentLoaded',function(){\
 var fs=all();var pend=fs.length,rdy=false;\
-function ready(){if(rdy)return;rdy=true;\
-try{window.webkit.messageHandlers.hylki.postMessage('ready:0:0');}catch(_){}\
-var bd=document.body.dataset;\
+function ready(){if(rdy)return;rdy=true;openAt();watchRead();\
+setTimeout(function(){function post(){\
+try{window.webkit.messageHandlers.hylki.postMessage('ready:0:0');}catch(_){}}\
+if(document.visibilityState==='hidden'||document.body.dataset.hylkiCovered!==undefined){post();return;}\
+requestAnimationFrame(function(){requestAnimationFrame(post);});},0);}\
+function openAt(){var bd=document.body.dataset;\
 if(bd.hylkiNoscroll){var a=(bd.hylkiAnchor||'').split(':');\
 if(a.length>=3){var el=document.querySelector('.hylki-msg[data-key=\"'+a[0]+':'+a[1]+'\"]');\
 if(el){hold={el:el,off:parseInt(a[2],10)||0,g:a[3]==='g'};\
@@ -180,6 +200,7 @@ setTimeout(markClipped,0);setTimeout(markClipped,400);\
 if(!pend)ready();\
 for(var i=0;i<fs.length;i++){(function(f){var counted=false;\
 function tick(){if(counted)return;counted=true;if(--pend<=0)ready();}\
+if(f.hasAttribute('data-hylki-srcdoc'))tick();\
 if(f.contentDocument&&f.contentDocument.readyState==='complete'&&f.contentDocument.URL!=='about:blank'){init(f);tick();}\
 f.addEventListener('load',function(){init(f);tick();});\
 var polls=0,poll=setInterval(function(){if(f._i||++polls>1200){clearInterval(poll);return;}\
@@ -193,27 +214,31 @@ if(document.body.classList.contains('hylki-conv')){document.body.classList.add('
 for(var j=0;j<hs.length;j++){(function(h){var tm=null;\
 h.addEventListener('click',function(e){\
 if(e.ctrlKey||e.metaKey||e.shiftKey||e.altKey)return;\
-if(e.target.closest&&e.target.closest('button,a,.hylki-addr,.hylki-acts,.hylki-tags,.hylki-verify,.hylki-rcpt'))return;\
+if(e.target.closest&&e.target.closest('button,a,.hylki-addr,.hylki-tags,.hylki-verify,.hylki-rcpt'))return;\
 if(tm){clearTimeout(tm);tm=null;return;}\
 tm=setTimeout(function(){tm=null;foldCard(h.closest('.hylki-msg'));},260);});})(hs[j]);}\
 var fb=document.querySelectorAll('.hylki-fbar');\
 for(var j=0;j<fb.length;j++){fb[j].addEventListener('click',function(e){\
 if(e.ctrlKey||e.metaKey||e.shiftKey||e.altKey)return;foldCard(this.closest('.hylki-msg'));});}}\
-var rbd=document.body.dataset;\
-if(rbd.hylkiReadmark&&document.body.classList.contains('hylki-conv')){\
+function watchRead(){var rbd=document.body.dataset;\
+if(!rbd.hylkiReadmark||!document.body.classList.contains('hylki-conv'))return;\
 var rdel=parseInt(rbd.hylkiReadmark,10)||250;var rt={};\
+function rdone(el){if(el.classList.contains('hylki-folded'))return true;\
+var f=el.querySelector('iframe.hylki-frame');return !f||f.classList.contains('hylki-live');}\
+function rarm(el,k){if(!rdone(el)){rt[k]=setTimeout(function(){rarm(el,k);},100);return;}\
+rt[k]=setTimeout(function(){\
+try{window.webkit.messageHandlers.hylki.postMessage('seen:'+k);}catch(_){}\
+rio.unobserve(el);},rdel);}\
 var rio=new IntersectionObserver(function(es){es.forEach(function(en){\
 var el=en.target,k=el.dataset.key;\
 var vis=en.intersectionRatio>=0.5||en.intersectionRect.height>window.innerHeight*0.6;\
-if(vis&&!rt[k]){rt[k]=setTimeout(function(){\
-try{window.webkit.messageHandlers.hylki.postMessage('seen:'+k);}catch(_){}\
-rio.unobserve(el);},rdel);}\
+if(vis&&!rt[k])rarm(el,k);\
 else if(!vis&&rt[k]){clearTimeout(rt[k]);delete rt[k];}\
 });},{threshold:[0,0.25,0.5,0.75,1]});\
 var rsecs=document.querySelectorAll('.hylki-msg');\
-for(var ri=0;ri<rsecs.length;ri++){if(rsecs[ri].querySelector('.hylki-dot'))rio.observe(rsecs[ri]);}}\
+for(var ri=0;ri<rsecs.length;ri++){if(rsecs[ri].querySelector('.hylki-dot')&&!rsecs[ri].querySelector('.hylki-loading'))rio.observe(rsecs[ri]);}}\
 window.vf={marks:[],cur:-1};\
-window.vfZoom=function(z){var fs=all();for(var i=0;i<fs.length;i++){try{var d=fs[i].contentDocument;\
+window.vfZoom=function(z){window.vfZ=z;var fs=all();for(var i=0;i<fs.length;i++){try{var d=fs[i].contentDocument;\
 if(d&&d.documentElement)d.documentElement.style.zoom=z;fs[i]._h=0;s(fs[i]);}catch(_){}}};\
 window.vfDocs=function(){var ds=[document];var fs=document.querySelectorAll('iframe');\
 for(var i=0;i<fs.length;i++){try{if(fs[i].contentDocument)ds.push(fs[i].contentDocument);}catch(_){}}return ds;};\
@@ -281,37 +306,21 @@ var t=e.target&&e.target.closest?e.target.closest('.hylki-attc,.hylki-attsave'):
 e.stopPropagation();e.preventDefault();\
 var verb=t.classList.contains('hylki-attsave')?'attsave':'attopen';\
 try{window.webkit.messageHandlers.hylki.postMessage(verb+':'+t.dataset.key+':'+t.dataset.idx);}catch(_){}},true);\
+document.addEventListener('keydown',function(e){\
+if(e.key!==' '||e.ctrlKey||e.altKey||e.metaKey||e.shiftKey)return;\
+var t=e.target&&e.target.closest?e.target.closest('.hylki-attc'):null;if(!t)return;\
+e.stopPropagation();e.preventDefault();if(e.repeat)return;\
+try{window.webkit.messageHandlers.hylki.postMessage('attprev:'+t.dataset.key+':'+t.dataset.idx);}catch(_){}},true);\
 var ms=document.querySelectorAll('.hylki-msg');\
 for(var q=0;q<ms.length;q++){ms[q].addEventListener('click',function(e){\
 var k=this.dataset.key;if(k)pick(k,e);});}\
-var actsDelay=parseInt(document.body.dataset.hylkiActsdelay||'0',10)||1200;\
-document.documentElement.style.setProperty('--acts-delay',actsDelay+'ms');\
-var actsMenu=document.body.dataset.hylkiActsmenu==='1';\
 var ts=document.querySelectorAll('.hylki-acts-toggle');\
 for(var t=0;t<ts.length;t++){ts[t].addEventListener('click',function(e){\
-e.stopPropagation();e.preventDefault();\
-if(actsMenu){var br=this.getBoundingClientRect();\
-try{window.webkit.messageHandlers.hylki.postMessage('cardmenu:'+this.dataset.key+':'\
-+br.left+','+br.bottom+','+window.innerWidth);}catch(_){}return;}\
-var h=this.closest('.hylki-msg-hdr');var ac=h?h.querySelector('.hylki-acts'):null;if(!ac)return;\
-var on=!ac.classList.contains('open');\
-ac.classList.toggle('open',on);this.classList.toggle('open',on);});\
-ts[t].addEventListener('dblclick',function(e){e.stopPropagation();});}\
-for(var q2=0;q2<ms.length;q2++){(function(card){var timer=null;\
-card.addEventListener('mouseleave',function(){\
-var ac=card.querySelector('.hylki-acts.open');if(!ac)return;\
-timer=setTimeout(function(){ac.classList.remove('open');\
-var tg=card.querySelector('.hylki-acts-toggle');if(tg)tg.classList.remove('open');},actsDelay);});\
-card.addEventListener('mouseenter',function(){if(timer){clearTimeout(timer);timer=null;}});})(ms[q2]);}\
-var as=document.querySelectorAll('.hylki-act');\
-for(var k=0;k<as.length;k++){as[k].addEventListener('click',function(e){\
 e.stopPropagation();e.preventDefault();reportPos();\
-if(this.dataset.act==='star'){var on=this.classList.toggle('on');\
-var sm=this.closest('.hylki-msg');if(sm)sm.classList.toggle('starred',on);}\
-var extra='';if(this.dataset.act==='moveto'){var br=this.getBoundingClientRect();\
-extra=':'+(br.left+br.width/2)+','+br.bottom+','+window.innerWidth;}\
-try{window.webkit.messageHandlers.hylki.postMessage(this.dataset.act+':'+this.dataset.key+extra);}catch(_){}});\
-as[k].addEventListener('dblclick',function(e){e.stopPropagation();});}\
+var br=this.getBoundingClientRect();\
+try{window.webkit.messageHandlers.hylki.postMessage('cardmenu:'+this.dataset.key+':'\
++br.left+','+br.bottom+','+window.innerWidth);}catch(_){}});\
+ts[t].addEventListener('dblclick',function(e){e.stopPropagation();});}\
 document.addEventListener('click',function(e){var b=e.target&&e.target.closest?e.target.closest('.hylki-unsub-btn'):null;\
 if(!b)return;e.stopPropagation();e.preventDefault();\
 var v=b.dataset.tpl?'tpl:'+b.dataset.key+':'+b.dataset.tpl:b.dataset.mdn?'mdn:'+b.dataset.key+':'+b.dataset.mdn:'unsub:'+b.dataset.key;\
@@ -367,13 +376,15 @@ return JSON.stringify({key:(m.dataset&&m.dataset.key)||'',sel:sel});};\
 /* A left click at widget point (x, y) that landed on a message's body\
    frame, which never reports its own clicks, picks that card as a click\
    on the rest of the card does. A link or a text selection in the body\
-   keeps the click to itself. mo is p (plain), t (Ctrl) or r (Shift). */\
+   keeps the click to itself: a Shift+click that extended the selection\
+   there is text selection, not a range of cards (#643). mo is p (plain),\
+   t (Ctrl) or r (Shift). */\
 /* The card a press at widget point (x, y) can drag: one whose header, or\
    folded bar, is under it, away from the buttons, links and chips there.\
    Its key, or nothing. */\
 window.__hylkiDragAt=function(x,y,w){var r=window.innerWidth/w;x*=r;y*=r;\
 var el=document.elementFromPoint(x,y);if(!el||!el.closest)return '';\
-if(el.closest('button,a,input,.hylki-addr,.hylki-acts,.hylki-tags,.hylki-verify,.hylki-rcpt'))return '';\
+if(el.closest('button,a,input,.hylki-addr,.hylki-tags,.hylki-verify,.hylki-rcpt'))return '';\
 var h=el.closest('.hylki-msg-hdr,.hylki-fbar');if(!h)return '';\
 var m=h.closest('.hylki-msg');return (m&&m.dataset.key)||h.dataset.key||'';};\
 /* The reader drags a card by its header itself; WebKit's own drag of the\
@@ -386,7 +397,7 @@ if(!f||f.tagName!=='IFRAME'||!f.classList.contains('hylki-frame'))return;\
 var m=f.closest('.hylki-msg');var k=(m&&m.dataset.key)||f.dataset.key;if(!k)return;\
 try{var d=f.contentDocument,b=f.getBoundingClientRect();\
 var t=d.elementFromPoint(x-b.left,y-b.top);if(t&&t.closest&&t.closest('a'))return;\
-var g=d.getSelection();if(g){if(mo!=='p')g.removeAllRanges();else if(String(g).length)return;}}catch(_){}\
+var g=d.getSelection();if(g){if(mo!=='t'&&String(g).length)return;if(mo!=='p')g.removeAllRanges();}}catch(_){}\
 reportPos();\
 try{window.webkit.messageHandlers.hylki.postMessage('sel:'+k+':'+mo);}catch(_){}};\
 window.addEventListener('keydown',function(e){if(e.key!=='Escape'||!window.__hylkiMailMenu)return;\

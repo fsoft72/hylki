@@ -192,6 +192,19 @@ impl Cache {
         }
     }
 
+    /// Store one folder's chip number as the server last gave it. The
+    /// folder list a connect saves keeps the cached numbers (#370), so
+    /// without this the next launch shows whatever was counted at the last
+    /// full listing: a Drafts chip of 1 long after the draft was sent.
+    pub(crate) fn set_folder_unread(&self, account_id: u32, path: &str, unread: u32) {
+        if let Err(e) = self.conn.execute(
+            "UPDATE folders SET unread = ?3 WHERE account_id = ?1 AND path = ?2",
+            params![account_id, path, unread],
+        ) {
+            tracing::warn!("cache set_folder_unread failed: {e}");
+        }
+    }
+
     /// An IMAP account's hierarchy as its server last told it (#554).
     pub(crate) fn load_imap_hierarchy(&self, account_id: u32) -> Option<FolderHierarchy> {
         self.conn
@@ -411,7 +424,8 @@ impl Cache {
                  gmail_labels = excluded.gmail_labels, \
                  answered = excluded.answered, \
                  forwarded = excluded.forwarded, \
-                 bcc = excluded.bcc"
+                 bcc = excluded.bcc, \
+                 reply_to_name = excluded.reply_to_name"
             );
             for m in messages {
                 // Upsert rather than REPLACE so an empty preview cannot erase one
@@ -688,14 +702,14 @@ impl Cache {
     }
 }
 
-/// Writes every summary column of a message, `?1` to `?24` in the order
+/// Writes every summary column of a message, `?1` to `?25` in the order
 /// [`insert_message`] binds them.
 const INSERT_MESSAGE: &str = "INSERT INTO messages \
      (account_id, folder_path, uid, from_name, from_addr, subject, date, ts, unread, starred, \
      has_attachment, recipients, cc, message_id, references_, preview, reply_to, keywords, \
-     importance, due, gmail_labels, answered, forwarded, bcc) \
+     importance, due, gmail_labels, answered, forwarded, bcc, reply_to_name) \
      VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, \
-     ?19, ?20, ?21, ?22, ?23, ?24)";
+     ?19, ?20, ?21, ?22, ?23, ?24, ?25)";
 
 /// Runs `sql`, an [`INSERT_MESSAGE`] (with or without a conflict clause),
 /// for one message.
@@ -732,7 +746,8 @@ fn insert_message(
             join_labels(&m.labels),
             m.answered,
             m.forwarded,
-            m.bcc
+            m.bcc,
+            m.reply_to_name
         ],
     )
 }

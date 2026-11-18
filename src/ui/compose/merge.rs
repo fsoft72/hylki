@@ -23,6 +23,9 @@ impl Compose {
         widgets: &ComposeWidgets,
         sender: &ComponentSender<Self>,
     ) {
+        if self.edit_waiting(widgets) {
+            return;
+        }
         let parent = widgets.to_row.root().and_downcast::<gtk::Window>();
         if self.encrypt {
             alert(
@@ -88,10 +91,11 @@ impl Compose {
             groups,
         };
         let s = sender.input_sender().clone();
-        merge_dialog::show(&parent, start, move |letters| {
+        merge_dialog::show(&parent, start, move |letters, interval| {
             s.emit(ComposeInput::MergeSend {
                 fields: fields.clone(),
                 letters,
+                interval,
             });
         });
     }
@@ -102,6 +106,7 @@ impl Compose {
         &mut self,
         fields: OutgoingFields,
         letters: Vec<Letter>,
+        interval: Option<std::time::Duration>,
         sender: &ComponentSender<Self>,
     ) {
         let mut messages = Vec::with_capacity(letters.len());
@@ -120,6 +125,7 @@ impl Compose {
                 out.html = crate::mail::direction::stamp(&out.html);
             }
             out.send_at = None;
+            out.merged = true;
             // The draft or queued message this was written from is
             // replaced once, by the first; a template stays to be used
             // again.
@@ -134,7 +140,8 @@ impl Compose {
         if messages.is_empty() {
             return;
         }
-        let _ = sender.output(ComposeOutput::SendMerged(messages));
+        self.stop_autosave();
+        let _ = sender.output(ComposeOutput::SendMerged { messages, interval });
         let _ = sender.output(ComposeOutput::Close(self.compose_id));
     }
 }

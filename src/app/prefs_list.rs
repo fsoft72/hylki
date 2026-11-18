@@ -22,7 +22,8 @@ impl AppModel {
             }
             PrefOutput::SetListHeadings(on) => {
                 if pref!(self.list_headings = on) {
-                    self.message_list.emit(MessageListInput::SetHeadings(on));
+                    self.message_list
+                        .emit(MessageListInput::SetHeadings(self.list_headings_now()));
                 }
             }
             PrefOutput::SetListColumnScroll(on) => {
@@ -40,6 +41,11 @@ impl AppModel {
             PrefOutput::SetContactNames(on) => {
                 if pref!(self.contact_names = on) {
                     self.read_contact_names(&sender);
+                }
+            }
+            PrefOutput::SetReplyToSender(on) => {
+                if pref!(self.reply_to_sender = on) {
+                    self.apply_reply_to_sender();
                 }
             }
             PrefOutput::SetContactsSearchOpen(on) => {
@@ -65,7 +71,14 @@ impl AppModel {
             }
             PrefOutput::SetPillsBelow(on) => {
                 if pref!(self.list_pills_below = on) {
-                    self.message_list.emit(MessageListInput::SetPillsBelow(on));
+                    self.message_list
+                        .emit(MessageListInput::SetPillsBelow(self.list_pills_below_now()));
+                }
+            }
+            PrefOutput::SetListFollowsWindow(on) => {
+                if self.mail_split.follows() != on {
+                    self.mail_split.set_follows(on);
+                    self.save_settings();
                 }
             }
             PrefOutput::SetListColumns(columns) => {
@@ -94,33 +107,13 @@ impl AppModel {
 
             PrefOutput::SetAttachmentsRow(show) => {
                 if pref!(self.show_attachments = show) {
-                    self.sidebars_emit(SidebarInput::SetAttachmentsRow(show));
+                    self.sidebars_emit(SidebarInput::SetAttachmentsRow(self.attachments_row_now()));
                 }
             }
             PrefOutput::ResetColumnWidths => {
                 if pref!(self.list_column_widths = Default::default()) {
                     self.message_list
                         .emit(MessageListInput::SetColumnWidths(Default::default()));
-                }
-            }
-
-            PrefOutput::SetPaletteCollapse(secs) => {
-                if pref!(self.palette_collapse_secs = secs) {
-                    self.message_list
-                        .emit(MessageListInput::SetPaletteCollapse(secs));
-                }
-            }
-
-            PrefOutput::SetListPalette(on) => {
-                if pref!(self.list_palette = on) {
-                    self.message_list.emit(MessageListInput::SetListPalette(on));
-                }
-            }
-
-            PrefOutput::SetListPaletteHover(on) => {
-                if pref!(self.list_palette_hover = on) {
-                    self.message_list
-                        .emit(MessageListInput::SetPaletteHover(on));
                 }
             }
 

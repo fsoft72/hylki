@@ -5,6 +5,7 @@ use relm4::prelude::*;
 
 use crate::config;
 use crate::models::{thread_ids, Message, ThreadSummary};
+use crate::ui::compose::ComposeInput;
 use crate::ui::contacts_page::ContactsPageInput;
 use crate::ui::message_list::{DateBound, MessageListInput, QuickFilters};
 use crate::ui::message_view::MessageViewInput;
@@ -61,6 +62,24 @@ impl AppModel {
     pub(super) fn on_reader_select(&mut self, msg: AppMsg, sender: ComponentSender<Self>) {
         match msg {
             AppMsg::OpenedByKey { already_open } => {
+                // A draft selected opens in the reader's editor, at once or
+                // once its bytes come: o and Enter take the keyboard there.
+                self.draft_keeps_list = None;
+                let draft = self
+                    .reader_compose
+                    .as_ref()
+                    .filter(|r| r.list_draft.is_some() && r.window.is_none());
+                if let Some(r) = draft {
+                    r.controller.emit(ComposeInput::FocusInitial);
+                    return;
+                }
+                if self
+                    .pending_draft
+                    .as_ref()
+                    .is_some_and(|(_, inline, _)| *inline)
+                {
+                    return;
+                }
                 if !self.reader_shown() {
                     // No pane to read it in: Gmail's o or Enter opens a
                     // window, now or once the row is selected (#475).
@@ -249,13 +268,15 @@ impl AppModel {
             }
 
             AppMsg::RenderThread => {
-                self.thread_render_queued = false;
+                // Painted already, by a sooner call for the same render.
+                if !std::mem::take(&mut self.thread_render_queued) {
+                    return;
+                }
                 if self.current_thread.len() > 1 {
                     // Still assembling and still within the grace period: come
                     // back rather than paint a conversation that is about to be
                     // replaced. The re-queue is what makes the deadline fire.
-                    let unsettled = self.current_thread.iter().any(|m| m.body.is_empty())
-                        || self.thread_related_pending;
+                    let unsettled = !self.thread_settled();
                     let waiting = self
                         .thread_opened_at
                         .is_some_and(|opened| opened.elapsed() < THREAD_BODY_WAIT);
@@ -457,13 +478,15 @@ impl AppModel {
         // Selecting a draft opens it in the compose editor, in the
         // reading pane where the message would otherwise show.
         if self.is_drafts_folder(m.account_id, m.folder_id) {
-            self.reader_focus_pending = false;
+            self.draft_keeps_list =
+                (!std::mem::take(&mut self.reader_focus_pending)).then_some((m.account_id, m.id));
             self.open_draft(m, true, HandOffFiles::default(), &sender);
             return;
         }
         self.follow_keyboard_into_reader();
         self.attachments.clear();
         self.attachments_loading = false;
+        self.attachments_asked.clear();
         self.sync_attachment_drawer();
         let account_id = m.account_id;
         let folder_path = self.resolve_folder_path(&m);
@@ -481,7 +504,7 @@ impl AppModel {
         // Marking that one outright left it read, and folded, every
         // time an unread conversation was opened again (#392).
         let conversation = thread.len() > 1;
-        self.mark_read_on_open(&m, conversation, &sender);
+        self.mark_read_on_open(&m, conversation, needs_body, &sender);
 
         let mut current = m.clone();
         if !conversation {
@@ -502,7 +525,12 @@ impl AppModel {
 
         let mut related = self.related_request(&m, &thread, solo);
 
+        // Opening it changes the reader and its drawer one input at a
+        // time: freeze the pane first, so they change unseen and show
+        // together. What this update emits (the emptied drawer above
+        // included) is only handled once it returns, under the freeze.
         if thread.len() > 1 {
+            self.reader_swap.freeze();
             self.open_conversation(&m, &thread, &current, needs_body, related, &sender);
         } else {
             self.current_thread.clear();
@@ -521,10 +549,10 @@ impl AppModel {
                 }
                 return;
             }
+            self.reader_swap.freeze();
             self.show_single(&m, display, needs_body, folder_path.clone(), related);
+            self.load_attachments_on_open(&m, folder_path);
         }
-
-        self.load_attachments_on_open(&m, folder_path);
     }
 
     /// With the Privacy switch on, the remote content of the rows likely
@@ -564,29 +592,43 @@ impl AppModel {
 
     /// Marks a lone message read as the read-mark setting says: at once,
     /// after two seconds in view (#100), or never. A conversation is marked
-    /// card by card as the reader shows them.
+    /// card by card as the reader shows them. One whose body is still on its
+    /// way waits for it: nothing can be read before then (#638).
     fn mark_read_on_open(
         &mut self,
         m: &Message,
         conversation: bool,
+        needs_body: bool,
         sender: &ComponentSender<Self>,
     ) {
-        if m.unread && !conversation {
-            match self.read_mark {
-                config::ReadMark::Shown => self.mark_opened_read(m),
-                config::ReadMark::Delay => {
-                    // Mark after a beat in view — navigating away
-                    // before then leaves it unread (#100).
-                    let s = sender.clone();
-                    let msg = m.clone();
-                    gtk::glib::timeout_add_seconds_local_once(2, move || {
-                        s.input(AppMsg::DeferredMarkRead {
-                            message: Box::new(msg.clone()),
-                        });
+        self.read_mark_waiting = None;
+        if !m.unread || conversation {
+            return;
+        }
+        if needs_body && self.read_mark != config::ReadMark::Manual {
+            self.read_mark_waiting = Some(Box::new(m.clone()));
+            return;
+        }
+        self.start_read_mark(m, sender);
+    }
+
+    /// The lone message on screen can be read now: mark it, or start the
+    /// count to marking it, as the read-mark setting says.
+    pub(super) fn start_read_mark(&mut self, m: &Message, sender: &ComponentSender<Self>) {
+        match self.read_mark {
+            config::ReadMark::Shown => self.mark_opened_read(m),
+            config::ReadMark::Delay => {
+                // Mark after a beat in view — navigating away
+                // before then leaves it unread (#100).
+                let s = sender.clone();
+                let msg = m.clone();
+                gtk::glib::timeout_add_seconds_local_once(2, move || {
+                    s.input(AppMsg::DeferredMarkRead {
+                        message: Box::new(msg.clone()),
                     });
-                }
-                config::ReadMark::Manual => {}
+                });
             }
+            config::ReadMark::Manual => {}
         }
     }
 
@@ -661,6 +703,10 @@ impl AppModel {
             self.load_missing_thread_bodies(Some((account_id, m.id)));
             self.thread_painted = true;
             self.thread_related_pending = false;
+            // The cards' files go in with the document (the pane is frozen
+            // meanwhile): patched in after it shows, a row of them pushes
+            // the page down.
+            self.push_card_attachments();
             self.show_thread();
             self.load_thread_attachments();
             if let Some(req) = related.take() {
@@ -733,27 +779,24 @@ impl AppModel {
         self.show_message(Some(display), needs_body);
     }
 
-    /// Attachments: use the in-memory cache if present; otherwise
-    /// fetch them (disk cache first, then the server). Opening the
+    /// A lone message's attachments: use the in-memory cache if present;
+    /// otherwise fetch them (disk cache first, then the server). Opening the
     /// message is the request — the paperclip appears when they
-    /// land, with no "load attachments" click in between.
+    /// land, with no "load attachments" click in between. A conversation's
+    /// drawer spans all its messages, and `load_thread_attachments` fills it.
     fn load_attachments_on_open(&mut self, m: &Message, folder_path: Option<String>) {
-        let account_id = m.account_id;
         if m.has_attachment {
             if let Some(cached) = self.attachment_cache.get(&body_key(m)).cloned() {
                 self.attachments = cached;
                 self.sync_attachment_drawer();
             } else if let Some(path) = folder_path {
-                self.attachments_loading = true;
-                self.send_to(
-                    account_id,
-                    MailRequest::LoadAttachments {
-                        message_id: m.id,
-                        path,
-                        uid: m.uid,
-                        download: true,
-                    },
-                );
+                let req = MailRequest::LoadAttachments {
+                    message_id: m.id,
+                    path,
+                    uid: m.uid,
+                    download: true,
+                };
+                self.ask_attachments(body_key(m), req);
             }
         }
     }

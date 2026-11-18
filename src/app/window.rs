@@ -33,16 +33,84 @@ pub(super) fn save_window_geometry(w: &adw::ApplicationWindow) {
     crate::config::save_window_state(width, height, maximized);
 }
 
+/// Save the geometry a second after it changes, not only on close (#642):
+/// a logout or a restart ends Hylki without a close, and with Run in
+/// Background the window was closed long before, at another size.
+fn save_geometry_on_change(window: &adw::ApplicationWindow) {
+    let due = std::rc::Rc::new(std::cell::Cell::new(false));
+    let changed = move |w: &adw::ApplicationWindow| {
+        if due.replace(true) {
+            return;
+        }
+        let (w, due) = (w.downgrade(), due.clone());
+        gtk::glib::timeout_add_seconds_local_once(1, move || {
+            due.set(false);
+            // A hidden window's size is not one the user chose.
+            if let Some(w) = w.upgrade().filter(|w| w.is_visible()) {
+                save_window_geometry(&w);
+            }
+        });
+    };
+    for property in ["default-width", "default-height", "maximized"] {
+        let changed = changed.clone();
+        window.connect_notify_local(Some(property), move |w, _| changed(w));
+    }
+}
+
 /// Exits the process the moment state is saved. Letting GTK, WebKit and
 /// the per-account worker threads tear down the normal way can abort — a
 /// Rust panic fired from a GObject dispose callback becomes SIGABRT, which
 /// the Flatpak surfaces as a crash notification. Nothing else needs
 /// persisting on quit: accounts and settings are written as they change,
 /// held sends are parked, the keyring's share once its thread is done.
-pub(super) fn exit_now(outgoing: &super::outgoing::OutgoingList) -> ! {
+pub(super) fn exit_now(
+    outgoing: &super::outgoing::OutgoingList,
+    merges: &super::merge_send::MergeRuns,
+) -> ! {
     super::outgoing::park_held(outgoing);
+    super::merge_send::park_waiting(merges);
     finish_keyring_writes();
+    // No assistant can reach an app that has gone.
+    crate::mcp::remove_socket();
     std::process::exit(0)
+}
+
+const MIN_HEIGHT: i32 = 360;
+
+/// Keep the window's minimum width at what is on show (#624): the sidebar
+/// rail beside the panes at their floors, so the window tiles to half of a
+/// laptop screen. The panes' needs change as the toolbar
+/// folds, Focus Mode hides parts of a header or the gallery opens, and each
+/// of those draws a frame, so the floor is checked after every one: an
+/// unchanged measure comes from GTK's cache.
+fn follow_content_floor(root: &adw::ApplicationWindow, widgets: &AppModelWidgets) {
+    let Some(content) = widgets.content_stack.parent() else {
+        return;
+    };
+    let content = content.downgrade();
+    let fit = move |win: &adw::ApplicationWindow| {
+        let Some(content) = content.upgrade() else {
+            return;
+        };
+        let width = super::sidebar_peek::SIDEBAR_RAIL_WIDTH as i32
+            + content.measure(gtk::Orientation::Horizontal, -1).0;
+        if win.width_request() != width {
+            win.set_size_request(width, MIN_HEIGHT);
+        }
+    };
+    // Before the first frame too: the window opens at the floor.
+    root.connect_realize(move |win| {
+        fit(win);
+        let Some(clock) = win.frame_clock() else {
+            return;
+        };
+        let (win, fit) = (win.downgrade(), fit.clone());
+        clock.connect_after_paint(move |_| {
+            if let Some(win) = win.upgrade() {
+                fit(&win);
+            }
+        });
+    });
 }
 
 impl AppModel {
@@ -62,14 +130,13 @@ impl AppModel {
         if self.start_fullscreen {
             root.fullscreen();
         }
-        // Below this width the expanded sidebar and a full-width Actions
-        // Palette can't both fit (280 sidebar + 324 list + 492 reader), so the
-        // sidebar drops to its icon rail automatically — this is what keeps the
-        // palette whole when the window is tiled to half of a 1920px screen.
-        // With a breakpoint present the window no longer derives its minimum
-        // size from its content, so pin an explicit floor: the sidebar rail
-        // (80) + the list's palette floor (324) + the reader header (~492).
-        root.set_size_request(904, 360);
+        save_geometry_on_change(root);
+        // Below this width the sidebar drops to its icon rail automatically,
+        // which leaves the list and the reader their room when the window is
+        // tiled to half of a 1920px screen. With a breakpoint present the window
+        // no longer derives its minimum size from its content, so it is given
+        // one (see follow_content_floor).
+        follow_content_floor(root, widgets);
         let narrow = adw::Breakpoint::new(adw::BreakpointCondition::new_length(
             adw::BreakpointConditionLengthType::MaxWidth,
             1094.0,
@@ -116,13 +183,14 @@ impl AppModel {
         app.add_action(&self.reading_pane_action);
         let window = root.clone();
         let outgoing = self.outgoing.clone();
+        let merges = self.merges.clone();
         let quit = gtk::gio::SimpleAction::new("quit", None);
         quit.connect_activate(move |_, _| {
             // Same teardown as closing the last window: save the geometry,
             // then exit rather than unwinding through GTK and WebKit.
             save_window_geometry(&window);
             crate::desktop::background::set_status("");
-            exit_now(&outgoing)
+            exit_now(&outgoing, &merges)
         });
         app.add_action(&quit);
         gtk::prelude::GtkApplicationExt::set_accels_for_action(&app, "app.quit", &["<Ctrl>q"]);

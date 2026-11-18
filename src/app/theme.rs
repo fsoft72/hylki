@@ -37,6 +37,7 @@ pub(super) static WIZARD_HOLDS_LIGHT: std::sync::atomic::AtomicBool =
 /// - The remote-content banner's shield: amber on dark, a deeper orange on
 ///   light where amber washes out.
 /// - The Refresh button while offline (#442): orange, a step deeper on light.
+/// - The attachment type icons' palette step (#651).
 /// - The composer's ground: the reader's deeper page shade, read from the
 ///   live theme (#148) rather than the stock GNOME values, so a custom theme
 ///   carries through to the composer like it does to the reader.
@@ -53,8 +54,8 @@ pub(super) fn install_scheme_css(window: &impl IsA<gtk::Widget>) {
     }
     let window = window.clone().upcast::<gtk::Widget>();
     let apply = move |provider: &gtk::CssProvider, dark: bool| {
-        // The selection is the GNOME accent itself at full saturation, with
-        // high-contrast white text, while the list holds the keyboard. A
+        // The selection is the accent itself at full saturation, with the
+        // accent's own foreground on it, while the list holds the keyboard. A
         // click into the reader hands focus straight back to the list, so
         // that is nearly always; when something else really has it (the
         // composer, a search entry, or focus lost in a rebuild) the row
@@ -74,7 +75,7 @@ pub(super) fn install_scheme_css(window: &impl IsA<gtk::Widget>) {
             ".message-list > row:selected .message-row, \
              .message-list > row:selected:hover .message-row, \
              .message-list > row:selected:active .message-row {{ \
-               background-color: @accent_bg_color; color: white; }}\
+               background-color: @accent_bg_color; color: @accent_fg_color; }}\
              .message-list:not(:focus-within):not(:backdrop) > row:selected .message-row, \
              .message-list:not(:focus-within):not(:backdrop) > row:selected:hover .message-row, \
              .message-list:not(:focus-within):not(:backdrop) > row:selected:active .message-row {{ \
@@ -90,7 +91,9 @@ pub(super) fn install_scheme_css(window: &impl IsA<gtk::Widget>) {
              .remote-alert image {{ color: {shield}; }}\
              .refresh-offline {{ color: {offline}; }}\
              .inline-compose-surface, .compose-pane {{ background-color: {page}; }}\
-             .reader-split > separator {{ background-color: {page}; }}"
+             .reader-split > separator {{ background-color: {page}; }}\
+             {ftype}",
+            ftype = crate::ui::thumbnails::ftype_css(dark),
         ));
     };
     let style = adw::StyleManager::default();

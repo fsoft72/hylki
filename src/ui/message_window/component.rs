@@ -10,6 +10,7 @@ use crate::ui::attachment_drawer::{AttachmentDrawer, DrawerInit, DrawerOutput};
 use crate::ui::lightbox::{Lightbox, LightboxInput};
 use crate::ui::message_list::RowAction;
 use crate::ui::message_view::{MessageView, MessageViewInput, MessageViewOutput};
+use crate::ui::reader_swap::ReaderSwap;
 use adw::prelude::*;
 use relm4::prelude::*;
 
@@ -49,7 +50,7 @@ impl Component for MessageWindow {
                 #[wrap(Some)]
                 #[name = "content"]
                 set_content = &gtk::Overlay {
-                    set_child: Some(model.drawer.widget()),
+                    set_child: Some(model.swap.host()),
                     add_overlay: model.lightbox.widget(),
                 },
             },
@@ -61,8 +62,9 @@ impl Component for MessageWindow {
         root: Self::Root,
         sender: ComponentSender<Self>,
     ) -> ComponentParts<Self> {
+        let swap = ReaderSwap::new();
         let view = MessageView::builder()
-            .launch(())
+            .launch(swap.clone())
             .forward(sender.input_sender(), from_reader);
         // Apply the message-content theme before the first render.
         view.emit(MessageViewInput::SetContentTheme(init.content_dark));
@@ -95,6 +97,7 @@ impl Component for MessageWindow {
                 DrawerOutput::ShowInMessage(att) => MessageWindowInput::ShowAttachment(att),
                 DrawerOutput::DeleteFromServer(att) => MessageWindowInput::DeleteAttachment(att),
             });
+        swap.set_pane(drawer.widget());
         let lightbox = Lightbox::builder().launch(()).detach();
 
         let thread = if init.thread.is_empty() {
@@ -114,6 +117,7 @@ impl Component for MessageWindow {
             attachments_loading: init.attachments_loading.into_iter().collect(),
             drawer_enabled: init.drawer_enabled,
             drawer,
+            swap,
             lightbox,
             tags: init.tags,
             toolbar: init.toolbar,
@@ -310,8 +314,8 @@ impl Component for MessageWindow {
                 account_id,
                 id,
                 index,
-                save,
-            } => self.on_card_attachment(account_id, id, index, save, root),
+                action,
+            } => self.on_card_attachment(account_id, id, index, action, root),
             MessageWindowInput::DeleteAttachment(att) => self.on_delete_attachment(att, &sender),
             MessageWindowInput::ShowAttachment(att) => {
                 if let Some(m) = self.owner(&att) {
@@ -332,9 +336,18 @@ impl Component for MessageWindow {
                 self.msg.unread = !self.msg.unread;
                 self.sync_toolbar();
             }
+            MessageWindowInput::Print if self.lightbox.model().is_open() => {
+                self.lightbox.emit(LightboxInput::PrintCurrent);
+            }
             MessageWindowInput::Print => self.view.emit(MessageViewInput::Print),
             MessageWindowInput::PrintPreview => self.view.emit(MessageViewInput::PrintPreview),
             MessageWindowInput::Find => self.view.emit(MessageViewInput::OpenFind),
+            MessageWindowInput::SourceLoading(key) => {
+                self.view.emit(MessageViewInput::SourceLoading(key))
+            }
+            MessageWindowInput::ShowSource { key, text } => {
+                self.view.emit(MessageViewInput::ShowSource { key, text })
+            }
             // Moving the message away: let the app handle it, then close.
             MessageWindowInput::Delete => {
                 self.emit_action(RowAction::Delete, &sender);
@@ -350,9 +363,6 @@ impl Component for MessageWindow {
                 root.close();
             }
             MessageWindowInput::MoveTo => self.on_move_to(&sender, root),
-            MessageWindowInput::MoveToAt { message, x, y } => {
-                let _ = sender.output(MessageWindowOutput::MoveTo { message, x, y });
-            }
             MessageWindowInput::Key(action) => self.run_key(action, &sender, root),
             MessageWindowInput::TagMenu => self.show_tag_menu(&sender),
             MessageWindowInput::SnoozeMenu => self.show_snooze_menu(&sender),
@@ -373,12 +383,6 @@ impl Component for MessageWindow {
                 let _ = sender.output(MessageWindowOutput::AddToContacts {
                     name: String::new(),
                     email: addr,
-                });
-            }
-            MessageWindowInput::ContactFor(m) => {
-                let _ = sender.output(MessageWindowOutput::AddToContacts {
-                    name: m.from_name.clone(),
-                    email: m.from_addr.clone(),
                 });
             }
             MessageWindowInput::ComposeTo(addr) => {
@@ -406,27 +410,23 @@ fn from_reader(out: MessageViewOutput) -> MessageWindowInput {
         MessageViewOutput::CardAction { action, message } => {
             MessageWindowInput::CardAction { action, message }
         }
-        MessageViewOutput::ContactSender(m) => MessageWindowInput::ContactFor(m),
         MessageViewOutput::MarkSeen { account_id, id } => {
             MessageWindowInput::Seen { account_id, id }
         }
         MessageViewOutput::CardMenu { message, x, y, hit } => {
             MessageWindowInput::CardMenu { message, x, y, hit }
         }
-        MessageViewOutput::CardMoveTo { message, x, y } => {
-            MessageWindowInput::MoveToAt { message, x, y }
-        }
         MessageViewOutput::SelectCards(_) => MessageWindowInput::Ignore,
         MessageViewOutput::AttachmentAction {
             account_id,
             id,
             index,
-            save,
+            action,
         } => MessageWindowInput::CardAttachment {
             account_id,
             id,
             index,
-            save,
+            action,
         },
         // The pop-out keeps its own view's state; the main window's
         // per-message record is not its to write.

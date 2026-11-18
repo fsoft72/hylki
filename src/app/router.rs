@@ -83,6 +83,7 @@ impl AppModel {
             | AppMsg::OpenAttachmentMessage { .. }) => self.on_gallery(msg),
             msg @ (AppMsg::UnifiedSelected(..)
             | AppMsg::AccountStarredSelected(..)
+            | AppMsg::StandInView
             | AppMsg::FolderSelected { .. }) => self.on_navigation(msg, sender),
             msg @ (AppMsg::AccountFolded { .. }
             | AppMsg::ToggleCustomFolders(..)
@@ -135,6 +136,7 @@ impl AppModel {
             | AppMsg::PopoutClosed(..)
             | AppMsg::AddContactFrom { .. }
             | AppMsg::PopoutMoveTo { .. }
+            | AppMsg::PopoutCopyTo { .. }
             | AppMsg::PopoutShortcut { .. }
             | AppMsg::ViewSource) => self.on_popout(msg, sender),
             msg @ (AppMsg::SetReadingPane(..)
@@ -176,7 +178,6 @@ impl AppModel {
             | AppMsg::PurgeMessages(..)
             | AppMsg::CardAction { .. }
             | AppMsg::ToggleReadCurrent
-            | AppMsg::CardContact(..)
             | AppMsg::RowAction { .. }
             | AppMsg::Bulk { .. }
             | AppMsg::BulkComplete
@@ -227,7 +228,9 @@ impl AppModel {
             | AppMsg::CopyContacts { .. }
             | AppMsg::MoveContacts { .. }
             | AppMsg::ContactWriteDone(..)
-            | AppMsg::ImportContacts(..)
+            | AppMsg::ImportContacts { .. }
+            | AppMsg::ContactImportReady(..)
+            | AppMsg::RunContactImport(..)
             | AppMsg::ContactsImported(..)) => self.on_contacts(msg, sender),
             msg @ AppMsg::OpenAbout => self.on_about(msg, sender),
             msg @ (AppMsg::AllowSender(..)
@@ -247,7 +250,10 @@ impl AppModel {
             | AppMsg::ListPaneWidth(..)
             | AppMsg::ListCount(..)
             | AppMsg::ListColumnWidths(..)
-            | AppMsg::ListSortChanged(..)) => self.on_list_header(msg, sender),
+            | AppMsg::ListSortChanged(..)
+            | AppMsg::ListSortForAll
+            | AppMsg::ListShowRecipients(_)
+            | AppMsg::ListFoldedDays(_)) => self.on_list_header(msg, sender),
             msg @ AppMsg::OwnGravatarFetched { .. } => self.on_identity(msg),
             msg @ (AppMsg::SetReaderActionsCollapsed(..)
             | AppMsg::SetReaderCompact(..)
@@ -291,6 +297,8 @@ impl AppModel {
             msg @ (AppMsg::NewFromTemplate
             | AppMsg::TemplatePickNow
             | AppMsg::TemplatePicked(..)
+            | AppMsg::PickTemplate { .. }
+            | AppMsg::TemplateInsertPicked { .. }
             | AppMsg::SaveDraftMessage(..)
             | AppMsg::SaveTemplateMessage(..)
             | AppMsg::AutoSaveDraft { .. }
@@ -322,7 +330,9 @@ impl AppModel {
             | AppMsg::KeywordsSynced { .. }
             | AppMsg::TagViewLoaded { .. }) => self.on_tags(msg, sender),
             msg @ (AppMsg::SendMessage { .. }
-            | AppMsg::SendMerged(..)
+            | AppMsg::SendMerged { .. }
+            | AppMsg::MergeTick(..)
+            | AppMsg::StopMerge(..)
             | AppMsg::DispatchSend(..)
             | AppMsg::UndoSend(..)
             | AppMsg::SendDone { .. }
@@ -344,6 +354,7 @@ impl AppModel {
             | AppMsg::AddFirstAccount
             | AppMsg::AccountSaved { .. }
             | AppMsg::ShowKeyringHelp { .. }
+            | AppMsg::KeyringRead { .. }
             | AppMsg::ReconnectAccounts
             | AppMsg::ShowCarryOverNotice(..)
             | AppMsg::AccountEnabledChanged { .. }
@@ -392,9 +403,9 @@ impl AppModel {
             | AppMsg::MovesSettled { .. }
             | AppMsg::FolderUnreadByPath { .. }
             | AppMsg::BodyHits { .. }) => self.on_events_folders(msg, sender),
-            msg @ (AppMsg::RawExported { .. } | AppMsg::RawImported { .. }) => {
-                self.on_transfer(msg, sender)
-            }
+            msg @ (AppMsg::RawExported { .. }
+            | AppMsg::RawImported { .. }
+            | AppMsg::DraftDecrypted { .. }) => self.on_transfer(msg, sender),
             msg @ (AppMsg::Messages { .. }
             | AppMsg::MessagesAppend { .. }
             | AppMsg::BackfillDone { .. }
@@ -407,6 +418,7 @@ impl AppModel {
             | AppMsg::AttachmentsPending { .. }
             | AppMsg::NoAttachments { .. }
             | AppMsg::HasAttachments { .. }) => self.on_events_bodies(msg, sender),
+            msg @ AppMsg::Assistant(..) => self.on_assistant(msg, sender),
             AppMsg::Pref(pref) => self.route_pref(pref, sender),
         }
     }
@@ -485,24 +497,23 @@ impl AppModel {
             | PrefOutput::SetReceipts(..)
             | PrefOutput::SetAutoRemoteContent(..)
             | PrefOutput::SetRemoteAhead(..)
+            | PrefOutput::SetCleanLinks(..)
             | PrefOutput::SetThreading(..)
             | PrefOutput::SetThreadExpansion(..)
             | PrefOutput::SetThreadRowNewest(..)
             | PrefOutput::SetConfirmThreadDelete(..)
-            | PrefOutput::SetCardActionsMode { .. }
             | PrefOutput::SetThreadsExpanded(..)
             | PrefOutput::SetThreadNewestFirst(..)
             | PrefOutput::SetFoldMessages(..)
             | PrefOutput::SetAlwaysShowRecipients(..)
             | PrefOutput::SetCardAttachments(..)
             | PrefOutput::SetAttachmentDrawer(..)
+            | PrefOutput::SetPreviewerPictures(..)
             | PrefOutput::SetReaderDefault(..)
             | PrefOutput::SetPgpLabels(..)
             | PrefOutput::SetAccountChip(..)
             | PrefOutput::SetReaderFindBottom(..)
             | PrefOutput::SetSingleMessageCard(..)
-            | PrefOutput::SetCardPaletteCollapse(..)
-            | PrefOutput::SetCardPaletteMenu(..)
             | PrefOutput::SetMessageTheme(..)
             | PrefOutput::SetOverrideFonts(..)
             | PrefOutput::SetReaderFont(..)
@@ -515,17 +526,16 @@ impl AppModel {
             | PrefOutput::SetListSearchOpen(..)
             | PrefOutput::SetContactsSearchOpen(..)
             | PrefOutput::SetContactNames(..)
+            | PrefOutput::SetReplyToSender(..)
             | PrefOutput::SetListSearchBottom(..)
             | PrefOutput::SetListBulkBarBottom(..)
             | PrefOutput::SetGroupByDate(..)
             | PrefOutput::SetPillsBelow(..)
+            | PrefOutput::SetListFollowsWindow(..)
             | PrefOutput::SetListColumns(..)
             | PrefOutput::SetPreviewLines(..)
             | PrefOutput::SetAttachmentsRow(..)
             | PrefOutput::ResetColumnWidths
-            | PrefOutput::SetPaletteCollapse(..)
-            | PrefOutput::SetListPalette(..)
-            | PrefOutput::SetListPaletteHover(..)
             | PrefOutput::SetSwipeEnabled(..)
             | PrefOutput::SetSwipeReversed(..)
             | PrefOutput::SetSwipeSensitivity(..)) => self.on_prefs_list_pref(pref, sender),
@@ -546,14 +556,17 @@ impl AppModel {
             | PrefOutput::SetSpellcheckLangs(..)
             | PrefOutput::SetComposeFormat(..)
             | PrefOutput::SetFollowPlain(..)
+            | PrefOutput::SetAskPlainSwitch(..)
             | PrefOutput::SetReplyPosition(..)
             | PrefOutput::SetSignaturePosition(..)
             | PrefOutput::SetSignatureDashes(..)
             | PrefOutput::SetFoldQuote(..)
             | PrefOutput::SetReplyHeader(..)
+            | PrefOutput::SetAttachmentKeywords(..)
             | PrefOutput::SetUndoSend(..)
             | PrefOutput::SetRequestReceipts(..)
             | PrefOutput::SetReturnedReceipts(..)) => self.on_prefs_compose_pref(pref),
+            pref @ PrefOutput::SetAssistantPolicy(..) => self.on_assistant_pref(pref, sender),
             // The rest of Preferences' outputs are mapped to their own
             // messages before they get here.
             _ => {}

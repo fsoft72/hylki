@@ -2,7 +2,7 @@
 
 use relm4::prelude::*;
 
-use crate::ui::compose::ComposePrefill;
+use crate::ui::compose::{ComposePrefill, Original};
 use crate::ui::message_list::{MessageListInput, SearchScope};
 use crate::ui::sidebar::SidebarInput;
 use crate::worker::MailRequest;
@@ -171,6 +171,7 @@ impl AppModel {
             forwards: item.forwards.clone(),
             draft_origin: None,
             encrypt: false,
+            from_encrypted: false,
             receipt: Some(editable.receipt),
             importance: editable.importance,
             outbox_origin: Some(id),
@@ -186,7 +187,10 @@ impl AppModel {
             resumed: false,
             no_signature: false,
             template: false,
-            original_plain: false,
+            original: Original::Unknown,
+            written_plain: editable.plain,
+            typed_html: String::new(),
+            assistant: false,
         };
         // The Outbox stays the folder on screen: its list is still what's listed,
         // so its toolbar has to stay too. Leaving it would strand the user in a
@@ -203,7 +207,8 @@ impl AppModel {
         m: crate::worker::OutgoingMessage,
         sender: &ComponentSender<Self>,
     ) {
-        self.open_compose(account_id, unsent_prefill(m), sender);
+        let own = self.email_of_config(account_id);
+        self.open_compose(account_id, unsent_prefill(m, &own), sender);
     }
 
     /// The messages the router sends here (see `AppModel::route`).
@@ -229,10 +234,13 @@ impl AppModel {
                 self.sync_attachment_drawer();
                 self.message_list.emit(MessageListInput::SetSelected(None));
                 self.message_list.emit(MessageListInput::ResetPaging);
+                self.apply_view_sort();
                 self.message_list
                     .emit(MessageListInput::SetScope(SearchScope::ThisFolder));
                 self.message_list
                     .emit(MessageListInput::SetColorize(self.accounts.len() > 1));
+                self.message_list
+                    .emit(MessageListInput::SetSearchAccount(None));
                 self.show_message(None, false);
                 self.push_outbox();
             }

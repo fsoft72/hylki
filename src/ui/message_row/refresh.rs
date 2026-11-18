@@ -18,6 +18,9 @@ impl Row {
     pub(crate) fn refresh(&self) {
         let Some(shared) = self.shared() else { return };
         let Some(data) = self.data() else { return };
+        if self.refresh_fold(&data) {
+            return;
+        }
         let look = shared.look.borrow().clone();
         let msg = &data.msg;
         let meta = &data.meta;
@@ -34,7 +37,6 @@ impl Row {
         self.refresh_subject(&data, &look, &shared, unread);
         self.refresh_preview(&data, &look);
         self.refresh_swipe_state(&shared, &look);
-        self.sync_palette_buttons();
         self.sync_swipe_strip();
     }
 
@@ -57,30 +59,13 @@ impl Row {
         // The actions line: centred under the avatar with circles on (circle
         // centre minus half the button, plus a reply card's 10px indent),
         // hugging the pill's edge without.
-        w.actions_line.set_visible(look.show_palette);
-        w.actions_line
-            .set_margin_start(match (look.avatars, meta.is_child) {
-                (true, true) => 32,
-                (true, false) => 22,
-                (false, true) => 20,
-                (false, false) => 10,
-            });
-        w.actions_line
-            .set_margin_bottom(if look.avatars { 3 } else { 4 });
-        self.sync_palette_classes();
-
         // The content box.
         let mut content = vec!["message-row"];
         if !look.avatars {
             content.push("no-avatar");
         }
-        if !look.show_palette {
-            content.push("no-palette");
-        }
         if single {
             content.push("single-line");
-        } else if look.show_palette && look.avatars && look.preview_lines == 0 {
-            content.push("palette-room");
         }
         w.content.set_css_classes(&content);
         w.content
@@ -168,7 +153,7 @@ impl Row {
         w.clip.set_visible(if single {
             col(ListColumn::Attachment)
         } else {
-            msg.has_attachment
+            msg.has_attachment && look.show_attachments
         });
         w.clip
             .set_opacity(if msg.has_attachment { 1.0 } else { 0.0 });
@@ -176,7 +161,7 @@ impl Row {
         w.star.set_visible(if single {
             col(ListColumn::Star)
         } else {
-            starred
+            starred && look.show_stars
         });
         w.star.set_opacity(if starred { 1.0 } else { 0.0 });
         // A card shows it beside its other marks when there is one (#563).
@@ -644,24 +629,5 @@ impl Row {
         let lines = lines.clamp(1, 3);
         self.w.preview.set_wrap(lines > 1);
         self.w.preview.set_lines(lines as i32);
-    }
-
-    pub(super) fn set_hover(&self, over: bool) {
-        self.st.borrow_mut().hovered = over;
-        self.sync_palette_classes();
-        // Hover mode: the palette slides open by itself on the row, and arms
-        // the usual collapse timeout on leave.
-        let Some(shared) = self.shared() else { return };
-        if !shared.palette_hover.get() || self.data().is_none() {
-            return;
-        }
-        if over {
-            if !self.st.borrow().palette_open {
-                self.open_palette(true);
-            }
-            self.cancel_collapse();
-        } else if self.st.borrow().palette_open {
-            self.arm_collapse();
-        }
     }
 }

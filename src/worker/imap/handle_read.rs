@@ -148,6 +148,9 @@ impl<E: Emit> ImapWorker<E> {
         if let Some(sess) = session.as_mut() {
             let kind = cached_folder_kind(cache.as_ref(), account_id, path);
             if let Some(unread) = selected_chip_count(sess, kind).await {
+                if let Some(c) = cache.as_ref() {
+                    c.set_folder_unread(account_id, path, unread);
+                }
                 emit(WorkerEvent::FolderUnread { folder_id, unread });
             }
         }
@@ -212,7 +215,25 @@ impl<E: Emit> ImapWorker<E> {
         let session = &mut self.session;
         let emit = &self.emit;
         match load_body_retry(session, account, &path, uid).await {
-            Ok(rendered) => {
+            Ok(None) => {
+                // Moved or deleted elsewhere since the list was fetched. The
+                // list's next sync drops the row; until then the reader says
+                // why it is empty rather than spin.
+                if let Some(c) = cache.as_ref() {
+                    c.delete_message(account_id, &path, uid);
+                }
+                emit(WorkerEvent::Gone {
+                    message_id,
+                    path: path.clone(),
+                    uid,
+                });
+                emit(WorkerEvent::Body {
+                    message_id,
+                    path,
+                    body: i18n("This message was moved or deleted on the server."),
+                });
+            }
+            Ok(Some(rendered)) => {
                 deliver_body(
                     cache.as_ref(),
                     account_id,
@@ -299,17 +320,24 @@ impl<E: Emit> ImapWorker<E> {
     }
 
     /// A message's raw source for the source view.
-    pub(super) async fn on_load_source(&mut self, path: String, uid: u32) -> After {
+    pub(super) async fn on_load_source(&mut self, message_id: u32, path: String, uid: u32) -> After {
         let account = &self.account;
         let session = &mut self.session;
         let emit = &self.emit;
         match load_source_retry(session, account, &path, uid).await {
-            Ok(text) => emit(WorkerEvent::Source { text }),
+            Ok(text) => emit(WorkerEvent::Source {
+                message_id,
+                text: Some(text),
+            }),
             Err(e) => {
                 emit(WorkerEvent::net_error(i18n_f(
                     "Could not load source: {e}",
                     &[("e", &(e).to_string())],
                 )));
+                emit(WorkerEvent::Source {
+                    message_id,
+                    text: None,
+                });
             }
         }
         After::Done

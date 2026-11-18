@@ -143,7 +143,12 @@ impl Cache {
     /// Store a message's rendered body, and its words for search (#509).
     pub(crate) fn save_body(&self, account_id: u32, folder_path: &str, uid: u32, body: &str) {
         let run = || -> rusqlite::Result<()> {
-            let tx = self.conn.unchecked_transaction()?;
+            // Reserve the writer before reading: a deferred transaction's
+            // snapshot cannot be upgraded if another worker writes meanwhile.
+            let tx = rusqlite::Transaction::new_unchecked(
+                &self.conn,
+                rusqlite::TransactionBehavior::Immediate,
+            )?;
             // A replaced row is deleted without its trigger firing, so the
             // old words go here.
             if let Some(old) = self.body_rowid(account_id, folder_path, uid) {
@@ -293,7 +298,7 @@ impl Cache {
             let rows = stmt.query_map(params![account_id, folder_path, uid], |row| {
                 Ok(Attachment {
                     name: row.get(0)?,
-                    data: row.get(1)?,
+                    data: row.get::<_, Vec<u8>>(1)?.into(),
                 })
             })?;
             rows.collect()

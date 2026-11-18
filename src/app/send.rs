@@ -3,11 +3,13 @@
 
 use std::collections::HashSet;
 
+use adw::prelude::*;
 use relm4::prelude::*;
 
-use crate::i18n::{i18n, ni18n_f};
+use crate::i18n::i18n;
 use crate::models::Message;
 use crate::ui::compose::ComposeInput;
+use crate::ui::keymap::{focus_in_compose, focus_is_text};
 use crate::ui::message_list::MessageListInput;
 use crate::worker::{MailRequest, OutgoingMessage};
 
@@ -49,6 +51,8 @@ pub(super) fn machine_message(
         request_receipt: false,
         importance: Default::default(),
         receipt_report: None,
+        merged: false,
+        peer_keys: Vec::new(),
     }
 }
 
@@ -306,7 +310,7 @@ impl AppModel {
             self.show_message(None, false);
         }
         let account_id = o.account_id;
-        let prefill = unsent_prefill(*o.message);
+        let prefill = unsent_prefill(*o.message, &self.email_of_config(account_id));
         let free = self.reader_compose.is_none() && !self.showing_contacts && !self.showing_outbox;
         match o.origin {
             super::outgoing::Origin::Split(answering)
@@ -326,18 +330,66 @@ impl AppModel {
         }
     }
 
+    /// Escape takes back the message waiting out its Undo Send delay, the
+    /// latest when several wait (#607). In the capture phase, because the
+    /// toast overlay binds Escape itself: it would close the notice first
+    /// and leave the message to go. A text field, a composer and a dialog
+    /// keep the key.
+    pub(super) fn install_undo_send_key(
+        &self,
+        root: &adw::ApplicationWindow,
+        sender: &ComponentSender<Self>,
+    ) {
+        use gtk::gdk::ModifierType as M;
+        let keys = gtk::EventControllerKey::new();
+        keys.set_propagation_phase(gtk::PropagationPhase::Capture);
+        let outgoing = self.outgoing.clone();
+        let window = root.clone();
+        let s = sender.clone();
+        keys.connect_key_pressed(move |_, keyval, _, state| {
+            let held = outgoing
+                .borrow()
+                .iter()
+                .filter(|o| o.held)
+                .map(|o| o.ticket)
+                .max();
+            let Some(ticket) = held.filter(|_| {
+                keyval == gtk::gdk::Key::Escape
+                    && !state
+                        .intersects(M::CONTROL_MASK | M::SHIFT_MASK | M::ALT_MASK | M::SUPER_MASK)
+                    && window.visible_dialog().is_none()
+                    && !focus_is_text(&window)
+                    && !focus_in_compose(&window)
+            }) else {
+                return gtk::glib::Propagation::Proceed;
+            };
+            s.input(AppMsg::UndoSend(ticket));
+            gtk::glib::Propagation::Stop
+        });
+        root.add_controller(keys);
+    }
+
     /// The messages the router sends here (see `AppModel::route`).
     pub(super) fn on_send(&mut self, msg: AppMsg, sender: ComponentSender<Self>) {
         match msg {
             AppMsg::SendMessage { from, out } => self.on_send_message(from, out, sender),
 
-            AppMsg::SendMerged(messages) => self.send_merged(messages),
+            AppMsg::SendMerged { messages, interval } => {
+                self.send_merged(messages, interval, &sender)
+            }
+
+            AppMsg::MergeTick(id) => self.on_merge_tick(id, &sender),
+
+            AppMsg::StopMerge(id) => self.stop_merge(id, &sender),
 
             AppMsg::DispatchSend(ticket) => self.dispatch_send(ticket),
 
             AppMsg::UndoSend(ticket) => self.undo_send(ticket, &sender),
 
             AppMsg::SendDone { ticket, sent } => {
+                if self.merged_done(ticket, sent, &sender) {
+                    return;
+                }
                 self.finish_auto_forward(ticket, sent);
                 // A failure has said so already, in the status bar, and the
                 // message is in the Outbox or back in a composer. Its
@@ -400,43 +452,6 @@ impl AppModel {
         }
     }
 
-    /// Mail Merge (#447): every message straight to its worker, which sends
-    /// them one after another. There is no Undo Send: the dialog showed
-    /// each message and the count before Send. One that cannot go waits in
-    /// the Outbox, or comes back in a composer if the server refused it.
-    fn send_merged(&mut self, messages: Vec<OutgoingMessage>) {
-        let Some(account_id) = messages.first().map(|m| m.from_account_id) else {
-            return;
-        };
-        let recipients: Vec<(String, String)> = messages
-            .iter()
-            .flat_map(|m| [&m.to, &m.cc, &m.bcc])
-            .flat_map(|f| crate::worker::parse_recipients(f))
-            .collect();
-        if let Some(c) = self.cache.as_ref() {
-            c.record_addresses(&recipients);
-        }
-        let sent_path = self.sent_copy_path(account_id);
-        let n = messages.len() as u32;
-        tracing::info!("mail merge: {n} messages from account {account_id}");
-        for message in messages {
-            self.send_to(
-                account_id,
-                MailRequest::Send {
-                    message: Box::new(message),
-                    sent_path: sent_path.clone(),
-                    ticket: 0,
-                },
-            );
-        }
-        self.show_toast(&adw::Toast::new(&ni18n_f(
-            "Sending {n} message…",
-            "Sending {n} messages…",
-            n,
-            &[("n", &n.to_string())],
-        )));
-    }
-
     /// A composer sent a message; `from` is that composer's id.
     fn on_send_message(
         &mut self,
@@ -477,6 +492,7 @@ impl AppModel {
                 own: own.contains(&email.to_lowercase()),
                 email,
                 score: 1,
+                sent: 1,
                 ..Default::default()
             })
             .collect();
@@ -494,7 +510,7 @@ impl AppModel {
                 });
             }
         }
-        let sent_path = self.sent_copy_path(account_id);
+        let sent_path = self.sent_copy_path_as(account_id, out.from_alias.as_deref());
         if out.send_at.is_some() {
             // Send Later has its own way back: the message waits in
             // the Outbox, where it can be edited or dropped.

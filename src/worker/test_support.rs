@@ -24,6 +24,8 @@ pub(super) fn sample_account() -> AccountConfig {
         folder_sort: None,
         sign_by_default: false,
         plain_subject: false,
+        autocrypt: false,
+        autocrypt_mutual: false,
         graph_directory: false,
         graph_directory_only: false,
         graph_label_names: false,
@@ -73,6 +75,7 @@ pub(super) fn flagged_message(uid: u32) -> Message {
         from_name: String::new(),
         from_addr: String::new(),
         reply_to: String::new(),
+        reply_to_name: String::new(),
         to: String::new(),
         cc: String::new(),
         bcc: String::new(),
@@ -119,6 +122,8 @@ pub(super) fn sample_outgoing() -> OutgoingMessage {
         request_receipt: false,
         importance: Default::default(),
         receipt_report: None,
+        merged: false,
+        peer_keys: Vec::new(),
     }
 }
 

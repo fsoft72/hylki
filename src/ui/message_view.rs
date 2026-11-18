@@ -28,7 +28,8 @@ mod on_find;
 mod on_prefs;
 mod on_services;
 mod on_show;
-mod page_fade;
+mod on_source;
+mod page_load;
 mod print;
 mod receipt_banner;
 mod remote;
@@ -44,20 +45,23 @@ mod webview;
 mod wrapper_css;
 
 use self::chrome::ClassRules;
-use self::page_fade::{PageFade, PendingLoad};
+use self::page_load::PendingLoad;
 use crate::models::Message;
 
 pub(crate) use faces::set_face_tiers;
+pub(crate) use frame::ground_rgba;
 pub(crate) use frame::theme_grounds_for;
+pub(crate) use links::set_clean_links;
 pub(crate) use menu::MenuHit;
 pub(crate) use menu::{hit_menu_entries, strip_navigation_items};
-pub(crate) use page_fade::{on_next_page_fade, PAGE_FADE_MS};
 pub(crate) use remote::remote_urls;
 pub(crate) use types::{
-    CardAttachment, InviteAction, MessageViewInput, MessageViewOutput, SelectMode, TrState,
-    UnsubState,
+    CardAttachment, ChipAction, InviteAction, MessageViewInput, MessageViewOutput, SelectMode,
+    TrState, UnsubState,
 };
-pub(crate) use webview::{keep_tab_out_of_key_translator, new_preview_webview, shared_web_context};
+pub(crate) use webview::{
+    keep_tab_out_of_key_translator, new_preview_webview, private_settings, shared_web_context,
+};
 
 /// Each card's detected language, with the body length it was worked out
 /// for.
@@ -173,20 +177,6 @@ pub(crate) struct MessageView {
     /// message that renders to the same document skips the load entirely —
     /// every load blanks the view for an instant, however briefly.
     shown_fingerprint: Option<u64>,
-    /// Conversation card actions hide until the card is hovered (expanded via
-    /// their ⋯ toggle). A preference, applied by stamping the document (see
-    /// `document_html`).
-    card_actions_hover: bool,
-    /// With the toggle off: show the actions automatically while the card is
-    /// hovered (vs always).
-    card_actions_auto: bool,
-    /// Seconds an opened card palette lingers after the pointer leaves — the
-    /// cards' own "Message card actions palette timeout", not the list's.
-    palette_collapse_secs: u64,
-    /// The card's ⋯ opens the card menu, the same one a right-click shows,
-    /// instead of sliding its actions palette out. A preference, applied by
-    /// stamping the document (see `document_html`).
-    card_palette_menu: bool,
     /// The open conversation has already auto-scrolled to its first unread
     /// message: later renders of the same thread (bodies streaming in, a theme
     /// flip) carry a no-scroll stamp so the reader's place is kept.
@@ -210,9 +200,10 @@ pub(crate) struct MessageView {
     /// its first card), not flush at the top the way a place the user
     /// scrolled to is restored.
     anchor_gutter: bool,
-    /// The next document goes in without the page crossfade: a sent reply's
-    /// card is arriving, and the app's stage covers the pane while it does.
-    skip_fade: bool,
+    /// The next document goes in without the pane being frozen: a sent
+    /// reply's card is arriving, and the app's stage covers the pane while
+    /// it does.
+    skip_freeze: bool,
     /// What each message's frame measured last time it was shown, so reopening a
     /// conversation lays out right away instead of settling into place.
     frame_heights: std::collections::HashMap<(u32, u32), u32>,
@@ -230,6 +221,11 @@ pub(crate) struct MessageView {
     webview_ready: bool,
     /// In-message find (#103).
     find_open: bool,
+    /// The message's source in place of its body (#658), and the view and
+    /// find that show it.
+    source: Option<on_source::SourceMode>,
+    source_view: gtk::TextView,
+    source_find: crate::ui::source_find::SourceFind,
     /// The split reply is open above this reader: its header bar is gone and
     /// the subject block meets the composer's grab strip instead, where the
     /// list-aligned 4px reads as cramped.
@@ -265,8 +261,14 @@ pub(crate) struct MessageView {
     seq: std::cell::Cell<u64>,
     /// The document waiting to replace the one on screen (`load_after_paint`).
     pending_load: std::rc::Rc<std::cell::RefCell<PendingLoad>>,
-    /// The outgoing page's still, faded out over the incoming one.
-    page_fade: PageFade,
+    /// The pane's freeze: a message opens as one change on screen.
+    swap: crate::ui::reader_swap::ReaderSwap,
+    /// The base URI of the newest document asked for: only that page,
+    /// once ready, ends the freeze.
+    latest_uri: String,
+    /// The base URI of the last page that said it was ready. WebKit's own
+    /// `uri` moves to a page as soon as it starts loading.
+    ready_uri: String,
     /// Forced dark flag for message content, or `None` to follow the system UI.
     /// This themes email content only, not the app chrome.
     content_dark: Option<bool>,

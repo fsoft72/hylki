@@ -16,6 +16,7 @@ use crate::contacts::carddav::{self, Account, Status};
 use crate::contacts::contact_sources::{self as sources, Source};
 use crate::contacts::directory::Directory;
 use crate::i18n::{i18n, i18n_f, i18n_noop};
+use crate::ui::contacts_page::book_label_factory;
 
 mod forms;
 mod pages;
@@ -198,6 +199,8 @@ pub(crate) enum ContactSourcesOutput {
     SetSearchOpen(bool),
     /// Saved contacts go by their address-book names in mail (#541).
     SetContactNames(bool),
+    /// Mail is named by its Reply-To sender (#641).
+    SetReplyToSender(bool),
     /// Where Contacts sits in the sidebar.
     SetPlacement(crate::config::SectionPlacement),
 }
@@ -208,6 +211,8 @@ pub(super) struct ContactSourcesInit {
     pub(super) placement: crate::config::SectionPlacement,
     /// Whether saved contacts go by their address-book names in mail.
     pub(super) contact_names: bool,
+    /// Whether mail is named by its Reply-To sender.
+    pub(super) reply_to_sender: bool,
 }
 
 #[relm4::component(pub(crate))]
@@ -279,6 +284,8 @@ impl SimpleComponent for ContactSources {
                                     adw::ComboRow {
                                         set_title: &i18n("Save new contacts in"),
                                         set_subtitle: &i18n("Unless another is picked when the contact is made."),
+                                        set_factory: Some(&book_label_factory(true)),
+                                        set_list_factory: Some(&book_label_factory(false)),
                                         connect_selected_notify[sender] => move |row| {
                                             sender.input(ContactSourcesInput::ChangeBook(row.selected()));
                                         },
@@ -294,6 +301,16 @@ impl SimpleComponent for ContactSources {
                                         set_active: init.contact_names,
                                         connect_active_notify[sender] => move |row| {
                                             let _ = sender.output(ContactSourcesOutput::SetContactNames(row.is_active()));
+                                        },
+                                    },
+                                    // #641: a web form sends from its own
+                                    // address, with whoever filled it in
+                                    // under Reply-To.
+                                    adw::SwitchRow {
+                                        set_title: &i18n("Show the Reply-To sender"),
+                                        set_active: init.reply_to_sender,
+                                        connect_active_notify[sender] => move |row| {
+                                            let _ = sender.output(ContactSourcesOutput::SetReplyToSender(row.is_active()));
                                         },
                                     },
                                 },

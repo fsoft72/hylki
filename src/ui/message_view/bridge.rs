@@ -6,8 +6,7 @@
 //! parse is dropped. `extra` is everything after the third colon, so it may
 //! itself contain colons.
 
-use super::types::{InviteAction, MessageViewInput, SelectMode};
-use crate::ui::message_list::RowAction;
+use super::types::{ChipAction, InviteAction, MessageViewInput, SelectMode};
 
 /// What one page message asks for.
 #[derive(Debug)]
@@ -28,16 +27,11 @@ pub(super) fn parse_bridge(msg: &str) -> Option<Bridge> {
     let (Ok(account_id), Ok(id)) = (a.parse::<u32>(), i.parse::<u32>()) else {
         return None;
     };
-    let card = |action: RowAction| MessageViewInput::CardAction {
-        action,
-        account_id,
-        id,
-    };
     // `extra` as a non-empty trimmed address (the address menu's verbs).
     let address = || extra.map(str::trim).filter(|a| !a.is_empty());
     let input = match verb {
-        // Every message frame has loaded and been sized: the layout has
-        // settled, so there is something worth revealing.
+        // Every message frame has loaded and been sized, and the page has
+        // been drawn at its open scroll: there is something worth revealing.
         "ready" => MessageViewInput::Rendered,
         "desel" => MessageViewInput::ClearCards,
         "selall" => MessageViewInput::SelectAllCards,
@@ -124,14 +118,20 @@ pub(super) fn parse_bridge(msg: &str) -> Option<Bridge> {
                 action,
             }
         }
-        // A card's attachment chip (#213); `extra` is the index.
-        "attopen" | "attsave" => MessageViewInput::AttachmentAction {
+        // A card's attachment chip (#213, #625); `extra` is the index.
+        // The page cannot know a preview's event time; the reader fills
+        // it in from its own key controller.
+        "attopen" | "attsave" | "attprev" => MessageViewInput::AttachmentAction {
             account_id,
             id,
             index: extra
                 .and_then(|x| x.trim().parse::<usize>().ok())
                 .unwrap_or(0),
-            save: verb == "attsave",
+            action: match verb {
+                "attsave" => ChipAction::Save,
+                "attprev" => ChipAction::Preview(0),
+                _ => ChipAction::Open,
+            },
         },
         "found" => {
             let (current, total) = extra
@@ -140,15 +140,9 @@ pub(super) fn parse_bridge(msg: &str) -> Option<Bridge> {
                 .unwrap_or((0, 0));
             MessageViewInput::FindCounted { current, total }
         }
-        "reply" => card(RowAction::Reply),
-        "replyall" => card(RowAction::ReplyAll),
-        "forward" => card(RowAction::Forward),
-        "star" => card(RowAction::ToggleStar),
-        "spam" => card(RowAction::Spam),
-        "remote" => MessageViewInput::ToggleRemote { account_id, id },
-        "archive" => card(RowAction::Archive),
-        // The ⋯ acting as a menu: the button's bottom-left corner and the
-        // page width, the same shape "moveto" sends.
+        // The ⋯: the card's menu at the button's bottom-left corner. The
+        // page width comes with it, the rect being in CSS pixels (see
+        // "senderinfo").
         "cardmenu" => {
             let [x, y, vw] = numbers(extra)[..] else {
                 return None;
@@ -161,33 +155,14 @@ pub(super) fn parse_bridge(msg: &str) -> Option<Bridge> {
                 page_width: vw,
             }
         }
-        // Move to… on a card: extra is the button's bottom-centre and the
-        // page width, in CSS pixels (see "senderinfo").
-        "moveto" => {
-            let [x, y, vw] = numbers(extra)[..] else {
-                return None;
-            };
-            MessageViewInput::CardMoveAt {
-                account_id,
-                id,
-                x,
-                y,
-                page_width: vw,
-            }
-        }
-        "delete" => card(RowAction::Delete),
-        "toggleread" => card(RowAction::ToggleRead),
-        // Translate on a card, or its banner's button (#327).
-        "translate" | "tr" => MessageViewInput::Translate { account_id, id },
+        // A card's translation banner's button (#327).
+        "tr" => MessageViewInput::Translate { account_id, id },
         // A header folded or opened its card (#326).
         "fold" => MessageViewInput::Folded {
             account_id,
             id,
             folded: extra == Some("1"),
         },
-        "viewsource" => card(RowAction::ViewSource),
-        "contact" => MessageViewInput::CardContact { account_id, id },
-        "senderfmt" => MessageViewInput::ToggleSenderStyle { account_id, id },
         // "scrollat:<aid>:<id>:<offset>": the topmost visible card.
         "scrollat" => {
             let Some(Ok(offset)) = extra.map(|o| o.parse::<u32>()) else {
@@ -234,7 +209,7 @@ mod tests {
             "senderinfo:1:2:1,2,3,4",
             "senderinfo:1:2:1,2,x,4,5",
             "cardmenu:1:2:1,2",
-            "moveto:1:2:1,2,3,4",
+            "cardmenu:1:2:1,2,3,4",
             "scrollat:1:2",
             "invite:1:2:perhaps",
             "invite:1:2",
@@ -319,11 +294,15 @@ mod tests {
             ),
             (
                 "attopen:1:2: 3",
-                "Some(Input(AttachmentAction { account_id: 1, id: 2, index: 3, save: false }))",
+                "Some(Input(AttachmentAction { account_id: 1, id: 2, index: 3, action: Open }))",
             ),
             (
                 "attsave:1:2:x",
-                "Some(Input(AttachmentAction { account_id: 1, id: 2, index: 0, save: true }))",
+                "Some(Input(AttachmentAction { account_id: 1, id: 2, index: 0, action: Save }))",
+            ),
+            (
+                "attprev:1:2:1",
+                "Some(Input(AttachmentAction { account_id: 1, id: 2, index: 1, action: Preview(0) }))",
             ),
             (
                 "found:1:2:3,9",
@@ -334,47 +313,9 @@ mod tests {
                 "Some(Input(FindCounted { current: 0, total: 0 }))",
             ),
             (
-                "reply:1:2",
-                "Some(Input(CardAction { action: Reply, account_id: 1, id: 2 }))",
-            ),
-            (
-                "replyall:1:2",
-                "Some(Input(CardAction { action: ReplyAll, account_id: 1, id: 2 }))",
-            ),
-            (
-                "forward:1:2",
-                "Some(Input(CardAction { action: Forward, account_id: 1, id: 2 }))",
-            ),
-            (
-                "star:1:2",
-                "Some(Input(CardAction { action: ToggleStar, account_id: 1, id: 2 }))",
-            ),
-            (
-                "spam:1:2",
-                "Some(Input(CardAction { action: Spam, account_id: 1, id: 2 }))",
-            ),
-            ("remote:1:2", "Some(Input(ToggleRemote { account_id: 1, id: 2 }))"),
-            (
-                "archive:1:2",
-                "Some(Input(CardAction { action: Archive, account_id: 1, id: 2 }))",
-            ),
-            (
                 "cardmenu:1:2:10,20,800",
                 "Some(Input(CardMenuFrom { account_id: 1, id: 2, x: 10.0, y: 20.0, page_width: 800.0 }))",
             ),
-            (
-                "moveto:1:2:10,20,800",
-                "Some(Input(CardMoveAt { account_id: 1, id: 2, x: 10.0, y: 20.0, page_width: 800.0 }))",
-            ),
-            (
-                "delete:1:2",
-                "Some(Input(CardAction { action: Delete, account_id: 1, id: 2 }))",
-            ),
-            (
-                "toggleread:1:2",
-                "Some(Input(CardAction { action: ToggleRead, account_id: 1, id: 2 }))",
-            ),
-            ("translate:1:2", "Some(Input(Translate { account_id: 1, id: 2 }))"),
             ("tr:1:2", "Some(Input(Translate { account_id: 1, id: 2 }))"),
             (
                 "fold:1:2:1",
@@ -383,15 +324,6 @@ mod tests {
             (
                 "fold:1:2:0",
                 "Some(Input(Folded { account_id: 1, id: 2, folded: false }))",
-            ),
-            (
-                "viewsource:1:2",
-                "Some(Input(CardAction { action: ViewSource, account_id: 1, id: 2 }))",
-            ),
-            ("contact:1:2", "Some(Input(CardContact { account_id: 1, id: 2 }))"),
-            (
-                "senderfmt:1:2",
-                "Some(Input(ToggleSenderStyle { account_id: 1, id: 2 }))",
             ),
             (
                 "scrollat:1:2:120",

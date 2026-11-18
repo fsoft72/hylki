@@ -13,7 +13,7 @@ use crate::mail::pgp::{self, Gpg, ImportSummary, KeyInfo};
 
 mod rows;
 
-use rows::{key_row, KeyShow};
+use rows::{accepted_row, key_row, KeyShow};
 
 /// What the page needs at launch: the identities keys can be made for.
 pub(super) struct PgpKeysInit {
@@ -31,6 +31,9 @@ pub(super) struct PgpKeys {
     others_empty: gtk::Label,
     others_query: String,
     others_show: KeyShow,
+    accepted_list: gtk::ListBox,
+    /// Shown only while a Send Anyway can be taken back.
+    accepted_group: Option<adw::PreferencesGroup>,
     toasts: Option<adw::ToastOverlay>,
     /// A background action (generate, fetch) is running.
     busy: bool,
@@ -71,6 +74,8 @@ pub(super) enum PgpKeysInput {
     FetchConfirmed(String),
     Trust(String),
     TrustConfirmed(String),
+    /// Take back a Send Anyway, so Send asks about the key again.
+    AskAgain(crate::config::AcceptedKey),
 }
 
 #[derive(Debug)]
@@ -83,6 +88,7 @@ pub(super) enum PgpKeysCmd {
         generation: u64,
         own: Vec<KeyInfo>,
         others: Vec<KeyInfo>,
+        accepted: Vec<crate::config::AcceptedKey>,
     },
 }
 
@@ -112,6 +118,35 @@ impl Component for PgpKeys {
                     adw::ActionRow {
                         set_title: &i18n("GnuPG"),
                         set_subtitle: &i18n("The same keyring the gpg command and other mail apps use."),
+                    },
+                },
+
+                // Automatic key discovery while composing, off until asked
+                // for: each lookup tells a server who the user writes to.
+                add = &adw::PreferencesGroup {
+                    set_title: &i18n("Finding keys"),
+                    set_description: Some(
+                        i18n("Keys found here are kept apart from your keyring.").as_str()
+                    ),
+                    adw::SwitchRow {
+                        set_title: &i18n("Look up recipients' keys"),
+                        set_subtitle: &i18n("Each recipient's domain (WKD) learns that you write to them."),
+                        set_active: crate::config::load_privacy().key_lookup,
+                        connect_active_notify => move |row| {
+                            let mut prefs = crate::config::load_privacy();
+                            prefs.key_lookup = row.is_active();
+                            crate::config::save_privacy(prefs);
+                        },
+                    },
+                    adw::SwitchRow {
+                        set_title: &i18n("Also ask a keyserver"),
+                        set_subtitle: &i18n("keys.openpgp.org learns who you write to."),
+                        set_active: crate::config::load_privacy().keyserver_lookup,
+                        connect_active_notify => move |row| {
+                            let mut prefs = crate::config::load_privacy();
+                            prefs.keyserver_lookup = row.is_active();
+                            crate::config::save_privacy(prefs);
+                        },
                     },
                 },
 
@@ -194,6 +229,23 @@ impl Component for PgpKeys {
                         set_selection_mode: gtk::SelectionMode::None,
                     },
                 },
+
+                #[name = "accepted_group"]
+                add = &adw::PreferencesGroup {
+                    set_title: &i18n("Unchecked keys you encrypt to"),
+                    set_description: Some(
+                        i18n("Send Anyway stopped the warning for these keys.").as_str()
+                    ),
+                    set_visible: false,
+                    // Comes and goes with the user's mail, so it is not a
+                    // setting to find.
+                    add_css_class: crate::ui::preferences::NOT_SEARCHED,
+                    #[local_ref]
+                    accepted_list -> gtk::ListBox {
+                        add_css_class: "boxed-list",
+                        set_selection_mode: gtk::SelectionMode::None,
+                    },
+                },
             },
         }
     }
@@ -205,6 +257,7 @@ impl Component for PgpKeys {
     ) -> ComponentParts<Self> {
         let own_list = gtk::ListBox::new();
         let others_list = gtk::ListBox::new();
+        let accepted_list = gtk::ListBox::new();
         let empty_others = gtk::Label::new(Some(&i18n("No keys from other people yet.")));
         let mut model = PgpKeys {
             identities: init.identities,
@@ -215,12 +268,22 @@ impl Component for PgpKeys {
             others_empty: empty_others.clone(),
             others_query: String::new(),
             others_show: KeyShow::All,
+            accepted_list: accepted_list.clone(),
+            accepted_group: None,
             toasts: None,
             busy: false,
             reload_generation: 0,
         };
         let widgets = view_output!();
         model.toasts = Some(widgets.toasts.clone());
+        model.accepted_group = Some(widgets.accepted_group.clone());
+
+        // The composer and the reader change what this page lists while the
+        // Settings window sits hidden, so each visit reads it again.
+        {
+            let s = sender.clone();
+            root.connect_map(move |_| s.input(PgpKeysInput::Refresh));
+        }
 
         // Probing gpg runs it; done a moment after the Settings window is
         // up rather than before it can appear.
@@ -304,6 +367,11 @@ impl Component for PgpKeys {
 
             PgpKeysInput::Trust(fpr) => self.on_trust(fpr, &sender),
             PgpKeysInput::TrustConfirmed(fpr) => self.on_trust_confirmed(fpr, &sender),
+
+            PgpKeysInput::AskAgain(key) => {
+                crate::config::retain_accepted_keys(|k| *k != key);
+                self.reload(&sender);
+            }
         }
     }
 
@@ -318,9 +386,11 @@ impl Component for PgpKeys {
                 generation,
                 own,
                 others,
+                accepted,
             } => {
                 if generation == self.reload_generation {
                     self.show_keys(own, others, &sender);
+                    self.show_accepted(accepted, &sender);
                 }
                 return;
             }
@@ -358,14 +428,22 @@ impl PgpKeys {
         self.reload_generation += 1;
         let generation = self.reload_generation;
         sender.oneshot_command(async move {
-            let (own, others) = tokio::task::spawn_blocking(|| {
+            let (own, others, accepted) = tokio::task::spawn_blocking(|| {
                 let gpg = Gpg::system();
                 let own = pgp::list_keys(&gpg, true);
-                let others = pgp::list_keys(&gpg, false)
+                let all = pgp::list_keys(&gpg, false);
+                // A gossip key Send Anyway accepted is in the keyring of
+                // found keys, not the user's.
+                let mut known = all.clone();
+                if let Some(found) = gpg.found_keyring_if_any() {
+                    known.extend(pgp::list_keys(&found, false));
+                }
+                let accepted = pgp::still_unchecked(crate::config::load_accepted_keys(), &known);
+                let others = all
                     .into_iter()
                     .filter(|k| !own.iter().any(|o| o.fingerprint == k.fingerprint))
                     .collect();
-                (own, others)
+                (own, others, accepted)
             })
             .await
             .unwrap_or_default();
@@ -373,6 +451,7 @@ impl PgpKeys {
                 generation,
                 own,
                 others,
+                accepted,
             }
         });
     }
@@ -401,6 +480,22 @@ impl PgpKeys {
             self.others_list.append(&key_row(key, false, sender));
         }
         self.filter_others();
+    }
+
+    fn show_accepted(
+        &self,
+        accepted: Vec<crate::config::AcceptedKey>,
+        sender: &ComponentSender<Self>,
+    ) {
+        while let Some(row) = self.accepted_list.row_at_index(0) {
+            self.accepted_list.remove(&row);
+        }
+        if let Some(group) = &self.accepted_group {
+            group.set_visible(!accepted.is_empty());
+        }
+        for key in accepted {
+            self.accepted_list.append(&accepted_row(key, sender));
+        }
     }
 
     /// Hide the rows of other people's keys the search or the show filter
@@ -684,7 +779,12 @@ impl PgpKeys {
     ) {
         sender.oneshot_command(async move {
             let r = tokio::task::spawn_blocking(move || {
-                pgp::delete_key(&Gpg::system(), &fingerprint, secret)
+                let r = pgp::delete_key(&Gpg::system(), &fingerprint, secret);
+                // Bringing the key back later is a new decision about it.
+                if r.is_ok() {
+                    crate::config::retain_accepted_keys(|k| k.fingerprint != fingerprint);
+                }
+                r
             })
             .await
             .unwrap_or_else(|_| Err("task failed".into()));
@@ -764,7 +864,7 @@ impl PgpKeys {
                 &[("uid", key.primary_uid())],
             )),
         );
-        let fpr_label = gtk::Label::new(Some(&key.fingerprint_display()));
+        let fpr_label = gtk::Label::new(Some(&key.trust_details()));
         fpr_label.add_css_class("monospace");
         fpr_label.set_wrap(true);
         fpr_label.set_selectable(true);

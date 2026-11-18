@@ -63,6 +63,12 @@ pub(super) struct StateFile {
     /// The list's height with the reader below it (#475).
     #[serde(default = "default_list_pane_height")]
     list_pane_height: i32,
+    /// The list's share of the window beside the reader and above it, for
+    /// `list_follows_window` (#648). 0 until worked out from the size.
+    #[serde(default)]
+    list_pane_width_share: f64,
+    #[serde(default)]
+    list_pane_height_share: f64,
     /// Contacts view: the contact-list pane's width in px.
     #[serde(default = "default_contacts_pane_width")]
     contacts_pane_width: i32,
@@ -126,6 +132,49 @@ pub(super) struct StateFile {
     /// offers its columns, and the merge starts from it.
     #[serde(default, skip_serializing_if = "String::is_empty")]
     merge_file: String,
+    /// How fast a mail merge sends, as last set in its dialog.
+    #[serde(default, skip_serializing_if = "MergeRate::is_default")]
+    merge_rate: MergeRate,
+}
+
+/// A mail merge's sending rate (#447): at most `count` messages a minute,
+/// or an hour, for a provider that limits how fast mail may go out. Off,
+/// each message goes as soon as the one before it has.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Deserialize, Serialize)]
+pub(crate) struct MergeRate {
+    #[serde(default)]
+    pub(crate) on: bool,
+    #[serde(default = "default_merge_count")]
+    pub(crate) count: u32,
+    #[serde(default)]
+    pub(crate) per_hour: bool,
+}
+
+fn default_merge_count() -> u32 {
+    30
+}
+
+impl Default for MergeRate {
+    fn default() -> Self {
+        Self {
+            on: false,
+            count: default_merge_count(),
+            per_hour: false,
+        }
+    }
+}
+
+impl MergeRate {
+    fn is_default(&self) -> bool {
+        *self == Self::default()
+    }
+
+    /// The wait from one message to the next, if the rate is limited.
+    pub(crate) fn interval(&self) -> Option<std::time::Duration> {
+        let period = if self.per_hour { 3600.0 } else { 60.0 };
+        (self.on && self.count > 0)
+            .then(|| std::time::Duration::from_secs_f64(period / f64::from(self.count)))
+    }
 }
 
 /// A font family picked in the composer (#358), and whether it is
@@ -227,6 +276,14 @@ pub(crate) fn save_merge_file(path: &std::path::Path) {
     update_state(|s| s.merge_file = path.to_string_lossy().to_string());
 }
 
+pub(crate) fn load_merge_rate() -> MergeRate {
+    load_state().merge_rate
+}
+
+pub(crate) fn save_merge_rate(rate: MergeRate) {
+    update_state(|s| s.merge_rate = rate);
+}
+
 /// The alarms the last event made from a message had (#564).
 pub(crate) fn load_event_alarms() -> Vec<u32> {
     load_state().last_event_alarms
@@ -247,9 +304,22 @@ pub(crate) fn save_unread_seen(seen: &std::collections::BTreeMap<String, u32>) {
 
 /// Change one thing in state.toml.
 fn update_state(change: impl FnOnce(&mut StateFile)) {
+    edit_state(|s| {
+        change(s);
+        true
+    });
+}
+
+/// Change state.toml when `change` says it changed something. One change
+/// at a time: a worker thread saves here too (`save_fetch_mode`), and two
+/// read-modify-writes that overlap would lose one of them (#642).
+fn edit_state(change: impl FnOnce(&mut StateFile) -> bool) {
+    static LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+    let _held = LOCK.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
     let mut s = load_state();
-    change(&mut s);
-    save_state(&s);
+    if change(&mut s) {
+        save_state(&s);
+    }
 }
 
 fn save_state(state: &StateFile) {
@@ -276,18 +346,19 @@ pub(crate) fn load_last_view() -> (Option<LastView>, String) {
 /// Record the view just opened, unless it is the one already recorded:
 /// this runs on every folder switch.
 pub(crate) fn save_last_view(view: LastView) {
-    let mut s = load_state();
-    let account = if view.email.is_empty() {
-        s.last_account.clone()
-    } else {
-        view.email.clone()
-    };
-    if s.last_view.as_ref() == Some(&view) && s.last_account == account {
-        return;
-    }
-    s.last_view = Some(view);
-    s.last_account = account;
-    save_state(&s);
+    edit_state(|s| {
+        let account = if view.email.is_empty() {
+            s.last_account.clone()
+        } else {
+            view.email.clone()
+        };
+        if s.last_view.as_ref() == Some(&view) && s.last_account == account {
+            return false;
+        }
+        s.last_view = Some(view);
+        s.last_account = account;
+        true
+    });
 }
 
 /// Whether the welcome wizard has been completed before.
@@ -296,11 +367,7 @@ pub(crate) fn wizard_completed() -> bool {
 }
 
 pub(crate) fn mark_wizard_completed() {
-    let mut s = load_state();
-    if !s.wizard_completed {
-        s.wizard_completed = true;
-        save_state(&s);
-    }
+    edit_state(|s| !std::mem::replace(&mut s.wizard_completed, true));
 }
 
 /// The runtime commit WebKit's font fallback was settled under (#296).
@@ -309,12 +376,14 @@ pub(crate) fn load_web_font_fallback() -> Option<String> {
 }
 
 pub(crate) fn save_web_font_fallback(runtime: Option<&str>) {
-    let mut s = load_state();
     let runtime = runtime.map(str::to_string);
-    if s.web_font_fallback != runtime {
+    edit_state(|s| {
+        if s.web_font_fallback == runtime {
+            return false;
+        }
         s.web_font_fallback = runtime;
-        save_state(&s);
-    }
+        true
+    });
 }
 
 /// The chosen app icon id, if one has been settled.
@@ -341,9 +410,7 @@ pub(crate) fn mint_keyring_help_dismissed() -> bool {
 
 /// Persist that the user dismissed the Mint keyring setup tip ("Don't show again").
 pub(crate) fn dismiss_mint_keyring_help() {
-    let mut state = load_state();
-    state.mint_keyring_help_dismissed = true;
-    save_state(&state);
+    update_state(|s| s.mint_keyring_help_dismissed = true);
 }
 
 /// Persisted state of the in-message attachment drawer.
@@ -425,20 +492,20 @@ pub(super) fn fetch_mode_name(use_envelope: bool, previews_rejected: bool) -> Op
 pub(crate) fn save_fetch_mode(email: &str, use_envelope: bool, previews_rejected: bool) {
     let mode = fetch_mode_name(use_envelope, previews_rejected);
     let key = email.to_ascii_lowercase();
-    let mut s = load_state();
-    let current = s.fetch_modes.get(&key).map(String::as_str);
-    if current == mode {
-        return;
-    }
-    match mode {
-        Some(m) => {
-            s.fetch_modes.insert(key, m.to_string());
+    edit_state(|s| {
+        if s.fetch_modes.get(&key).map(String::as_str) == mode {
+            return false;
         }
-        None => {
-            s.fetch_modes.remove(&key);
+        match mode {
+            Some(m) => {
+                s.fetch_modes.insert(key, m.to_string());
+            }
+            None => {
+                s.fetch_modes.remove(&key);
+            }
         }
-    }
-    save_state(&s);
+        true
+    });
 }
 
 /// Persist whether the attachment drawer is collapsed.
@@ -520,14 +587,14 @@ pub(crate) fn load_gallery_scope() -> (bool, bool, Vec<(u32, String, bool)>) {
 
 /// Persist the attachments gallery's folder scope.
 pub(crate) fn save_gallery_scope(archive: bool, other: bool, folders: &[(u32, String, bool)]) {
-    let mut s = load_state();
-    s.gallery_archive = archive;
-    s.gallery_other = other;
-    s.gallery_folders = folders
-        .iter()
-        .map(|(id, path, on)| encode_gallery_folder(*id, path, *on))
-        .collect();
-    save_state(&s);
+    update_state(|s| {
+        s.gallery_archive = archive;
+        s.gallery_other = other;
+        s.gallery_folders = folders
+            .iter()
+            .map(|(id, path, on)| encode_gallery_folder(*id, path, *on))
+            .collect();
+    });
 }
 
 /// The split-reply panel's dragged height; 0 when it has never been dragged
@@ -557,12 +624,7 @@ pub(crate) fn save_about_height(height: i32) {
 
 /// The message-list pane's remembered width (clamped to something sane).
 pub(crate) fn load_list_pane_width() -> i32 {
-    load_state().list_pane_width.clamp(324, 4000)
-}
-
-/// Persist the message-list pane's width (#28).
-pub(crate) fn save_list_pane_width(width: i32) {
-    update_state(|s| s.list_pane_width = width.clamp(324, 4000));
+    load_state().list_pane_width.clamp(290, 4000)
 }
 
 /// The list's height with the reader below it (#475).
@@ -570,8 +632,33 @@ pub(crate) fn load_list_pane_height() -> i32 {
     load_state().list_pane_height.clamp(120, 4000)
 }
 
-pub(crate) fn save_list_pane_height(height: i32) {
-    update_state(|s| s.list_pane_height = height.clamp(120, 4000));
+/// The list's share of the split beside the reader and above it (#648).
+pub(crate) fn load_list_pane_shares() -> (f64, f64) {
+    let s = load_state();
+    (
+        list_share(s.list_pane_width_share),
+        list_share(s.list_pane_height_share),
+    )
+}
+
+/// A share the list can have: anything else is not worked out yet.
+pub(super) fn list_share(value: f64) -> f64 {
+    if (0.05..=0.95).contains(&value) {
+        value
+    } else {
+        0.0
+    }
+}
+
+/// The list's width and height as the user dragged them (#28, #475), and
+/// the share of the window each was (#648).
+pub(crate) fn save_list_split(width: i32, height: i32, width_share: f64, height_share: f64) {
+    update_state(|s| {
+        s.list_pane_width = width.clamp(290, 4000);
+        s.list_pane_height = height.clamp(120, 4000);
+        s.list_pane_width_share = list_share(width_share);
+        s.list_pane_height_share = list_share(height_share);
+    });
 }
 
 /// The contacts view's remembered list-pane width (280 is also its floor).

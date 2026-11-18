@@ -213,6 +213,7 @@ fn the_pgp_chip_names_its_verdict() {
         signer: "A".into(),
         key_id: "1".into(),
         trust,
+        from_mismatch: false,
     };
     let status = |encrypted, signature| PgpStatus {
         encrypted,
@@ -240,6 +241,20 @@ fn the_pgp_chip_names_its_verdict() {
         ..Default::default()
     };
     assert_eq!(locked.short_label(), "Not decrypted");
+    // A trusted key without the From address is a doubt, never green.
+    let elsewhere = status(
+        false,
+        PgpSignature::Good {
+            signer: "Eve <eve@example.org>".into(),
+            key_id: "1".into(),
+            trust: PgpTrust::Full,
+            from_mismatch: true,
+        },
+    );
+    assert_eq!(elsewhere.short_label(), "Signed by another address");
+    assert_eq!(elsewhere.css_class(), "pgp-warn");
+    assert!(elsewhere.summary().starts_with("Signed by Eve"));
+    assert_eq!(status(false, good(PgpTrust::Full)).css_class(), "pgp-good");
 }
 
 #[test]
@@ -512,4 +527,40 @@ fn thread_ids_skips_messages_with_no_headers() {
     // Nothing to search the cache by — better an empty list than a lookup
     // that would match every message with an empty message_id.
     assert!(thread_ids(&[msg(1, 1, 10)]).is_empty());
+}
+
+/// Mail is named by its first Reply-To mailbox only while the switch is on,
+/// and only when that mailbox is someone other than From (#641).
+#[test]
+fn the_reply_to_sender_names_the_mail_when_asked() {
+    let mut m = super::Message::blank();
+    m.from_name = "Example Site".into();
+    m.from_addr = "no-reply@site.example".into();
+    m.reply_to = "jane@x.example, desk@site.example".into();
+    m.reply_to_name = "Jane Doe".into();
+
+    crate::contacts::set_reply_to_sender(false);
+    assert_eq!(m.sender(), ("Example Site", "no-reply@site.example"));
+    assert!(!m.shows_reply_to());
+
+    assert!(crate::contacts::set_reply_to_sender(true));
+    assert!(!crate::contacts::set_reply_to_sender(true));
+    assert_eq!(m.sender(), ("Jane Doe", "jane@x.example"));
+    assert_eq!(m.shown_from_name(), "Jane Doe");
+    assert_eq!(m.shown_from_addr(), "jane@x.example");
+    assert!(m.shows_reply_to());
+
+    // A Reply-To without a name goes by its address.
+    m.reply_to_name.clear();
+    assert_eq!(m.sender(), ("jane@x.example", "jane@x.example"));
+
+    // One that only repeats From changes nothing.
+    m.reply_to = "No-Reply@site.example".into();
+    assert_eq!(m.sender(), ("Example Site", "no-reply@site.example"));
+    assert!(!m.shows_reply_to());
+
+    // Nor does a message without one.
+    m.reply_to.clear();
+    assert_eq!(m.sender(), ("Example Site", "no-reply@site.example"));
+    crate::contacts::set_reply_to_sender(false);
 }

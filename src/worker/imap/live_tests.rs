@@ -413,7 +413,7 @@ fn live_reply_is_filed_beside_its_original() {
             ..sample_outgoing()
         };
         let raw = send_smtp(&account, &reply).await.expect("sent");
-        let dest = reply_copy_path(&account, 1, Some(&cache), &reply.in_reply_to);
+        let dest = reply_copy_path(&account, 1, Some(&cache), &reply.in_reply_to, None);
         assert_eq!(dest.as_deref(), Some(folder.as_str()));
         let took = file_sent_copy(&mut sess, dest.as_deref(), Some(&sent), &raw)
             .await
@@ -813,6 +813,7 @@ fn live_snoozed_mail_comes_back_unread() {
             backfill_seen: HashSet::new(),
             offline: Default::default(),
             text_search: None,
+            server_searches: Default::default(),
             refs_repair: VecDeque::new(),
             label_fill: VecDeque::new(),
             backlog: VecDeque::new(),
@@ -970,6 +971,7 @@ fn live_offline_period_is_kept() {
             backfill_seen: HashSet::new(),
             offline: Default::default(),
             text_search: None,
+            server_searches: Default::default(),
             refs_repair: VecDeque::new(),
             label_fill: VecDeque::new(),
             backlog: VecDeque::new(),

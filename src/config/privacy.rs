@@ -20,6 +20,15 @@ use super::sections::{
 };
 use super::{config_file, default_on, is_zero, save_private_toml, write_private};
 
+/// A sort a view keeps for itself: `SortOrder`'s key, and whether a heading
+/// turned it the other way.
+#[derive(Clone, Debug, Deserialize, PartialEq, Eq, Serialize)]
+pub(crate) struct ListSort {
+    pub(crate) order: String,
+    #[serde(default)]
+    pub(crate) reversed: bool,
+}
+
 /// Every preference privacy.toml holds. The name is historical: the file
 /// began as the remote-content allowlist (`allowed_senders`).
 #[derive(Debug, Deserialize, Serialize)]
@@ -36,6 +45,12 @@ pub(crate) struct PrivacyFile {
     /// Off by default: a sender's tracking learns of a message never opened.
     #[serde(default)]
     pub(crate) remote_ahead: bool,
+    /// Whether a link opened from a message loses its tracking parameters
+    /// (`utm_*`, `fbclid`, …) and known redirectors (Google's `/url`,
+    /// Facebook's `l.php`) first; see [`crate::mail::link_clean`]. On unless
+    /// switched off: a site that needs one of them is the rare case.
+    #[serde(default = "default_on")]
+    pub(crate) clean_links: bool,
     /// Whether to load sender avatars from Gravatar (off by default — it sends
     /// a hash of each sender's email to a third party).
     #[serde(default)]
@@ -81,16 +96,6 @@ pub(crate) struct PrivacyFile {
     /// Stored lowercased; a bare domain like "spam.com" matches any sender there.
     #[serde(default)]
     pub(crate) blacklist: Vec<String>,
-    /// Seconds the message-list actions palette stays open after the cursor
-    /// leaves it before auto-collapsing. (A prior `palette_delay_ms` setting in
-    /// milliseconds is intentionally not migrated — its meaning has changed.)
-    #[serde(default = "default_palette_collapse")]
-    pub(crate) palette_collapse_secs: u64,
-    /// Seconds a message card's actions palette stays open after the cursor
-    /// leaves it. Separate from the list's: cards are read at a different
-    /// pace from a list being skimmed.
-    #[serde(default = "default_palette_collapse")]
-    pub(crate) card_palette_collapse_secs: u64,
     /// Group messages into conversation threads in the list.
     #[serde(default = "default_on")]
     pub(crate) threading: bool,
@@ -122,6 +127,16 @@ pub(crate) struct PrivacyFile {
     /// words (#300); off, the default, shows the lock and shield icons alone.
     #[serde(default)]
     pub(crate) pgp_labels: bool,
+    /// The composer looks each recipient's OpenPGP key up by WKD, on their
+    /// own domain's server, while the message is addressed. Off by default:
+    /// it tells that domain that someone is writing to the address.
+    #[serde(default)]
+    pub(crate) key_lookup: bool,
+    /// Recipients WKD has no key for are also looked up on a keyserver
+    /// (keys.openpgp.org). Off by default: that tells a third party who
+    /// the user writes to.
+    #[serde(default)]
+    pub(crate) keyserver_lookup: bool,
     /// The reader's find bar opens under the message instead of above it
     /// (#392). Off by default.
     #[serde(default)]
@@ -169,6 +184,10 @@ pub(crate) struct PrivacyFile {
     /// in the open conversation (#213).
     #[serde(default = "default_on")]
     pub(crate) attachment_drawer: bool,
+    /// Space sends pictures and PDFs to the GNOME file previewer too (#625).
+    /// Off, Space shows them in the full-window preview, as a click does.
+    #[serde(default)]
+    pub(crate) previewer_pictures: bool,
     /// Whether deleting a whole selected conversation asks for confirmation
     /// first.
     #[serde(default = "default_on")]
@@ -214,29 +233,6 @@ pub(crate) struct PrivacyFile {
     /// Accounts view instead of Preferences (the default).
     #[serde(default)]
     pub(crate) settings_open_accounts: bool,
-    /// Whether a conversation card's action icons stay hidden until the card
-    /// is hovered (expanded via their ⋯ toggle). Off = always shown, unless
-    /// `card_actions_auto` shows them automatically on hover.
-    #[serde(default = "default_on")]
-    pub(crate) card_actions_hover: bool,
-    /// With the ⋯ toggle off: show the action icons automatically while the
-    /// card is hovered (rather than always).
-    #[serde(default = "default_card_actions_auto")]
-    pub(crate) card_actions_auto: bool,
-    /// Whether the message list rows carry an actions palette at all. Off
-    /// removes the ⋯ line entirely, returning its space to the row.
-    #[serde(default = "default_on")]
-    pub(crate) list_palette: bool,
-    /// Whether the message list's actions palette opens on row hover, without
-    /// needing the ⋯ click.
-    #[serde(default)]
-    pub(crate) list_palette_hover: bool,
-    /// Whether the ⋯ on a message card opens the card's menu in place of
-    /// sliding its actions palette out. On for new installs (2026-10-06);
-    /// an install that saved its settings before then keeps its own value,
-    /// since every save writes every key.
-    #[serde(default = "default_on")]
-    pub(crate) card_palette_menu: bool,
     /// Whether message rows take a sideways swipe at all (#92, PR #135).
     #[serde(default = "default_on")]
     pub(crate) swipe_enabled: bool,
@@ -309,11 +305,17 @@ pub(crate) struct PrivacyFile {
     /// where `compose_plain` above still says which of the two it is.
     #[serde(default)]
     pub(crate) compose_format: Option<ComposeFormat>,
-    /// Whether a reply or forward to mail that had no HTML part is written
-    /// in plain text whatever `compose_format` says (#436). Mailing lists
-    /// and the people on them often write plain text and expect it back.
+    /// Whether a reply or forward answers in the original's format: plain
+    /// text to mail that had no HTML part whatever `compose_format` says
+    /// (#436), and rich text to formatted mail when `compose_format` is
+    /// plain (#646). Mailing lists and the people on them often write plain
+    /// text and expect it back; formatted mail keeps its look.
     #[serde(default)]
     pub(crate) follow_plain: bool,
+    /// Whether switching a message from rich to plain text asks first when
+    /// it holds formatting, pictures or links that plain text drops.
+    #[serde(default = "default_on")]
+    pub(crate) ask_plain_switch: bool,
     /// Where the split reply opens in the reading pane (#212).
     #[serde(default)]
     pub(crate) reply_position: ReplyPosition,
@@ -340,6 +342,11 @@ pub(crate) struct PrivacyFile {
     /// before it is handed to the server. 0 sends at once.
     #[serde(default = "default_undo_send_secs")]
     pub(crate) undo_send_secs: u32,
+    /// The words, comma-separated, that make Send ask when nothing is
+    /// attached. Empty never asks. Absent is the default list, left out of
+    /// the file so that a list grown in a later version reaches it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) attachment_keywords: Option<String>,
     /// Whether the composer underlines misspelled words as you type.
     #[serde(default = "default_on")]
     pub(crate) spellcheck: bool,
@@ -388,7 +395,9 @@ pub(crate) struct PrivacyFile {
     #[serde(default = "default_preview_lines")]
     pub(crate) preview_lines: u32,
     /// How the message list lays out a message: as a card, on one line, or
-    /// whichever the pane's width suits (#334).
+    /// whichever the pane's width suits (#334). A new install starts on
+    /// Automatic; a file without the key was written when Cards was all there
+    /// was, so it keeps cards.
     #[serde(default)]
     pub(crate) list_layout: ListLayout,
     /// The columns a single-line list shows, in order, by name (#334).
@@ -413,6 +422,28 @@ pub(crate) struct PrivacyFile {
     /// text, instead of at the end of the subject (#374).
     #[serde(default)]
     pub(crate) list_pills_below: bool,
+    /// The list keeps its share of the window as the window resizes,
+    /// instead of its width (#648). Off by default.
+    #[serde(default)]
+    pub(crate) list_follows_window: bool,
+    /// The list's sort, by its key, and whether a heading turned it the
+    /// other way (#574). Empty is newest first.
+    #[serde(default)]
+    pub(crate) list_sort: String,
+    #[serde(default)]
+    pub(crate) list_sort_reversed: bool,
+    /// The sort a folder or other view keeps for itself, by the view's name.
+    /// A view not named here uses `list_sort`.
+    #[serde(default)]
+    pub(crate) list_sorts: std::collections::BTreeMap<String, ListSort>,
+    /// The views whose rows name the recipients (`true`) or the sender
+    /// (`false`) against their default, by the view's name (#657).
+    #[serde(default)]
+    pub(crate) list_recipients: std::collections::BTreeMap<String, bool>,
+    /// The date sections each view keeps folded (#659), by the view's name
+    /// as in `list_sorts`. A view not named here has none folded.
+    #[serde(default)]
+    pub(crate) list_folded_days: std::collections::BTreeMap<String, Vec<String>>,
     /// Grouping by date was turned on once for an install from before it
     /// became the default: every save writes every key, so those files
     /// carry the old `false` without anyone having chosen it. A new
@@ -431,6 +462,10 @@ pub(crate) struct PrivacyFile {
     /// its mail gives (#541). Off by default.
     #[serde(default)]
     pub(crate) contact_names: bool,
+    /// Mail is named by its first Reply-To mailbox, not From, when it has
+    /// one (#641). Off by default.
+    #[serde(default)]
+    pub(crate) reply_to_sender: bool,
     /// The search field and the bulk bar open under the list instead of
     /// above it (#496). Off by default.
     #[serde(default)]
@@ -597,6 +632,10 @@ pub(crate) struct PrivacyFile {
     /// How accounts' folders are sorted, unless an account chooses.
     #[serde(default)]
     pub(crate) folder_sort: FolderSort,
+    /// What AI assistants may reach through the running app (`crate::mcp`).
+    /// Nothing, until the user says.
+    #[serde(default)]
+    pub(crate) assistant: super::AssistantPolicy,
     /// What a printed page carries besides the message (#359).
     #[serde(default)]
     pub(crate) print: PrintOptions,
@@ -629,18 +668,8 @@ fn default_single_message_card() -> bool {
     true
 }
 
-fn default_palette_collapse() -> u64 {
-    5
-}
-
 fn default_notification_buttons() -> Vec<String> {
     NotificationButtons::default().to_list()
-}
-
-fn default_card_actions_auto() -> bool {
-    // Off for new installs (2026-08-30): card actions wait behind the ⋯
-    // toggle (card_actions_hover) rather than appearing on hover.
-    false
 }
 
 fn default_preview_lines() -> u32 {
@@ -653,6 +682,7 @@ impl Default for PrivacyFile {
             allowed_senders: Vec::new(),
             auto_remote_content: false,
             remote_ahead: false,
+            clean_links: true,
             show_remote_banner: true,
             show_spoof_banner: true,
             show_unified: true,
@@ -681,6 +711,7 @@ impl Default for PrivacyFile {
             link_browser: String::new(),
             start_view: StartView::default(),
             folder_sort: FolderSort::default(),
+            assistant: Default::default(),
             gravatar: false,
             avatars: true,
             own_mailbox_face: true,
@@ -693,8 +724,6 @@ impl Default for PrivacyFile {
             push: true,
             metered_save_data: true,
             blacklist: Vec::new(),
-            palette_collapse_secs: default_palette_collapse(),
-            card_palette_collapse_secs: default_palette_collapse(),
             threading: true,
             threads_expanded: false,
             thread_expansion: default_thread_expansion(),
@@ -703,6 +732,8 @@ impl Default for PrivacyFile {
             fold_messages: FoldMessages::Never,
             always_show_recipients: false,
             pgp_labels: false,
+            key_lookup: false,
+            keyserver_lookup: false,
             reader_find_bottom: false,
             single_message_card: default_single_message_card(),
             reader_mode: false,
@@ -714,6 +745,7 @@ impl Default for PrivacyFile {
             reader_zoom: default_reader_zoom(),
             card_attachments: true,
             attachment_drawer: true,
+            previewer_pictures: false,
             confirm_thread_delete: true,
             message_theme: MessageTheme::default(),
             override_fonts: false,
@@ -726,11 +758,6 @@ impl Default for PrivacyFile {
             notification_buttons: default_notification_buttons(),
             show_attachments: true,
             settings_open_accounts: false,
-            card_actions_hover: true,
-            card_actions_auto: default_card_actions_auto(),
-            list_palette: true,
-            list_palette_hover: false,
-            card_palette_menu: true,
             swipe_enabled: true,
             swipe_reversed: false,
             swipe_sensitivity: default_swipe_sensitivity(),
@@ -748,12 +775,14 @@ impl Default for PrivacyFile {
             compose_plain: false,
             compose_format: None,
             follow_plain: false,
+            ask_plain_switch: true,
             reply_position: ReplyPosition::default(),
             signature_position: SignaturePosition::default(),
             signature_dashes: false,
             fold_quote: true,
             reply_header: String::new(),
             undo_send_secs: default_undo_send_secs(),
+            attachment_keywords: None,
             spellcheck: true,
             spellcheck_langs: String::new(),
             sidebar_hover_expand: false,
@@ -766,16 +795,23 @@ impl Default for PrivacyFile {
             text_scale: default_text_scale(),
             theme: String::new(),
             preview_lines: default_preview_lines(),
-            list_layout: ListLayout::Cards,
+            list_layout: ListLayout::Automatic,
             list_columns: default_list_columns(),
             list_headings: false,
             list_column_scroll: false,
             list_group_by_date: true,
             list_pills_below: false,
+            list_follows_window: false,
+            list_sort: String::new(),
+            list_sort_reversed: false,
+            list_sorts: Default::default(),
+            list_recipients: Default::default(),
+            list_folded_days: Default::default(),
             date_groups_default_applied: true,
             list_search_open: false,
             contacts_search_open: false,
             contact_names: false,
+            reply_to_sender: false,
             list_search_bottom: false,
             list_bulk_bar_bottom: false,
             toolbar_fold_right: true,
