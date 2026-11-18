@@ -2,6 +2,28 @@
 
 ## Unreleased
 
+- **Added: tooltips for cut subjects and previews** (#673, requested by
+  3v1n0). Hovering a subject or preview that the message list cuts short
+  shows its whole text in a tooltip: the full subject, and all of the
+  preview Hylki keeps for the message, a few hundred characters. Text that
+  fits shows no tooltip.
+
+- **Added: Light / Dark Mode switch in the composer** (#671, by Fabio
+  Rotondo). The editor's toolbar has the switch the reader has. It shows the
+  text being written, its source and its preview in the other scheme, for
+  that composer alone. The message sent is not affected. Settings → Reading
+  → Light / Dark Mode switch shows or hides both switches, open composers
+  included.
+
+- **Fixed: Purelymail folders could fail to open** (#672, reported by
+  rimmer). Purelymail can list flags with two backslashes, such as `\\Seen`,
+  beside the real ones. They are not valid IMAP, and the parser failed the
+  whole response on them, so the folder did not open and its mail did not
+  sync. Hylki now leaves these flags out of the server's flag lists before
+  reading them. They are not read as the flag they resemble: a message only
+  shows as read, starred or answered when the server sets the real flag.
+  Message text passes through untouched.
+
 - **Added: events and tasks from selected text** (#637, requested by
   adri99-net). With text selected in the reader, the right-click menu offers
   **Create Event from Selection…** and **Create Task from Selection…**. The
@@ -154,6 +176,24 @@
   the About dialog, opened from a **Credits** row under **Release Notes**,
   instead of over sixty rows on its main page.
 
+- **Translations:** German (PRs #668 and #674 by Samuel Edlmeier),
+  complete. Russian (PR #670 by Ilya Semenkovich), 2564 of 2566 strings
+  translated.
+
+## 1.48.4 — 2026-11-17
+
+A patch release with one fix: sending a message no longer runs the system
+out of memory on the NVIDIA driver.
+
+- **Fixed: sending a new message could run the system out of memory on
+  NVIDIA** (#669, reported by glw907). The composer that covers the reader
+  slid in and out by stretching instead of moving: on the last frames of
+  its slide its editor was millions of pixels tall, and WebKit made a
+  drawing surface that size. On the proprietary NVIDIA driver that surface
+  fell back to shared memory, about 30 GB for one send. The composer now
+  keeps the pane's size and moves over it, and its WebView stays the same
+  size throughout.
+
 ## 1.48.3 — 2026-11-16
 
 A patch release with three fixes and a French update: contacts moved to a
@@ -191,7 +231,7 @@ their dropdowns.
   checkmark on the picked book, like the others.
 
 - **Translations:** French (PR #660 by frenchy82), 2498 of 2503 strings
-  translated. German (PR #668 by Samuel Edlmeier), complete.
+  translated.
 
 ## 1.48.2 — 2026-11-15
 
